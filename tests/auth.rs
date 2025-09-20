@@ -107,16 +107,14 @@ async fn can_login_after_register() {
 
 #[tokio::test]
 #[serial]
-async fn can_access_movies_without_auth() {
+async fn cannot_access_movies_without_auth() {
     request::<App, _, _>(|request, _ctx| async move {
         let response = request.get("/api/movies").await;
         println!("Movies endpoint without auth returned status: {}", response.status_code());
-        assert_eq!(response.status_code(), 200, "Movies endpoint should be accessible without auth");
+        assert_eq!(response.status_code(), 401, "Movies endpoint should require authentication");
         
         let movies_text = response.text();
         println!("Movies response: {}", movies_text);
-        // Should return empty array or list of movies
-        assert!(movies_text.contains("["), "Response should be a JSON array");
     })
     .await;
 }
@@ -160,6 +158,63 @@ async fn can_access_movies_with_auth() {
         let movies_text = response.text();
         println!("Movies response with auth: {}", movies_text);
         assert!(movies_text.contains("["), "Response should be a JSON array");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn can_create_movie_with_auth() {
+    request::<App, _, _>(|request, _ctx| async move {
+        let email = format!("movie_create+{}@loco.com", Uuid::new_v4());
+        let password = "test_password123";
+        
+        // Register and login to get a token
+        let register_payload = serde_json::json!({
+            "name": "movie_creator",
+            "email": email,
+            "password": password
+        });
+        request.post("/api/auth/register").json(&register_payload).await;
+
+        let login_payload = serde_json::json!({
+            "email": email,
+            "password": password
+        });
+        let login_response = request.post("/api/auth/login").json(&login_payload).await;
+        assert_eq!(login_response.status_code(), 200, "Login should succeed");
+        let login_text = login_response.text();
+        let login_data: serde_json::Value = serde_json::from_str(&login_text)
+            .expect("Login response should be valid JSON");
+        let token = login_data["token"].as_str().expect("Login response should contain token");
+
+        // Create a movie with auth
+        let movie_payload = serde_json::json!({
+            "title": "Test Movie"
+        });
+        let response = request
+            .post("/api/movies")
+            .add_header("Authorization", format!("Bearer {}", token))
+            .json(&movie_payload)
+            .await;
+            
+        println!("Create movie endpoint returned status: {}", response.status_code());
+        assert_eq!(response.status_code(), 200, "Should be able to create movie with auth");
+        
+        let movie_text = response.text();
+        println!("Create movie response: {}", movie_text);
+        assert!(movie_text.contains("Test Movie"), "Response should contain the created movie");
+        
+        // Verify we can list our movies and see the one we created
+        let list_response = request
+            .get("/api/movies")
+            .add_header("Authorization", format!("Bearer {}", token))
+            .await;
+        assert_eq!(list_response.status_code(), 200, "Should be able to list movies with auth");
+        
+        let list_text = list_response.text();
+        println!("List movies response: {}", list_text);
+        assert!(list_text.contains("Test Movie"), "Created movie should appear in list");
     })
     .await;
 }

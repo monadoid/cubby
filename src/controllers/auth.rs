@@ -8,6 +8,7 @@ use crate::{
 };
 use axum::debug_handler;
 use loco_rs::prelude::*;
+use loco_rs::controller::extractor::auth;
 
 
 /// Register function creates a new user with the given parameters and sends a

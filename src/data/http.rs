@@ -1,3 +1,4 @@
+#![allow(unused)]
 use reqwest_middleware::reqwest;
 use reqwest_middleware::reqwest::header::{CONTENT_TYPE, HeaderMap};
 use reqwest_middleware::reqwest::Method;
