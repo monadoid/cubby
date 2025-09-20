@@ -6,7 +6,6 @@ use crate::models::_entities::users;
 pub struct LoginResponse {
     pub token: String,
     pub id: String,
-    pub name: String,
     pub is_verified: bool,
 }
 
@@ -16,7 +15,6 @@ impl LoginResponse {
         Self {
             token: token.to_string(),
             id: user.id.to_string(),
-            name: user.name.clone(),
             is_verified: user.email_verified_at.is_some(),
         }
     }
@@ -25,7 +23,6 @@ impl LoginResponse {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CurrentResponse {
     pub id: String,
-    pub name: String,
     pub email: String,
 }
 
@@ -34,7 +31,6 @@ impl CurrentResponse {
     pub fn new(user: &users::Model) -> Self {
         Self {
             id: user.id.to_string(),
-            name: user.name.clone(),
             email: user.email.clone(),
         }
     }

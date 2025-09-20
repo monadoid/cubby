@@ -15,7 +15,6 @@ pub struct LoginParams {
 pub struct RegisterParams {
     pub email: String,
     pub password: String,
-    pub name: String,
 }
 
 #[async_trait::async_trait]
@@ -113,7 +112,6 @@ impl Model {
         let user = users::ActiveModel {
             email: ActiveValue::set(params.email.to_string()),
             password: ActiveValue::set(password_hash),
-            name: ActiveValue::set(params.name.to_string()),
             ..Default::default()
         }
         .insert(&txn)

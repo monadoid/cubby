@@ -15,7 +15,6 @@ pub struct Model {
     pub password: String,
     #[sea_orm(unique)]
     pub api_key: String,
-    pub name: String,
     pub reset_token: Option<String>,
     pub reset_sent_at: Option<DateTimeWithTimeZone>,
     pub email_verification_token: Option<String>,
@@ -26,4 +25,13 @@ pub struct Model {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(has_many = "super::movies::Entity")]
+    Movies,
+}
+
+impl Related<super::movies::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Movies.def()
+    }
+}

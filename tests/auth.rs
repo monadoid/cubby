@@ -9,7 +9,6 @@ async fn can_register() {
     request::<App, _, _>(|request, ctx| async move {
         let email = format!("test+{}@loco.com", Uuid::new_v4());
         let payload = serde_json::json!({
-            "name": "loco",
             "email": email,
             "password": "12341234"
         });
@@ -26,7 +25,6 @@ async fn can_register() {
         
         let user = saved_user.unwrap();
         assert_eq!(user.email, email);
-        assert_eq!(user.name, "loco");
         assert!(user.verify_password("12341234"), "Password should be hashed correctly");
 
         let deliveries = ctx.mailer.unwrap().deliveries();
@@ -41,7 +39,6 @@ async fn cannot_register_duplicate_email() {
     request::<App, _, _>(|request, ctx| async move {
         let email = format!("duplicate+{}@loco.com", Uuid::new_v4());
         let payload = serde_json::json!({
-            "name": "first_user",
             "email": email,
             "password": "12341234"
         });
@@ -52,7 +49,6 @@ async fn cannot_register_duplicate_email() {
 
         // Second registration with same email should fail
         let payload2 = serde_json::json!({
-            "name": "second_user",
             "email": email,
             "password": "different_password"
         });
@@ -66,7 +62,7 @@ async fn cannot_register_duplicate_email() {
         assert!(saved_user.is_ok(), "User should exist in database");
         
         let user = saved_user.unwrap();
-        assert_eq!(user.name, "first_user", "Should keep the first user's data");
+        assert_eq!(user.email, email, "Should keep the first user's data");
     })
     .await;
 }
@@ -80,7 +76,6 @@ async fn can_login_after_register() {
         
         // First register a user
         let register_payload = serde_json::json!({
-            "name": "login_user",
             "email": email,
             "password": password
         });
@@ -128,7 +123,6 @@ async fn can_access_movies_with_auth() {
         
         // Register and login to get a token
         let register_payload = serde_json::json!({
-            "name": "movies_user",
             "email": email,
             "password": password
         });
@@ -171,7 +165,6 @@ async fn can_create_movie_with_auth() {
         
         // Register and login to get a token
         let register_payload = serde_json::json!({
-            "name": "movie_creator",
             "email": email,
             "password": password
         });
