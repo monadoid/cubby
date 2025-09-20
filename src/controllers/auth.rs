@@ -27,7 +27,7 @@ async fn register(
                 user_email = &params.email,
                 "could not register user",
             );
-            return format::json(());
+            return Err(Error::BadRequest("User already exists".to_string()));
         }
     };
 

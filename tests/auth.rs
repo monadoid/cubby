@@ -109,7 +109,7 @@ async fn can_login_after_register() {
 #[serial]
 async fn can_access_movies_without_auth() {
     request::<App, _, _>(|request, _ctx| async move {
-        let response = request.get("/api/movies/").await;
+        let response = request.get("/api/movies").await;
         println!("Movies endpoint without auth returned status: {}", response.status_code());
         assert_eq!(response.status_code(), 200, "Movies endpoint should be accessible without auth");
         
@@ -141,12 +141,16 @@ async fn can_access_movies_with_auth() {
             "password": password
         });
         let login_response = request.post("/api/auth/login").json(&login_payload).await;
-        let login_data: serde_json::Value = serde_json::from_str(&login_response.text()).unwrap();
-        let token = login_data["token"].as_str().unwrap();
+        assert_eq!(login_response.status_code(), 200, "Login should succeed");
+        let login_text = login_response.text();
+        println!("Login response for movies test: {}", login_text);
+        let login_data: serde_json::Value = serde_json::from_str(&login_text)
+            .expect("Login response should be valid JSON");
+        let token = login_data["token"].as_str().expect("Login response should contain token");
 
         // Now try to access movies with auth header
         let response = request
-            .get("/api/movies/")
+            .get("/api/movies")
             .add_header("Authorization", format!("Bearer {}", token))
             .await;
             
