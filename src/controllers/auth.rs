@@ -64,7 +64,7 @@ async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -
 
 #[debug_handler]
 async fn current(auth: auth::JWT, State(ctx): State<AppContext>) -> Result<Response> {
-    let user = users::Model::find_by_pid(&ctx.db, &auth.claims.pid).await?;
+    let user = users::Model::find_by_id(&ctx.db, &auth.claims.pid).await?;
     format::json(CurrentResponse::new(&user))
 }
 

@@ -1,24 +1,27 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
+use axum::debug_handler;
 use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
-use axum::debug_handler;
+use uuid::Uuid;
 
 use crate::models::_entities::movies::{ActiveModel, Entity, Model};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Params {
     pub title: Option<String>,
-    }
+    pub user_id: Uuid,
+}
 
 impl Params {
     fn update(&self, item: &mut ActiveModel) {
-      item.title = Set(self.title.clone());
-      }
+        item.title = Set(self.title.clone());
+        item.user_id = Set(self.user_id);
+    }
 }
 
-async fn load_item(ctx: &AppContext, id: i32) -> Result<Model> {
+async fn load_item(ctx: &AppContext, id: Uuid) -> Result<Model> {
     let item = Entity::find_by_id(id).one(&ctx.db).await?;
     item.ok_or_else(|| Error::NotFound)
 }
@@ -40,7 +43,7 @@ pub async fn add(State(ctx): State<AppContext>, Json(params): Json<Params>) -> R
 
 #[debug_handler]
 pub async fn update(
-    Path(id): Path<i32>,
+    Path(id): Path<Uuid>,
     State(ctx): State<AppContext>,
     Json(params): Json<Params>,
 ) -> Result<Response> {
@@ -52,13 +55,13 @@ pub async fn update(
 }
 
 #[debug_handler]
-pub async fn remove(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Result<Response> {
+pub async fn remove(Path(id): Path<Uuid>, State(ctx): State<AppContext>) -> Result<Response> {
     load_item(&ctx, id).await?.delete(&ctx.db).await?;
     format::empty()
 }
 
 #[debug_handler]
-pub async fn get_one(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Result<Response> {
+pub async fn get_one(Path(id): Path<Uuid>, State(ctx): State<AppContext>) -> Result<Response> {
     format::json(load_item(&ctx, id).await?)
 }
 

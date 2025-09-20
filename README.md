@@ -59,8 +59,12 @@ Check out [a quick tour](https://loco.rs/docs/getting-started/tour/) or [the com
 
 
 ## Migrations
-
+```bash
 cargo loco generate migration <NAME_OF_MIGRATION>
 # then edit the migration file, then to run it:
 cargo loco db migrate
 cargo loco db entities
+
+# both the scaffold command and the migration command support adding references:
+cargo loco generate migration add_user_id_to_movies user:references
+```
