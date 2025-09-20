@@ -56,3 +56,11 @@ You can check your [configuration](config/development.yaml) to pick either front
 ## Getting help
 
 Check out [a quick tour](https://loco.rs/docs/getting-started/tour/) or [the complete guide](https://loco.rs/docs/getting-started/guide/).
+
+
+## Migrations
+
+cargo loco generate migration <NAME_OF_MIGRATION>
+# then edit the migration file, then to run it:
+cargo loco db migrate
+cargo loco db entities
