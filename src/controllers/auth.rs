@@ -8,29 +8,7 @@ use crate::{
 };
 use axum::debug_handler;
 use loco_rs::prelude::*;
-use serde::{Deserialize, Serialize};
 
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ForgotParams {
-    pub email: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ResetParams {
-    pub token: String,
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct MagicLinkParams {
-    pub email: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ResendVerificationParams {
-    pub email: String,
-}
 
 /// Register function creates a new user with the given parameters and sends a
 /// welcome email to the user
@@ -52,11 +30,6 @@ async fn register(
             return format::json(());
         }
     };
-
-    let user = user
-        .into_active_model()
-        .set_email_verification_sent(&ctx.db)
-        .await?;
 
     AuthMailer::send_welcome(&ctx, &user).await?;
 
