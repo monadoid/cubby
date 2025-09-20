@@ -941,6 +941,7 @@ dependencies = [
 name = "cubby"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axum",
  "axum-extra",
@@ -951,6 +952,7 @@ dependencies = [
  "loco-rs",
  "migration",
  "regex",
+ "reqwest-middleware",
  "rstest",
  "sea-orm",
  "serde",
@@ -960,6 +962,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unic-langid",
+ "url",
  "uuid",
  "validator",
 ]
@@ -3178,6 +3181,21 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
+]
+
+[[package]]
+name = "reqwest-middleware"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57f17d28a6e6acfe1733fe24bcd30774d13bffa4b8a22535b4c8c98423088d4e"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "http",
+ "reqwest",
+ "serde",
+ "thiserror 1.0.69",
+ "tower-service",
 ]
 
 [[package]]
