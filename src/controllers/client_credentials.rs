@@ -134,7 +134,7 @@ async fn create(
     let stytch = stytch_client(&ctx)?;
 
     let metadata = json!({
-        "stytch_user_id": auth.auth_id,
+        "user_id": auth.auth_id,
     });
 
     let envelope = stytch

@@ -131,7 +131,7 @@ impl StytchMockServer {
             .and(path("/passwords"))
             .respond_with(|req: &wiremock::Request| {
                 let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
-                let db_user_id = body["trusted_metadata"]["stytch_user_id"]
+                let db_user_id = body["trusted_metadata"]["user_id"]
                     .as_str()
                     .unwrap_or(STYTCH_USER_ID);
                 
@@ -175,7 +175,7 @@ impl StytchMockServer {
             .and(path("/passwords/authenticate"))
             .respond_with(|req: &wiremock::Request| {
                 let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
-                let db_user_id = body["trusted_metadata"]["stytch_user_id"]
+                let db_user_id = body["trusted_metadata"]["user_id"]
                     .as_str()
                     .unwrap_or(STYTCH_USER_ID);
                 
@@ -218,8 +218,7 @@ impl StytchMockServer {
 
     async fn setup_client_credential_endpoints(&self) {
         let trusted_metadata = json!({
-            "user_id": "placeholder",
-            "stytch_user_id": STYTCH_USER_ID,
+            "user_id": STYTCH_USER_ID,
         });
 
         Mock::given(method("POST"))

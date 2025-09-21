@@ -41,7 +41,7 @@ async fn register(
     let stytch = stytch_client(&ctx)?;
 
     let trusted_metadata = json!({
-        "stytch_user_id": user_id.to_string()
+        "user_id": user_id.to_string()
     });
 
     let stytch_response = stytch
@@ -75,7 +75,7 @@ async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -
     let stytch = stytch_client(&ctx)?;
 
     let trusted_metadata = json!({
-        "stytch_user_id": user.id.to_string()
+        "user_id": user.id.to_string()
     });
 
     let stytch_response = match stytch
