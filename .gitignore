@@ -19,3 +19,5 @@ target/
 *.sqlite
 *.sqlite-*
 .idea
+.env
+.envrc

@@ -40,9 +40,10 @@ fluent-templates = { version = "0.13", features = ["tera"] }
 unic-langid = { version = "0.9" }
 # /view engine
 axum-extra = { version = "0.10", features = ["form"] }
-reqwest-middleware = "0.4.2"
+reqwest-middleware = { version = "0.4.2", features = ["json", "rustls-tls"] }
 url = "2.5.7"
 anyhow = "1.0.100"
+jsonwebtoken = { version = "9" }
 
 [[bin]]
 name = "cubby-cli"
@@ -54,3 +55,4 @@ loco-rs = { workspace = true, features = ["testing"] }
 serial_test = { version = "3.1.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }
+base64 = { version = "0.22" }

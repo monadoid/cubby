@@ -18,7 +18,10 @@ use crate::{
     controllers, initializers, models::_entities::users, tasks, workers::downloader::DownloadWorker,
 };
 
+use tracing_subscriber::{fmt, EnvFilter};
+
 pub struct App;
+
 #[async_trait]
 impl Hooks for App {
     fn app_name() -> &'static str {
@@ -44,9 +47,10 @@ impl Hooks for App {
     }
 
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
-        Ok(vec![Box::new(
-            initializers::view_engine::ViewEngineInitializer,
-        )])
+        Ok(vec![
+            Box::new(initializers::stytch::StytchInitializer),
+            Box::new(initializers::view_engine::ViewEngineInitializer),
+        ])
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
@@ -54,6 +58,7 @@ impl Hooks for App {
             .add_route(controllers::movie::routes())
             .add_route(controllers::auth::routes())
     }
+
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
         queue.register(DownloadWorker::build(ctx)).await?;
         Ok(())
@@ -63,13 +68,25 @@ impl Hooks for App {
     fn register_tasks(tasks: &mut Tasks) {
         // tasks-inject (do not remove)
     }
+
     async fn truncate(ctx: &AppContext) -> Result<()> {
         truncate_table(&ctx.db, users::Entity).await?;
         Ok(())
     }
+
     async fn seed(ctx: &AppContext, base: &Path) -> Result<()> {
         db::seed::<users::ActiveModel>(&ctx.db, &base.join("users.yaml").display().to_string())
             .await?;
         Ok(())
+    }
+    fn init_logger(ctx: &AppContext) -> Result<bool> {
+        if matches!(ctx.environment, Environment::Test) {
+            let filter =
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"));
+
+            fmt().with_env_filter(filter).with_test_writer().init();
+            return Ok(true);
+        }
+        Ok(false)
     }
 }

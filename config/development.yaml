@@ -97,3 +97,10 @@ auth:
     secret: 2OVNMD6tQJePhUVuEltl
     # Token expiration time in seconds
     expiration: 604800 # 7 days
+
+settings:
+  stytch:
+    base_url: https://test.stytch.com/v1/
+    project_id: {{ get_env(name="STYTCH_TEST_PROJECT_ID") }}
+    secret: {{ get_env(name="STYTCH_TEST_SECRET") }}
+    required_scopes: []

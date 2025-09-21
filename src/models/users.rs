@@ -34,8 +34,6 @@ impl ActiveModelBehavior for super::_entities::users::ActiveModel {
     }
 }
 
-
-
 impl Model {
     /// finds a user by the provided email
     ///
@@ -65,6 +63,30 @@ impl Model {
             .filter(
                 model::query::condition()
                     .eq(users::Column::Id, parse_uuid)
+                    .build(),
+            )
+            .one(db)
+            .await?;
+        user.ok_or_else(|| ModelError::EntityNotFound)
+    }
+
+    pub async fn find_by_auth_id(db: &DatabaseConnection, auth_id: &str) -> ModelResult<Self> {
+        let user = users::Entity::find()
+            .filter(
+                model::query::condition()
+                    .eq(users::Column::AuthId, auth_id)
+                    .build(),
+            )
+            .one(db)
+            .await?;
+        user.ok_or_else(|| ModelError::EntityNotFound)
+    }
+
+    pub async fn find_by_api_key(db: &DatabaseConnection, api_key: &str) -> ModelResult<Self> {
+        let user = users::Entity::find()
+            .filter(
+                model::query::condition()
+                    .eq(users::Column::ApiKey, api_key)
                     .build(),
             )
             .one(db)

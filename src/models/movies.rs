@@ -1,5 +1,5 @@
+pub use super::_entities::movies::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
-pub use super::_entities::movies::{ActiveModel, Model, Entity};
 pub type Movies = Entity;
 
 #[async_trait::async_trait]

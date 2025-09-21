@@ -3,12 +3,15 @@
 #![allow(clippy::unused_async)]
 use axum::debug_handler;
 use loco_rs::prelude::*;
-use loco_rs::controller::extractor::auth;
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::models::_entities::movies::{ActiveModel, Entity, Model};
+use crate::controllers::stytch_guard::StytchAuth;
+use crate::models::{
+    _entities::movies::{ActiveModel, Entity, Model},
+    users,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Params {
@@ -34,9 +37,16 @@ async fn load_item(ctx: &AppContext, id: Uuid, user_id: Uuid) -> Result<Model> {
     item.ok_or_else(|| Error::NotFound)
 }
 
+async fn load_user(ctx: &AppContext, auth: &StytchAuth) -> Result<users::Model> {
+    users::Model::find_by_auth_id(&ctx.db, &auth.auth_id)
+        .await
+        .map_err(|_| Error::Unauthorized("client not authorized".to_string()))
+}
+
 #[debug_handler]
-pub async fn list(auth: auth::JWT, State(ctx): State<AppContext>) -> Result<Response> {
-    let user_id = auth.claims.pid.parse::<Uuid>().map_err(|_| Error::BadRequest("Invalid user ID".to_string()))?;
+pub async fn list(auth: StytchAuth, State(ctx): State<AppContext>) -> Result<Response> {
+    let user = load_user(&ctx, &auth).await?;
+    let user_id = user.id;
     let movies = Entity::find()
         .filter(crate::models::_entities::movies::Column::UserId.eq(user_id))
         .all(&ctx.db)
@@ -45,8 +55,13 @@ pub async fn list(auth: auth::JWT, State(ctx): State<AppContext>) -> Result<Resp
 }
 
 #[debug_handler]
-pub async fn add(auth: auth::JWT, State(ctx): State<AppContext>, Json(mut params): Json<Params>) -> Result<Response> {
-    let user_id = auth.claims.pid.parse::<Uuid>().map_err(|_| Error::BadRequest("Invalid user ID".to_string()))?;
+pub async fn add(
+    auth: StytchAuth,
+    State(ctx): State<AppContext>,
+    Json(mut params): Json<Params>,
+) -> Result<Response> {
+    let user = load_user(&ctx, &auth).await?;
+    let user_id = user.id;
     params.user_id = Some(user_id);
     let mut item = ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -59,12 +74,13 @@ pub async fn add(auth: auth::JWT, State(ctx): State<AppContext>, Json(mut params
 
 #[debug_handler]
 pub async fn update(
-    auth: auth::JWT,
+    auth: StytchAuth,
     Path(id): Path<Uuid>,
     State(ctx): State<AppContext>,
     Json(mut params): Json<Params>,
 ) -> Result<Response> {
-    let user_id = auth.claims.pid.parse::<Uuid>().map_err(|_| Error::BadRequest("Invalid user ID".to_string()))?;
+    let user = load_user(&ctx, &auth).await?;
+    let user_id = user.id;
     params.user_id = Some(user_id);
     let item = load_item(&ctx, id, user_id).await?;
     let mut item = item.into_active_model();
@@ -74,15 +90,25 @@ pub async fn update(
 }
 
 #[debug_handler]
-pub async fn remove(auth: auth::JWT, Path(id): Path<Uuid>, State(ctx): State<AppContext>) -> Result<Response> {
-    let user_id = auth.claims.pid.parse::<Uuid>().map_err(|_| Error::BadRequest("Invalid user ID".to_string()))?;
+pub async fn remove(
+    auth: StytchAuth,
+    Path(id): Path<Uuid>,
+    State(ctx): State<AppContext>,
+) -> Result<Response> {
+    let user = load_user(&ctx, &auth).await?;
+    let user_id = user.id;
     load_item(&ctx, id, user_id).await?.delete(&ctx.db).await?;
     format::empty()
 }
 
 #[debug_handler]
-pub async fn get_one(auth: auth::JWT, Path(id): Path<Uuid>, State(ctx): State<AppContext>) -> Result<Response> {
-    let user_id = auth.claims.pid.parse::<Uuid>().map_err(|_| Error::BadRequest("Invalid user ID".to_string()))?;
+pub async fn get_one(
+    auth: StytchAuth,
+    Path(id): Path<Uuid>,
+    State(ctx): State<AppContext>,
+) -> Result<Response> {
+    let user = load_user(&ctx, &auth).await?;
+    let user_id = user.id;
     format::json(load_item(&ctx, id, user_id).await?)
 }
 

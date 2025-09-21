@@ -7,9 +7,8 @@ use crate::{
     views::auth::{CurrentResponse, LoginResponse},
 };
 use axum::debug_handler;
-use loco_rs::prelude::*;
 use loco_rs::controller::extractor::auth;
-
+use loco_rs::prelude::*;
 
 /// Register function creates a new user with the given parameters and sends a
 /// welcome email to the user
@@ -68,7 +67,6 @@ async fn current(auth: auth::JWT, State(ctx): State<AppContext>) -> Result<Respo
     let user = users::Model::find_by_id(&ctx.db, &auth.claims.pid).await?;
     format::json(CurrentResponse::new(&user))
 }
-
 
 pub fn routes() -> Routes {
     Routes::new()
