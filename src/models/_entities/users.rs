@@ -12,7 +12,6 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(unique)]
     pub email: String,
-    pub password: String,
     #[sea_orm(unique)]
     pub api_key: String,
     pub reset_token: Option<String>,
@@ -22,13 +21,22 @@ pub struct Model {
     pub email_verified_at: Option<DateTimeWithTimeZone>,
     pub magic_link_token: Option<String>,
     pub magic_link_expiration: Option<DateTimeWithTimeZone>,
-    pub auth_id: Option<String>,
+    #[sea_orm(unique)]
+    pub auth_id: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::client_credentials::Entity")]
+    ClientCredentials,
     #[sea_orm(has_many = "super::movies::Entity")]
     Movies,
+}
+
+impl Related<super::client_credentials::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ClientCredentials.def()
+    }
 }
 
 impl Related<super::movies::Entity> for Entity {

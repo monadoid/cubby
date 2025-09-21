@@ -1,6 +1,5 @@
-use loco_rs::{auth::jwt, hash, prelude::*};
+use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_json::Map;
 use uuid::Uuid;
 
 pub use super::_entities::users::{self, ActiveModel, Entity, Model};
@@ -17,6 +16,13 @@ pub struct RegisterParams {
     pub password: String,
 }
 
+#[derive(Debug)]
+pub struct UpsertFromStytch<'a> {
+    pub id: Uuid,
+    pub auth_id: &'a str,
+    pub email: &'a str,
+}
+
 #[async_trait::async_trait]
 impl ActiveModelBehavior for super::_entities::users::ActiveModel {
     async fn before_save<C>(self, _db: &C, insert: bool) -> Result<Self, DbErr>
@@ -25,7 +31,10 @@ impl ActiveModelBehavior for super::_entities::users::ActiveModel {
     {
         if insert {
             let mut this = self;
-            this.id = ActiveValue::Set(Uuid::new_v4());
+            // Only set ID if it's not already provided
+            if matches!(this.id, ActiveValue::NotSet) {
+                this.id = ActiveValue::Set(Uuid::new_v4());
+            }
             this.api_key = ActiveValue::Set(format!("lo-{}", Uuid::new_v4()));
             Ok(this)
         } else {
@@ -94,64 +103,40 @@ impl Model {
         user.ok_or_else(|| ModelError::EntityNotFound)
     }
 
-    /// Verifies whether the provided plain password matches the hashed password
-    ///
-    /// # Errors
-    ///
-    /// when could not verify password
-    #[must_use]
-    pub fn verify_password(&self, password: &str) -> bool {
-        hash::verify_password(password, &self.password)
-    }
-
-    /// Asynchronously creates a user with a password and saves it to the
-    /// database.
-    ///
-    /// # Errors
-    ///
-    /// When could not save the user into the DB
-    pub async fn create_with_password(
+    /// Ensures we have a local user record representing the provided Stytch user.
+    pub async fn upsert_from_stytch(
         db: &DatabaseConnection,
-        params: &RegisterParams,
+        params: UpsertFromStytch<'_>,
     ) -> ModelResult<Self> {
-        let txn = db.begin().await?;
+        if let Ok(existing) = Self::find_by_auth_id(db, params.auth_id).await {
+            if existing.email == params.email {
+                return Ok(existing);
+            }
 
-        if users::Entity::find()
-            .filter(
-                model::query::condition()
-                    .eq(users::Column::Email, &params.email)
-                    .build(),
-            )
-            .one(&txn)
-            .await?
-            .is_some()
-        {
-            return Err(ModelError::EntityAlreadyExists {});
+            let mut active = existing.into_active_model();
+            active.email = ActiveValue::set(params.email.to_owned());
+            return active.update(db).await.map_err(ModelError::from);
         }
 
-        let password_hash =
-            hash::hash_password(&params.password).map_err(|e| ModelError::Any(e.into()))?;
-        let user = users::ActiveModel {
-            email: ActiveValue::set(params.email.to_string()),
-            password: ActiveValue::set(password_hash),
+        if let Ok(existing) = Self::find_by_email(db, params.email).await {
+            let mut active = existing.into_active_model();
+            active.auth_id = ActiveValue::set(params.auth_id.to_owned());
+            return active.update(db).await.map_err(ModelError::from);
+        }
+
+        tracing::debug!(uuid = %params.id, email = %params.email, "Creating user with specific UUID");
+        
+        let active_model = users::ActiveModel {
+            id: ActiveValue::set(params.id),
+            email: ActiveValue::set(params.email.to_owned()),
+            auth_id: ActiveValue::set(params.auth_id.to_owned()),
             ..Default::default()
-        }
-        .insert(&txn)
-        .await?;
-
-        txn.commit().await?;
-
-        Ok(user)
-    }
-
-    /// Creates a JWT
-    ///
-    /// # Errors
-    ///
-    /// when could not convert user claims to jwt token
-    pub fn generate_jwt(&self, secret: &str, expiration: u64) -> ModelResult<String> {
-        jwt::JWT::new(secret)
-            .generate_token(expiration, self.id.to_string(), Map::new())
-            .map_err(ModelError::from)
+        };
+        
+        let result = active_model.insert(db).await.map_err(ModelError::from)?;
+        
+        tracing::debug!(created_uuid = %result.id, "User created with UUID");
+        
+        Ok(result)
     }
 }

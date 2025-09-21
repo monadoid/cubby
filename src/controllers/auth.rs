@@ -1,70 +1,108 @@
-use crate::{
-    mailers::auth::AuthMailer,
-    models::{
-        _entities::users,
-        users::{LoginParams, RegisterParams},
-    },
-    views::auth::{CurrentResponse, LoginResponse},
-};
-use axum::debug_handler;
-use loco_rs::controller::extractor::auth;
-use loco_rs::prelude::*;
+use std::sync::Arc;
+use uuid::Uuid;
+use serde_json::json;
 
-/// Register function creates a new user with the given parameters and sends a
-/// welcome email to the user
+use axum::debug_handler;
+use loco_rs::{model::ModelError, prelude::*};
+
+use crate::{
+    controllers::stytch_guard::StytchAuth,
+    data::stytch::{PasswordAuthParams, StytchClient},
+    mailers::auth::AuthMailer,
+    models::users::{self, LoginParams, RegisterParams, UpsertFromStytch},
+    views::auth::{AuthResponse, CurrentResponse},
+};
+
+const DEFAULT_SESSION_DURATION: u32 = 60;
+
+fn stytch_client(ctx: &AppContext) -> Result<Arc<StytchClient>> {
+    ctx.shared_store.get::<Arc<StytchClient>>().ok_or_else(|| {
+        tracing::error!("stytch client not initialised");
+        Error::InternalServerError
+    })
+}
+
 #[debug_handler]
 async fn register(
     State(ctx): State<AppContext>,
     Json(params): Json<RegisterParams>,
 ) -> Result<Response> {
-    let res = users::Model::create_with_password(&ctx.db, &params).await;
-
-    let user = match res {
-        Ok(user) => user,
-        Err(err) => {
-            tracing::info!(
-                message = err.to_string(),
-                user_email = &params.email,
-                "could not register user",
-            );
+    match users::Model::find_by_email(&ctx.db, &params.email).await {
+        Ok(_) => {
+            tracing::info!(email = %params.email, "register attempt for existing email");
             return Err(Error::BadRequest("User already exists".to_string()));
         }
-    };
-
-    AuthMailer::send_welcome(&ctx, &user).await?;
-
-    format::json(())
-}
-
-/// Creates a user login and returns a token
-#[debug_handler]
-async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -> Result<Response> {
-    let Ok(user) = users::Model::find_by_email(&ctx.db, &params.email).await else {
-        tracing::debug!(
-            email = params.email,
-            "login attempt with non-existent email"
-        );
-        return unauthorized("Invalid credentials!");
-    };
-
-    let valid = user.verify_password(&params.password);
-
-    if !valid {
-        return unauthorized("unauthorized!");
+        Err(ModelError::EntityNotFound) => {}
+        Err(err) => return Err(err.into()),
     }
 
-    let jwt_secret = ctx.config.get_jwt_config()?;
+    // Generate our own UUID for the user
+    let user_id = Uuid::new_v4();
+    
+    let stytch = stytch_client(&ctx)?;
 
-    let token = user
-        .generate_jwt(&jwt_secret.secret, jwt_secret.expiration)
-        .or_else(|_| unauthorized("unauthorized!"))?;
+    let trusted_metadata = json!({
+        "stytch_user_id": user_id.to_string()
+    });
 
-    format::json(LoginResponse::new(&user, &token))
+    let stytch_response = stytch
+        .login_or_create_password(PasswordAuthParams {
+            email: &params.email,
+            password: &params.password,
+            session_duration_minutes: Some(DEFAULT_SESSION_DURATION),
+            trusted_metadata: Some(trusted_metadata),
+        })
+        .await?;
+
+    let user = users::Model::upsert_from_stytch(
+        &ctx.db,
+        UpsertFromStytch {
+            id: user_id,
+            auth_id: &stytch_response.user_id,
+            email: &params.email,
+        },
+    )
+    .await?;
+
+    format::json(AuthResponse::new(&user, &stytch_response))
 }
 
 #[debug_handler]
-async fn current(auth: auth::JWT, State(ctx): State<AppContext>) -> Result<Response> {
-    let user = users::Model::find_by_id(&ctx.db, &auth.claims.pid).await?;
+async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -> Result<Response> {
+    // First find the existing user to get their UUID
+    let user = users::Model::find_by_email(&ctx.db, &params.email).await
+        .map_err(|_| Error::Unauthorized("Invalid credentials".to_string()))?;
+
+    let stytch = stytch_client(&ctx)?;
+
+    let trusted_metadata = json!({
+        "stytch_user_id": user.id.to_string()
+    });
+
+    let stytch_response = match stytch
+        .authenticate_password(PasswordAuthParams {
+            email: &params.email,
+            password: &params.password,
+            session_duration_minutes: Some(DEFAULT_SESSION_DURATION),
+            trusted_metadata: Some(trusted_metadata),
+        })
+        .await
+    {
+        Ok(resp) => resp,
+        Err(Error::Unauthorized(_)) => {
+            tracing::debug!(email = %params.email, "invalid login credentials");
+            return unauthorized("Invalid credentials!");
+        }
+        Err(err) => return Err(err),
+    };
+
+    format::json(AuthResponse::new(&user, &stytch_response))
+}
+
+#[debug_handler]
+async fn current(auth: StytchAuth, State(ctx): State<AppContext>) -> Result<Response> {
+    // auth.auth_id now contains our database UUID
+    let user = users::Model::find_by_id(&ctx.db, &auth.auth_id).await?;
     format::json(CurrentResponse::new(&user))
 }
 

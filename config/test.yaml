@@ -97,7 +97,7 @@ auth:
 
 settings:
   stytch:
-    base_url: https://test.stytch.com/v1/
+    base_url: {{ get_env(name="STYTCH_TEST_BASE_URL", default="https://test.stytch.com/v1/") }}
     project_id: {{ get_env(name="STYTCH_TEST_PROJECT_ID") }}
     secret: {{ get_env(name="STYTCH_TEST_SECRET") }}
     required_scopes: []

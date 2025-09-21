@@ -4,9 +4,7 @@ use axum::{
     extract::FromRequestParts,
     http::{header::AUTHORIZATION, request::Parts},
 };
-use loco_rs::{
-    app::AppContext, controller::extractor::shared_store::SharedStore, Error,
-};
+use loco_rs::{app::AppContext, controller::extractor::shared_store::SharedStore, Error};
 
 use crate::data::stytch::{extract_user_id, StytchClient};
 
@@ -15,6 +13,7 @@ pub struct StytchAuth {
     pub scopes: Vec<String>,
     pub custom_claims: serde_json::Map<String, serde_json::Value>,
     pub auth_id: String,
+    pub user_id: uuid::Uuid,
 }
 
 impl FromRequestParts<AppContext> for StytchAuth {
@@ -68,19 +67,28 @@ impl FromRequestParts<AppContext> for StytchAuth {
                 }
             }
 
-            let user_id_value = extract_user_id(&validated.claims).ok_or_else(|| {
+            let auth_id_value = extract_user_id(&validated.claims).ok_or_else(|| {
                 Error::Unauthorized("missing user binding in access token".to_string())
             })?;
 
-            if user_id_value.is_empty() {
+            if auth_id_value.is_empty() {
                 return Err(Error::Unauthorized("invalid user binding".to_string()));
             }
+
+            // Extract database user_id from the token
+            let user_id_str = validated.claims.user_id.as_deref().ok_or_else(|| {
+                Error::Unauthorized("missing user_id in access token".to_string())
+            })?;
+            let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
+                Error::Unauthorized("invalid user_id format in access token".to_string())
+            })?;
 
             Ok(Self {
                 client_id: validated.claims.sub.clone().unwrap_or_default(),
                 scopes: validated.scopes,
                 custom_claims: validated.claims.custom_claims.clone(),
-                auth_id: user_id_value.to_string(),
+                auth_id: auth_id_value.to_string(),
+                user_id,
             })
         }
     }
