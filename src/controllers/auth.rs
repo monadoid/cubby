@@ -8,7 +8,6 @@ use loco_rs::{model::ModelError, prelude::*};
 use crate::{
     controllers::stytch_guard::StytchAuth,
     data::stytch::{PasswordAuthParams, StytchClient},
-    mailers::auth::AuthMailer,
     models::users::{self, LoginParams, RegisterParams, UpsertFromStytch},
     views::auth::{AuthResponse, CurrentResponse},
 };
