@@ -74,16 +74,12 @@ async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -
 
     let stytch = stytch_client(&ctx)?;
 
-    let trusted_metadata = json!({
-        "user_id": user.id.to_string()
-    });
-
     let stytch_response = match stytch
         .authenticate_password(PasswordAuthParams {
             email: &params.email,
             password: &params.password,
             session_duration_minutes: Some(DEFAULT_SESSION_DURATION),
-            trusted_metadata: Some(trusted_metadata),
+            trusted_metadata: None,
         })
         .await
     {
