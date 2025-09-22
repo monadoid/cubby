@@ -101,3 +101,6 @@ settings:
     project_id: {{ get_env(name="STYTCH_TEST_PROJECT_ID") }}
     secret: {{ get_env(name="STYTCH_TEST_SECRET") }}
     required_scopes: []
+  solid_server:
+    base_url: {{ get_env(name="CSS_TEST_BASE", default="http://localhost:3000") }}
+    account_index: {{ get_env(name="CSS_TEST_ACCOUNT_INDEX", default="http://localhost:3000/.account/") }}

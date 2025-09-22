@@ -2,4 +2,5 @@
 
 pub use super::client_credentials::Entity as ClientCredentials;
 pub use super::movies::Entity as Movies;
+pub use super::pods::Entity as Pods;
 pub use super::users::Entity as Users;
