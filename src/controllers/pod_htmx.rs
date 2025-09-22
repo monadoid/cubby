@@ -6,7 +6,7 @@ use loco_rs::{prelude::*, controller::views::engines::TeraView};
 use uuid::Uuid;
 
 use crate::controllers::stytch_guard::StytchSessionAuth;
-use crate::models::pods::{self, Model};
+use crate::models::pods::{Model};
 use crate::views;
 
 async fn load_item(ctx: &AppContext, user_id: Uuid) -> Result<Option<Model>> {

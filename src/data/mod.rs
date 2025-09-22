@@ -1,3 +1,4 @@
+pub mod css_auth;
 pub mod dpop;
 pub mod http;
 pub mod solid_server;
