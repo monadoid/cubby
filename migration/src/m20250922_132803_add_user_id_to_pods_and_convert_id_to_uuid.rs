@@ -1,4 +1,3 @@
-use loco_rs::schema::*;
 use sea_orm_migration::prelude::*;
 use sea_orm_migration::sea_orm::{ConnectionTrait, Statement};
 

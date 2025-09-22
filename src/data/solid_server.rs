@@ -1,6 +1,6 @@
 use loco_rs::{config::Config, Error, Result};
 use reqwest_middleware::reqwest::Method;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -137,12 +137,17 @@ impl SolidServerClient {
         })
     }
 
+    /// Create authenticated HTTP client for CSS requests  
+    fn create_auth_client(&self) -> Result<HttpClient> {
+        HttpClient::from_base_url(&self.settings.account_index, None)
+            .map_err(|err| Error::Message(err.to_string()))
+    }
+
     /// Step 3: Get authenticated controls with account-specific URLs
     async fn get_authenticated_controls(&self, account_token: &str) -> Result<CssControls> {
         tracing::debug!("Getting authenticated CSS controls");
         
-        let auth_http = HttpClient::from_base_url(&self.settings.account_index, None)
-            .map_err(|err| Error::Message(err.to_string()))?;
+        let auth_http = self.create_auth_client()?;
             
         let response: CssControlsResponse = auth_http
             .send_with_auth_header(Method::GET, "", None::<&()>, &format!("CSS-Account-Token {}", account_token))
@@ -173,8 +178,7 @@ impl SolidServerClient {
         });
         
         // Create authenticated HTTP client for this request
-        let auth_http = HttpClient::from_base_url(&self.settings.account_index, None)
-            .map_err(|err| Error::Message(err.to_string()))?;
+        let auth_http = self.create_auth_client()?;
         
         let _response: Value = auth_http
             .send_with_auth_header(Method::POST, path, Some(&body), &format!("CSS-Account-Token {}", account_token))
@@ -204,8 +208,7 @@ impl SolidServerClient {
             "name": pod_name
         });
         
-        let auth_http = HttpClient::from_base_url(&self.settings.account_index, None)
-            .map_err(|err| Error::Message(err.to_string()))?;
+        let auth_http = self.create_auth_client()?;
             
         let response: PodCreationResponse = auth_http
             .send_with_auth_header(Method::POST, path, Some(&body), &format!("CSS-Account-Token {}", account_token))
@@ -238,8 +241,7 @@ impl SolidServerClient {
             "webId": web_id
         });
         
-        let auth_http = HttpClient::from_base_url(&self.settings.account_index, None)
-            .map_err(|err| Error::Message(err.to_string()))?;
+        let auth_http = self.create_auth_client()?;
             
         let response: ClientCredentialsResponse = auth_http
             .send_with_auth_header(Method::POST, path, Some(&body), &format!("CSS-Account-Token {}", account_token))
@@ -258,7 +260,7 @@ impl SolidServerClient {
 
 
     /// Delete a pod and its associated CSS account resources
-    pub async fn delete_user_pod(&self, account_token: &str, client_resource_url: &str) -> Result<()> {
+    pub async fn delete_user_pod(&self, _account_token: &str, client_resource_url: &str) -> Result<()> {
         tracing::info!(client_resource_url = %client_resource_url, "Deleting CSS client credentials");
         
         // For now, just log the action - actual implementation would delete the client credentials

@@ -12,10 +12,6 @@ pub struct CreatePodParams {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct UpdatePodParams {
-    pub name: Option<String>,
-}
 
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
@@ -94,7 +90,6 @@ impl Model {
         css_result: &crate::data::solid_server::CssProvisioningResult,
     ) -> ModelResult<Self> {
         let active_model = ActiveModel {
-            id: ActiveValue::Set(Uuid::new_v4()),
             name: ActiveValue::Set(Some(params.name.clone())),
             link: ActiveValue::Set(Some(css_result.pod_base_url.clone())),
             user_id: ActiveValue::Set(Some(user_id)),

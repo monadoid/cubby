@@ -7,8 +7,14 @@ use loco_rs::{model::ModelError, prelude::*};
 
 use crate::{
     controllers::stytch_guard::StytchAuth,
-    data::stytch::{PasswordAuthParams, StytchClient},
-    models::users::{self, LoginParams, RegisterParams, UpsertFromStytch},
+    data::{
+        solid_server::{SolidServerClient, SolidServerSettings, CreateUserPodParams},
+        stytch::{PasswordAuthParams, StytchClient},
+    },
+    models::{
+        pods::{self, CreatePodParams},
+        users::{self, LoginParams, RegisterParams, UpsertFromStytch},
+    },
     views::auth::{AuthResponse, CurrentResponse},
 };
 
@@ -74,6 +80,9 @@ async fn register(
         },
     )
     .await?;
+
+    // Automatically provision pod for new user
+    provision_pod_for_user(&ctx, user_id, &params.email, &params.password).await;
 
     let response = AuthResponse::new(&user, &stytch_response);
     
@@ -142,6 +151,88 @@ async fn logout() -> Result<Response> {
         AppendHeaders([(SET_COOKIE, cookie)]),
         format::json(serde_json::json!({"message": "Logged out successfully"}))?,
     ).into_response())
+}
+
+/// Provisions a pod for a newly registered user
+/// Does not fail registration if pod provisioning fails - logs error instead
+async fn provision_pod_for_user(ctx: &AppContext, user_id: Uuid, email: &str, password: &str) {
+    // Check if user already has a pod (shouldn't happen, but good to check)
+    match pods::Model::user_has_pod(&ctx.db, user_id).await {
+        Ok(true) => {
+            tracing::info!(user_id = %user_id, "User already has a pod, skipping provisioning");
+            return;
+        }
+        Ok(false) => {
+            // Continue with provisioning
+        }
+        Err(err) => {
+            tracing::error!(
+                user_id = %user_id,
+                error = %err,
+                "Failed to check if user has pod, skipping pod provisioning"
+            );
+            return;
+        }
+    }
+
+    // Generate a default pod name based on email
+    let pod_name = email
+        .split('@')
+        .next()
+        .unwrap_or("mypod")
+        .to_string();
+
+    match provision_pod_internal(ctx, user_id, email, password, &pod_name).await {
+        Ok(()) => {
+            tracing::info!(
+                user_id = %user_id,
+                email = %email,
+                pod_name = %pod_name,
+                "Successfully provisioned pod for new user"
+            );
+        }
+        Err(err) => {
+            tracing::error!(
+                user_id = %user_id,
+                email = %email,
+                error = %err,
+                "Failed to provision pod for new user - user registration succeeded but pod creation failed"
+            );
+        }
+    }
+}
+
+/// Internal pod provisioning logic
+async fn provision_pod_internal(
+    ctx: &AppContext,
+    user_id: Uuid,
+    email: &str,
+    password: &str,
+    pod_name: &str,
+) -> Result<()> {
+    // Create pod on CSS with full provisioning flow
+    let settings = SolidServerSettings::from_config(&ctx.config)?;
+    let client = SolidServerClient::new(settings)?;
+    
+    let css_params = CreateUserPodParams {
+        email,
+        password,
+        pod_name,
+    };
+    
+    let css_result = client.create_user_and_pod(css_params).await?;
+    
+    // Create pod parameters for database insertion
+    let create_params = CreatePodParams {
+        name: pod_name.to_string(),
+        email: email.to_string(),
+        password: password.to_string(),
+    };
+    
+    // Create pod in database with CSS provisioning data
+    pods::Model::create_with_css_data(&ctx.db, user_id, &create_params, &css_result).await?;
+    
+    Ok(())
 }
 
 pub fn routes() -> Routes {
