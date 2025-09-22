@@ -58,6 +58,21 @@ You can check your [configuration](config/development.yaml) to pick either front
 Check out [a quick tour](https://loco.rs/docs/getting-started/tour/) or [the complete guide](https://loco.rs/docs/getting-started/guide/).
 
 
+## Styling with Tailwind CSS + daisyUI
+
+This project uses Tailwind CSS with daisyUI components via the standalone CLI (no Node.js required).
+
+After making changes to HTML templates with new CSS classes, regenerate the CSS:
+
+```bash
+./tailwindcss -i input.css -o assets/static/output.css
+```
+
+For development with auto-reload:
+```bash
+./tailwindcss -i input.css -o assets/static/output.css --watch
+```
+
 ## Migrations
 ```bash
 cargo loco generate migration <NAME_OF_MIGRATION>
