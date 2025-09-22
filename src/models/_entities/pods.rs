@@ -20,6 +20,11 @@ pub struct Model {
     pub css_client_resource_url: Option<String>,
     pub webid: Option<String>,
     pub css_email: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub dpop_private_jwk: Option<String>,
+    pub dpop_public_jwk_thumbprint: Option<String>,
+    pub dpop_key_created_at: Option<DateTimeWithTimeZone>,
+    pub dpop_key_rotated_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

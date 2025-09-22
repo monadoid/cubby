@@ -76,8 +76,19 @@ pub async fn add(
     
     let css_result = client.create_user_and_pod(css_params).await?;
     
-    // Create pod in database with CSS provisioning data
-    let item = Model::create_with_css_data(&ctx.db, user_id, &params, &css_result).await?;
+    // Generate DPoP keypair
+    let dpop_keypair = crate::data::dpop::generate_dpop_keypair()
+        .map_err(|e| Error::string(&e.to_string()))?;
+    
+    // Create pod in database with CSS provisioning data and DPoP keys
+    let item = Model::create_with_css_data(
+        &ctx.db, 
+        user_id, 
+        &params, 
+        &css_result,
+        &dpop_keypair.private_jwk,
+        &dpop_keypair.public_jwk_thumbprint,
+    ).await?;
     
     format::json(item)
 }

@@ -82,13 +82,17 @@ impl Model {
         Ok(count > 0)
     }
 
-    /// Create pod with CSS provisioning data
+    /// Create pod with CSS provisioning data and DPoP keys
     pub async fn create_with_css_data(
         db: &DatabaseConnection,
         user_id: Uuid,
         params: &CreatePodParams,
         css_result: &crate::data::solid_server::CssProvisioningResult,
+        dpop_private_jwk: &str,
+        dpop_public_jwk_thumbprint: &str,
     ) -> ModelResult<Self> {
+        let now = chrono::Utc::now().into();
+        
         let active_model = ActiveModel {
             name: ActiveValue::Set(Some(params.name.clone())),
             link: ActiveValue::Set(Some(css_result.pod_base_url.clone())),
@@ -99,6 +103,10 @@ impl Model {
             css_client_resource_url: ActiveValue::Set(Some(css_result.client_resource_url.clone())),
             webid: ActiveValue::Set(Some(css_result.web_id.clone())),
             css_email: ActiveValue::Set(Some(css_result.css_email.clone())),
+            dpop_private_jwk: ActiveValue::Set(Some(dpop_private_jwk.to_string())),
+            dpop_public_jwk_thumbprint: ActiveValue::Set(Some(dpop_public_jwk_thumbprint.to_string())),
+            dpop_key_created_at: ActiveValue::Set(Some(now)),
+            dpop_key_rotated_at: ActiveValue::Set(None),
             ..Default::default()
         };
         

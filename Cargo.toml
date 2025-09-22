@@ -44,6 +44,12 @@ reqwest-middleware = { version = "0.4.2", features = ["json", "rustls-tls"] }
 url = "2.5.7"
 anyhow = "1.0.100"
 jsonwebtoken = { version = "9" }
+dpop = "0.1.1"
+base64 = { version = "0.22" }
+hex = { version = "0.4" }
+rand = { version = "0.8" }
+sha2 = { version = "0.10" }
+picky = { version = "7.0.0-rc.17" }
 
 [[bin]]
 name = "cubby-cli"
@@ -55,5 +61,4 @@ loco-rs = { workspace = true, features = ["testing"] }
 serial_test = { version = "3.1.1" }
 rstest = { version = "0.25" }
 insta = { version = "1.34", features = ["redactions", "yaml", "filters"] }
-base64 = { version = "0.22" }
 wiremock = "0.6"

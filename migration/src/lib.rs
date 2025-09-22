@@ -13,6 +13,7 @@ mod m20250921_205200_remove_uuid_defaults;
 mod m20250922_132601_pods;
 mod m20250922_132803_add_user_id_to_pods_and_convert_id_to_uuid;
 mod m20250922_144444_add_pod_client_credentials;
+mod m20250922_182313_add_dpop_keys_to_pods;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -30,6 +31,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250922_132601_pods::Migration),
             Box::new(m20250922_132803_add_user_id_to_pods_and_convert_id_to_uuid::Migration),
             Box::new(m20250922_144444_add_pod_client_credentials::Migration),
+            Box::new(m20250922_182313_add_dpop_keys_to_pods::Migration),
             // inject-above (do not remove this comment)
         ]
     }

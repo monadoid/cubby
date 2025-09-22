@@ -222,6 +222,10 @@ async fn provision_pod_internal(
     
     let css_result = client.create_user_and_pod(css_params).await?;
     
+    // Generate DPoP keypair
+    let dpop_keypair = crate::data::dpop::generate_dpop_keypair()
+        .map_err(|e| Error::string(&e.to_string()))?;
+    
     // Create pod parameters for database insertion
     let create_params = CreatePodParams {
         name: pod_name.to_string(),
@@ -229,8 +233,15 @@ async fn provision_pod_internal(
         password: password.to_string(),
     };
     
-    // Create pod in database with CSS provisioning data
-    pods::Model::create_with_css_data(&ctx.db, user_id, &create_params, &css_result).await?;
+    // Create pod in database with CSS provisioning data and DPoP keys
+    pods::Model::create_with_css_data(
+        &ctx.db, 
+        user_id, 
+        &create_params, 
+        &css_result,
+        &dpop_keypair.private_jwk,
+        &dpop_keypair.public_jwk_thumbprint,
+    ).await?;
     
     Ok(())
 }
