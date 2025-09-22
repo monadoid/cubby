@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}
+Sign Up
+{% endblock title %}
+
+{% block page_title %}
+Sign Up
+{% endblock page_title %}
+
+{% block content %}
+<div class="mb-10">
+    <div class="flex items-center justify-center min-h-screen">
+        <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+            <h2 class="text-2xl font-bold text-center mb-6">Create Your Account</h2>
+            
+            <form 
+                hx-ext="submitjson"
+                hx-post="/api/auth/register"
+                hx-trigger="submit"
+                hx-target="#result"
+                hx-swap="innerHTML"
+                hx-indicator="#loading"
+                class="space-y-6">
+                
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
+                        Email Address
+                    </label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        required
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter your email">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                        Password
+                        <small class="text-gray-500">(must be strong: 12+ chars, mix of letters/numbers/symbols)</small>
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required
+                        minlength="12"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter a strong password (12+ chars)">
+                </div>
+
+                <div>
+                    <button 
+                        type="submit"
+                        class="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50">
+                        Sign Up
+                    </button>
+                </div>
+            </form>
+            
+            <div id="loading" class="htmx-indicator text-center mt-4">
+                <span class="text-blue-500">Creating account...</span>
+            </div>
+            
+            <div id="result" class="mt-4"></div>
+            
+            <div class="mt-6 text-center">
+                <p class="text-sm text-gray-600">
+                    Already have an account? 
+                    <a href="/sign-in" class="text-blue-500 hover:text-blue-600">Sign in</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.body.addEventListener('htmx:responseError', function(event) {
+    console.log('HTMX Response Error:', event.detail);
+    const resultElement = document.getElementById('result');
+    if (resultElement && (event.detail.xhr.status === 400 || event.detail.xhr.status === 422)) {
+        try {
+            const response = JSON.parse(event.detail.xhr.responseText);
+            const errorMsg = response.message || response.error_message || response.error || 'Registration failed';
+            resultElement.innerHTML = 
+                '<div class="text-red-600 text-sm mt-2 p-3 bg-red-50 border border-red-200 rounded">Error: ' + errorMsg + '</div>';
+        } catch (e) {
+            resultElement.innerHTML = 
+                '<div class="text-red-600 text-sm mt-2 p-3 bg-red-50 border border-red-200 rounded">Registration failed. Please try again.</div>';
+        }
+    }
+});
+
+document.body.addEventListener('htmx:afterRequest', function(event) {
+    console.log('HTMX After Request:', event.detail);
+    if (event.detail.xhr.status === 200 && event.detail.elt.getAttribute('hx-post') === '/api/auth/register') {
+        // Registration successful - redirect to dashboard
+        window.location.href = '/dashboard';
+    }
+});
+</script>
+{% endblock content %}

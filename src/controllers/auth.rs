@@ -2,7 +2,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 use serde_json::json;
 
-use axum::debug_handler;
+use axum::{debug_handler, http::header::SET_COOKIE, response::AppendHeaders};
 use loco_rs::{model::ModelError, prelude::*};
 
 use crate::{
@@ -13,6 +13,18 @@ use crate::{
 };
 
 const DEFAULT_SESSION_DURATION: u32 = 60;
+
+fn create_session_cookie(session_jwt: &str, max_age_minutes: u32) -> String {
+    let max_age_seconds = max_age_minutes * 60;
+    format!(
+        "session_jwt={}; HttpOnly; Secure; SameSite=Strict; Max-Age={}; Path=/",
+        session_jwt, max_age_seconds
+    )
+}
+
+fn create_logout_cookie() -> String {
+    "session_jwt=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/".to_string()
+}
 
 fn stytch_client(ctx: &AppContext) -> Result<Arc<StytchClient>> {
     ctx.shared_store.get::<Arc<StytchClient>>().ok_or_else(|| {
@@ -63,7 +75,18 @@ async fn register(
     )
     .await?;
 
-    format::json(AuthResponse::new(&user, &stytch_response))
+    let response = AuthResponse::new(&user, &stytch_response);
+    
+    // Set session_jwt as httponly cookie if it exists
+    if let Some(session_jwt) = &stytch_response.session_jwt {
+        let cookie = create_session_cookie(session_jwt, DEFAULT_SESSION_DURATION);
+        Ok((
+            AppendHeaders([(SET_COOKIE, cookie)]),
+            format::json(response)?,
+        ).into_response())
+    } else {
+        format::json(response)
+    }
 }
 
 #[debug_handler]
@@ -91,7 +114,18 @@ async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -
         Err(err) => return Err(err),
     };
 
-    format::json(AuthResponse::new(&user, &stytch_response))
+    let response = AuthResponse::new(&user, &stytch_response);
+    
+    // Set session_jwt as httponly cookie if it exists
+    if let Some(session_jwt) = &stytch_response.session_jwt {
+        let cookie = create_session_cookie(session_jwt, DEFAULT_SESSION_DURATION);
+        Ok((
+            AppendHeaders([(SET_COOKIE, cookie)]),
+            format::json(response)?,
+        ).into_response())
+    } else {
+        format::json(response)
+    }
 }
 
 #[debug_handler]
@@ -101,10 +135,20 @@ async fn current(auth: StytchAuth, State(ctx): State<AppContext>) -> Result<Resp
     format::json(CurrentResponse::new(&user))
 }
 
+#[debug_handler]
+async fn logout() -> Result<Response> {
+    let cookie = create_logout_cookie();
+    Ok((
+        AppendHeaders([(SET_COOKIE, cookie)]),
+        format::json(serde_json::json!({"message": "Logged out successfully"}))?,
+    ).into_response())
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/auth")
         .add("/register", post(register))
         .add("/login", post(login))
         .add("/current", get(current))
+        .add("/logout", post(logout))
 }

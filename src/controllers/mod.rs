@@ -1,5 +1,7 @@
 pub mod auth;
+pub mod auth_htmx;
 pub mod client_credentials;
 
 pub mod movie;
+pub mod movie_htmx;
 pub mod stytch_guard;

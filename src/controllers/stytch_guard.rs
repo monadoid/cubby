@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use axum::{
     extract::FromRequestParts,
-    http::{header::AUTHORIZATION, request::Parts},
+    http::{header::AUTHORIZATION, header::COOKIE, request::Parts},
 };
 use loco_rs::{app::AppContext, controller::extractor::shared_store::SharedStore, Error};
 
@@ -81,6 +81,105 @@ impl FromRequestParts<AppContext> for StytchAuth {
             })?;
             let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
                 Error::Unauthorized("invalid user_id format in access token".to_string())
+            })?;
+
+            Ok(Self {
+                client_id: validated.claims.sub.clone().unwrap_or_default(),
+                scopes: validated.scopes,
+                custom_claims: validated.claims.custom_claims.clone(),
+                auth_id: auth_id_value.to_string(),
+                user_id,
+            })
+        }
+    }
+}
+
+pub struct StytchSessionAuth {
+    pub client_id: String,
+    pub scopes: Vec<String>,
+    pub custom_claims: serde_json::Map<String, serde_json::Value>,
+    pub auth_id: String,
+    pub user_id: uuid::Uuid,
+}
+
+impl FromRequestParts<AppContext> for StytchSessionAuth {
+    type Rejection = Error;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppContext,
+    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
+        async move {
+            let SharedStore(client) =
+                SharedStore::<Arc<StytchClient>>::from_request_parts(parts, state).await?;
+
+            // Extract session JWT from cookie
+            let cookie_header = parts
+                .headers
+                .get(COOKIE)
+                .ok_or_else(|| Error::Unauthorized("missing session cookie".to_string()))?;
+            
+            let cookie_str = cookie_header
+                .to_str()
+                .map_err(|_| Error::Unauthorized("invalid cookie header".to_string()))?;
+            
+            // Parse cookies to find session_jwt
+            let token = cookie_str
+                .split(';')
+                .map(|cookie| cookie.trim())
+                .find_map(|cookie| {
+                    if let Some(stripped) = cookie.strip_prefix("session_jwt=") {
+                        Some(stripped)
+                    } else {
+                        None
+                    }
+                })
+                .ok_or_else(|| Error::Unauthorized("missing session_jwt cookie".to_string()))?;
+
+            if token.is_empty() {
+                return Err(Error::Unauthorized("empty session_jwt cookie".to_string()));
+            }
+
+            let validated = match client.validate(token).await {
+                Ok(resp) => resp,
+                Err(err) => {
+                    tracing::error!(error = ?err, "failed to authenticate session token with Stytch");
+                    return Err(err);
+                }
+            };
+
+            if !client.required_scopes().is_empty() {
+                let granted: HashSet<&str> = validated
+                    .scopes
+                    .iter()
+                    .map(|scope| scope.as_str())
+                    .collect();
+
+                if client
+                    .required_scopes()
+                    .iter()
+                    .any(|required| !granted.contains(required.as_str()))
+                {
+                    return Err(Error::Unauthorized(
+                        "session token missing required scope".to_string(),
+                    ));
+                }
+            }
+
+            let auth_id_value = extract_user_id(&validated.claims).ok_or_else(|| {
+                Error::Unauthorized("missing user binding in session token".to_string())
+            })?;
+
+            if auth_id_value.is_empty() {
+                return Err(Error::Unauthorized("invalid user binding".to_string()));
+            }
+
+            // Extract database user_id from the token
+            let user_id_str = validated.claims.user_id.as_deref().ok_or_else(|| {
+                Error::Unauthorized("missing user_id in session token".to_string())
+            })?;
+            let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
+                Error::Unauthorized("invalid user_id format in session token".to_string())
             })?;
 
             Ok(Self {

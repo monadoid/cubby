@@ -57,7 +57,9 @@ impl Hooks for App {
         AppRoutes::with_default_routes() // controller routes below
             .add_route(controllers::client_credentials::routes())
             .add_route(controllers::movie::routes())
+            .add_route(controllers::movie_htmx::routes())
             .add_route(controllers::auth::routes())
+            .add_route(controllers::auth_htmx::routes())
     }
 
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

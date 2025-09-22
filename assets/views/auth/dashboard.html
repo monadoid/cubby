@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}
+Dashboard
+{% endblock title %}
+
+{% block page_title %}
+Dashboard
+{% endblock page_title %}
+
+{% block content %}
+<div class="mb-10">
+    <div class="bg-white rounded-lg shadow-lg p-8 max-w-4xl mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome to the Dashboard</h1>
+            <p class="text-lg text-gray-600">You are successfully logged in!</p>
+            {% if user_id %}
+                <p class="text-sm text-gray-500 mt-2">User ID: {{ user_id }}</p>
+            {% endif %}
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-blue-50 p-6 rounded-lg">
+                <h3 class="text-xl font-semibold text-blue-800 mb-3">Movies</h3>
+                <p class="text-blue-600 mb-4">Manage your movie collection</p>
+                <a href="/movies" 
+                   class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
+                    View Movies
+                </a>
+            </div>
+            
+            <div class="bg-green-50 p-6 rounded-lg">
+                <h3 class="text-xl font-semibold text-green-800 mb-3">Profile</h3>
+                <p class="text-green-600 mb-4">Manage your account settings</p>
+                <button class="inline-block bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors">
+                    View Profile
+                </button>
+            </div>
+        </div>
+        
+        <div class="mt-8 text-center">
+            <form method="post" action="/api/auth/logout" class="inline">
+                <button 
+                    type="submit"
+                    hx-post="/api/auth/logout"
+                    hx-trigger="click"
+                    hx-confirm="Are you sure you want to log out?"
+                    class="bg-red-500 text-white px-6 py-2 rounded hover:bg-red-600 transition-colors">
+                    Logout
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.body.addEventListener('htmx:afterRequest', function(event) {
+    if (event.detail.xhr.status === 200 && event.detail.elt.getAttribute('hx-post') === '/api/auth/logout') {
+        // Logout successful - redirect to sign up
+        window.location.href = '/sign-up';
+    }
+});
+</script>
+{% endblock content %}
