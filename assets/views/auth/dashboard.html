@@ -19,22 +19,35 @@ Dashboard
             {% endif %}
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="bg-blue-50 p-6 rounded-lg">
-                <h3 class="text-xl font-semibold text-blue-800 mb-3">Movies</h3>
-                <p class="text-blue-600 mb-4">Manage your movie collection</p>
-                <a href="/movies" 
-                   class="inline-block bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
-                    View Movies
-                </a>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title">My Solid Pod</h2>
+                    <p>Manage your decentralized data storage</p>
+                    <div class="card-actions justify-end">
+                        <a href="/pod" class="btn btn-primary">View Pod</a>
+                    </div>
+                </div>
             </div>
             
-            <div class="bg-green-50 p-6 rounded-lg">
-                <h3 class="text-xl font-semibold text-green-800 mb-3">Profile</h3>
-                <p class="text-green-600 mb-4">Manage your account settings</p>
-                <button class="inline-block bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors">
-                    View Profile
-                </button>
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title">Movies</h2>
+                    <p>Manage your movie collection</p>
+                    <div class="card-actions justify-end">
+                        <a href="/movies" class="btn btn-secondary">View Movies</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h2 class="card-title">Profile</h2>
+                    <p>Manage your account settings</p>
+                    <div class="card-actions justify-end">
+                        <button class="btn btn-accent">View Profile</button>
+                    </div>
+                </div>
             </div>
         </div>
         

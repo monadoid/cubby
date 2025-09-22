@@ -7,3 +7,4 @@ pub mod movie_htmx;
 pub mod stytch_guard;
 
 pub mod pods;
+pub mod pod_htmx;
