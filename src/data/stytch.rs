@@ -135,6 +135,58 @@ pub struct StytchAuthorizeResponse {
     pub authorization_code: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseType {
+    Code,
+}
+
+impl ResponseType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Code => "code",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GrantType {
+    AuthorizationCode,
+}
+
+impl GrantType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::AuthorizationCode => "authorization_code",
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct StytchTokenExchangeRequest {
+    pub grant_type: String,
+    pub code: String,
+    pub redirect_uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_verifier: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchTokenResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u32,
+    #[serde(default)]
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
+}
+
 fn default_base_url() -> String {
     "https://test.stytch.com/v1/".to_string()
 }
@@ -450,7 +502,7 @@ impl StytchClient {
             .map_err(|err| map_stytch_error(err, "failed to complete OAuth authorization"))
     }
 
-    pub async fn token_exchange(&self, params: std::collections::HashMap<String, String>) -> Result<Map<String, Value>> {
+    pub async fn token_exchange(&self, request: &StytchTokenExchangeRequest) -> Result<StytchTokenResponse> {
         // Note: Token exchange happens on the project-specific endpoint
         let project_domain = self.project_domain.as_ref().ok_or_else(|| {
             Error::Message("project_domain not configured for OAuth token exchange".to_string())
@@ -462,7 +514,7 @@ impl StytchClient {
             .map_err(|err| Error::Message(err.to_string()))?;
         
         project_http
-            .send_form(Method::POST, "oauth2/token", &params)
+            .send(Method::POST, "oauth2/token", Some(request))
             .await
             .map_err(|err| map_stytch_error(err, "failed to exchange OAuth token"))
     }

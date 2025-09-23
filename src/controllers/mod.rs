@@ -7,6 +7,8 @@ pub mod css_proxy;
 pub mod movie;
 pub mod movie_htmx;
 pub mod oauth;
+pub mod oauth_helpers;
+pub mod oauth_htmx;
 pub mod stytch_guard;
 
 pub mod pods;

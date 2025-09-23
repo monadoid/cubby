@@ -1,58 +1,12 @@
-use std::{sync::Arc, collections::HashMap};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use axum::{
-    debug_handler, 
-    extract::{Query, State},
-    Form,
-};
-use loco_rs::{prelude::*, controller::views::engines::TeraView};
+use axum::extract::State;
+use loco_rs::prelude::*;
 
 use crate::{
-    controllers::stytch_guard::StytchSessionAuth,
-    data::{stytch::{StytchClient, StytchAuthorizeStartRequest, StytchAuthorizeRequest}, oauth_state::OAuthStateStore},
-    models::users,
+    controllers::oauth_helpers::stytch_client,
+    data::stytch::{StytchTokenExchangeRequest, GrantType},
 };
-
-#[derive(Debug, Deserialize)]
-pub struct AuthorizeParams {
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub response_type: String, // Should be "code"
-    pub scope: String,
-    pub state: Option<String>,
-    pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<String>,
-    pub nonce: Option<String>,
-    pub prompt: Option<String>,
-}
-
-
-#[derive(Debug, Serialize)]
-pub struct AuthorizeResponse {
-    pub app_name: String,
-    pub scopes: Vec<String>,
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub state: Option<String>,
-    pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<String>,
-    pub nonce: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AuthorizeSubmitParams {
-    pub client_id: String,
-    pub redirect_uri: String,
-    pub response_type: String,
-    pub scope: String,
-    pub state: Option<String>,
-    pub code_challenge: Option<String>,
-    pub code_challenge_method: Option<String>,
-    pub nonce: Option<String>,
-    pub approved: String, // "true" or "false"
-}
 
 #[derive(Debug, Deserialize)]
 pub struct TokenParams {
@@ -72,258 +26,39 @@ pub struct TokenResponse {
     pub scope: Option<String>,
 }
 
-fn stytch_client(ctx: &AppContext) -> Result<Arc<StytchClient>> {
-    ctx.shared_store.get::<Arc<StytchClient>>().ok_or_else(|| {
-        tracing::error!("stytch client not initialised");
-        Error::InternalServerError
-    })
-}
-
-fn oauth_state_store(ctx: &AppContext) -> Result<Arc<OAuthStateStore>> {
-    ctx.shared_store.get::<Arc<OAuthStateStore>>().ok_or_else(|| {
-        tracing::error!("oauth state store not initialised");
-        Error::InternalServerError
-    })
-}
-
-#[debug_handler]
-async fn authorize_get(
-    State(ctx): State<AppContext>,
-    auth: StytchSessionAuth,
-    Query(params): Query<AuthorizeParams>,
-    ViewEngine(v): ViewEngine<TeraView>,
-) -> Result<Response> {
-    let client = stytch_client(&ctx)?;
-    let state_store = oauth_state_store(&ctx)?;
-
-    // Validate OAuth parameters
-    if params.response_type != "code" {
-        return Err(Error::BadRequest("unsupported_response_type".to_string()));
-    }
-
-    // PKCE validation - require code_challenge and code_challenge_method for security
-    if params.code_challenge.is_none() || params.code_challenge_method.is_none() {
-        return Err(Error::BadRequest("PKCE parameters (code_challenge and code_challenge_method) are required".to_string()));
-    }
-    
-    // Validate PKCE method
-    if let Some(ref method) = params.code_challenge_method {
-        if method != "S256" {
-            return Err(Error::BadRequest("only S256 code_challenge_method is supported".to_string()));
-        }
-    }
-
-    // Generate state if not provided, or validate if provided
-    let state = match params.state.as_ref() {
-        Some(s) if s.is_empty() => {
-            return Err(Error::BadRequest("state parameter cannot be empty".to_string()));
-        }
-        Some(s) => s.clone(),
-        None => {
-            // Generate a new state value
-            Uuid::new_v4().to_string()
-        }
-    };
-
-    // Parse scopes
-    let scopes: Vec<String> = params.scope
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
-
-    // Prepare authorize start request for Stytch - match API docs exactly
-    let stytch_request = StytchAuthorizeStartRequest {
-        client_id: params.client_id.clone(),
-        redirect_uri: params.redirect_uri.clone(),
-        response_type: params.response_type.clone(),
-        scopes: params.scope.split_whitespace().map(|s| s.to_string()).collect(),
-        session_jwt: auth.session_jwt.clone(),
-        prompt: params.prompt.clone(),
-    };
-
-    // Call Stytch authorize/start endpoint
-    let authorize_response = client.authorize_start(&stytch_request).await.map_err(|e| {
-        tracing::error!(error = ?e, "failed to start authorization with Stytch");
-        Error::InternalServerError
-    })?;
-
-    // Store state in the state store for CSRF protection
-    state_store.store_state(
-        state.clone(),
-        auth.user_id,
-        params.client_id.clone(),
-        params.redirect_uri.clone(),
-        params.scope.clone(),
-        params.code_challenge.clone(),
-        params.code_challenge_method.clone(),
-        params.nonce.clone(),
-    ).await;
-
-    let response_data = AuthorizeResponse {
-        app_name: authorize_response.connected_app
-            .as_ref()
-            .map(|app| app.client_name.clone())
-            .unwrap_or_else(|| "Unknown App".to_string()),
-        scopes,
-        client_id: params.client_id,
-        redirect_uri: params.redirect_uri,
-        state: Some(state),
-        code_challenge: params.code_challenge,
-        code_challenge_method: params.code_challenge_method,
-        nonce: params.nonce,
-    };
-
-    // Get user from database
-    let user = users::Model::find_by_id(&ctx.db, &auth.user_id.to_string()).await
-        .map_err(|_| Error::Unauthorized("user not found".to_string()))?;
-
-    format::render().view(&v, "oauth/authorize.html", data!({
-        "app_name": response_data.app_name,
-        "scopes": response_data.scopes,
-        "client_id": response_data.client_id,
-        "redirect_uri": response_data.redirect_uri,
-        "state": response_data.state,
-        "code_challenge": response_data.code_challenge,
-        "code_challenge_method": response_data.code_challenge_method,
-        "nonce": response_data.nonce,
-        "user": {
-            "email": user.email
-        }
-    }))
-}
-
-#[debug_handler]
-async fn authorize_post(
-    State(ctx): State<AppContext>,
-    auth: StytchSessionAuth,
-    Form(params): Form<AuthorizeSubmitParams>,
-) -> Result<Response> {
-    let client = stytch_client(&ctx)?;
-    let state_store = oauth_state_store(&ctx)?;
-
-    // Validate state parameter
-    let state = params.state.as_ref()
-        .ok_or_else(|| Error::BadRequest("missing state parameter".to_string()))?;
-    
-    // Verify and consume the state
-    let _state_entry = state_store.verify_and_consume_state(
-        state,
-        auth.user_id,
-        &params.client_id,
-        &params.redirect_uri,
-        &params.scope,
-    ).await.ok_or_else(|| {
-        tracing::warn!(state = %state, user_id = %auth.user_id, "invalid or expired OAuth state");
-        Error::Unauthorized("invalid or expired state parameter".to_string())
-    })?;
-
-    // Check if user approved the authorization
-    if params.approved != "true" {
-        // User denied authorization - redirect with error
-        use url::Url;
-        
-        let mut url = Url::parse(&params.redirect_uri)
-            .map_err(|_| Error::BadRequest("invalid redirect_uri".to_string()))?;
-        
-        {
-            let mut query_pairs = url.query_pairs_mut();
-            query_pairs.append_pair("error", "access_denied");
-            query_pairs.append_pair("error_description", "The user denied the request");
-            
-            if let Some(ref state) = params.state {
-                query_pairs.append_pair("state", state);
-            }
-        }
-        
-        return format::redirect(url.as_str());
-    }
-
-    // Prepare authorize request for Stytch
-    let stytch_request = StytchAuthorizeRequest {
-        consent_granted: true, // User clicked approve
-        scopes: params.scope.split_whitespace().map(|s| s.to_string()).collect(),
-        client_id: params.client_id,
-        redirect_uri: params.redirect_uri,
-        response_type: params.response_type,
-        session_jwt: Some(auth.session_jwt.clone()),
-        user_id: None,
-        session_token: None,
-        prompt: None,
-        state: params.state,
-        nonce: params.nonce,
-        code_challenge: params.code_challenge,
-    };
-
-    // Call Stytch authorize endpoint
-    let authorize_response = client.authorize(&stytch_request).await.map_err(|e| {
-        tracing::error!(error = ?e, "failed to authorize with Stytch");
-        Error::InternalServerError
-    })?;
-
-    // Use the redirect_uri from the strongly typed response
-    format::redirect(&authorize_response.redirect_uri)
-}
-
-#[debug_handler]
 async fn token_post(
     State(ctx): State<AppContext>,
     Json(params): Json<TokenParams>,
 ) -> Result<Response> {
     // Validate grant type
-    if params.grant_type != "authorization_code" {
+    if params.grant_type != GrantType::AuthorizationCode.as_str() {
         return Err(Error::BadRequest("unsupported_grant_type".to_string()));
     }
 
-    // Prepare token exchange request
-    let mut body = HashMap::new();
-    body.insert("grant_type", params.grant_type);
-    body.insert("code", params.code);
-    body.insert("redirect_uri", params.redirect_uri);
-    
-    if let Some(client_id) = params.client_id {
-        body.insert("client_id", client_id);
-    }
-    if let Some(client_secret) = params.client_secret {
-        body.insert("client_secret", client_secret);
-    }
-    if let Some(code_verifier) = params.code_verifier {
-        body.insert("code_verifier", code_verifier);
-    }
+    let client = stytch_client(&ctx)?;
 
-    // Convert HashMap<&str, String> to HashMap<String, String>
-    let string_body: HashMap<String, String> = body.into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect();
+    // Create strongly typed request for Stytch
+    let token_request = StytchTokenExchangeRequest {
+        grant_type: params.grant_type,
+        code: params.code,
+        redirect_uri: params.redirect_uri,
+        client_id: params.client_id,
+        client_secret: params.client_secret,
+        code_verifier: params.code_verifier,
+    };
 
     // Make token exchange request to Stytch
-    // Note: This uses the project-specific token endpoint
-    let client = stytch_client(&ctx)?;
-    let token_response = client.token_exchange(string_body).await.map_err(|e| {
+    let stytch_response = client.token_exchange(&token_request).await.map_err(|e| {
         tracing::error!(error = ?e, "failed to exchange token with Stytch");
         Error::InternalServerError
     })?;
 
-    // Extract token information from response
-    let access_token = token_response.get("access_token")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            tracing::error!("missing access_token in Stytch response");
-            Error::InternalServerError
-        })?;
-
-    let expires_in = token_response.get("expires_in")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(3600) as u32;
-
-    let scope = token_response.get("scope")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-
+    // Create response using strongly typed data
     let response = TokenResponse {
-        access_token: access_token.to_string(),
-        token_type: "Bearer".to_string(),
-        expires_in,
-        scope,
+        access_token: stytch_response.access_token,
+        token_type: stytch_response.token_type,
+        expires_in: stytch_response.expires_in,
+        scope: stytch_response.scope,
     };
 
     format::json(response)
@@ -332,6 +67,5 @@ async fn token_post(
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("oauth")
-        .add("/authorize", get(authorize_get))
-        .add("/authorize", post(authorize_post))
+        .add("/token", post(token_post))
 }
