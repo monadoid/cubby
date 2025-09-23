@@ -1,0 +1,18 @@
+meta {
+  name: Call Cubby API (movies)
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/api/movies
+  body: none
+}
+
+headers {
+  Authorization: Bearer {{access_token}}
+}
+
+settings {
+  encodeUrl: true
+}

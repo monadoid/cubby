@@ -1,0 +1,18 @@
+meta {
+  name: Test Session JWT
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/api/movies/list
+  body: none
+}
+
+headers {
+  Authorization: Bearer {{session_jwt}}
+}
+
+docs {
+  Tests if the session JWT is working by calling a protected API endpoint.
+}

@@ -9,10 +9,23 @@ logger:
   # Log level, options: trace, debug, info, warn or error.
   level: debug
   # Define the logging format. options: compact, pretty or json
-  format: compact
+  format: pretty
   # By default the logger has filtering only logs that came from your code or logs that came from `loco` framework. to see all third party libraries
   # Uncomment the line below to override to see all third party libraries you can enable this config and override the logger filters.
   # override_filter: trace
+
+  file_appender:
+    enable: true
+    non_blocking: true
+    level: info
+    format: compact
+    rotation: never
+    dir: ./logs
+    filename_prefix: app
+    filename_suffix: .log
+    max_log_files: 3
+
+
 
 # Web server configuration
 server:
@@ -104,6 +117,7 @@ settings:
     project_id: {{ get_env(name="STYTCH_TEST_PROJECT_ID") }}
     secret: {{ get_env(name="STYTCH_TEST_SECRET") }}
     required_scopes: []
+    project_domain: {{ get_env(name="STYTCH_PROJECT_DOMAIN") }}
   solid_server:
     base_url: {{ get_env(name="CSS_BASE", default="http://localhost:3000") }}
     account_index: {{ get_env(name="CSS_ACCOUNT_INDEX", default="http://localhost:3000/.account/") }}

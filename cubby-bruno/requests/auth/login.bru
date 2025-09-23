@@ -1,0 +1,36 @@
+meta {
+  name: Login User
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/auth/login
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{test_email}}",
+    "password": "{{test_password}}"
+  }
+}
+
+script:post-response {
+  // Extract session JWT (returned as access_token)
+  if (res.body && res.body.access_token) {
+    bru.setEnvVar('session_jwt', res.body.access_token);
+    console.log('Session JWT extracted and saved from login');
+  } else {
+    console.error('No access_token found in login response');
+  }
+}
+
+docs {
+  Logs in with previously registered credentials and updates the session JWT.
+  Requires test_email and test_password to be set (usually from register request).
+}

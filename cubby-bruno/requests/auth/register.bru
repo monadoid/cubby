@@ -1,0 +1,48 @@
+meta {
+  name: Register User
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/api/auth/register
+  body: json
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{test_email}}",
+    "password": "{{test_password}}"
+  }
+}
+
+script:pre-request {
+  // Generate unique test credentials
+  const timestamp = Date.now();
+  const email = `test${timestamp}@example.com`;
+  const password = `MyUniqueP@ssw0rd${timestamp}`;
+  
+  bru.setEnvVar('test_email', email);
+  bru.setEnvVar('test_password', password);
+  
+  console.log('Generated test credentials:', { email, password: password.substring(0, 20) + '...' });
+}
+
+script:post-response {
+  // Extract session JWT (returned as access_token)
+  if (res.body && res.body.access_token) {
+    bru.setEnvVar('session_jwt', res.body.access_token);
+    console.log('Session JWT extracted and saved from registration');
+  } else {
+    console.error('No access_token found in registration response');
+  }
+}
+
+docs {
+  Registers a new user and extracts the session JWT for use in subsequent requests.
+  Generates unique email/password combination using timestamp to avoid conflicts.
+}
