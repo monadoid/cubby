@@ -2,7 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-
 ### Tech Stack
 - **Backend**: Loco-rs (Rust web framework)
 - **Database**: PostgreSQL with SeaORM
@@ -11,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Authentication**: Stytch + Custom OAuth flow
 - **Testing**: Bruno for HTTP API tests
 - **Deployment**: Cloudflare Workers (exampleco_website)
+
+*Always use pnpm for package management*
 
 ## Development Commands
 

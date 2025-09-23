@@ -4,13 +4,14 @@ use uuid::Uuid;
 use axum::{
     extract::{Query, State},
     Form,
+    http::HeaderMap,
 };
 use loco_rs::{prelude::*, controller::views::engines::TeraView};
 
 use crate::{
     controllers::{
         stytch_guard::StytchSessionAuth,
-        oauth_helpers::{stytch_client, oauth_state_store},
+        oauth_helpers::{stytch_client, oauth_state_store, login_stash},
     },
     data::stytch::{StytchAuthorizeStartRequest, StytchAuthorizeRequest, ResponseType},
     models::users,
@@ -54,12 +55,90 @@ pub struct ConsentSubmitParams {
     pub approved: String, // "true" or "false"
 }
 
+/// Extract authentication from headers (cookies) without requiring StytchSessionAuth guard
+async fn extract_auth_from_headers(ctx: &AppContext, headers: &HeaderMap) -> Result<StytchSessionAuth> {
+    use crate::controllers::stytch_guard::validate_stytch_session;
+    use axum::http::header::COOKIE;
+    
+    // Get cookie header
+    let cookie_header = headers.get(COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    
+    // Extract session_jwt from cookies
+    let session_jwt = cookie_header
+        .split(';')
+        .find_map(|cookie| {
+            let cookie = cookie.trim();
+            if cookie.starts_with("session_jwt=") {
+                cookie.strip_prefix("session_jwt=")
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| Error::Unauthorized("No session cookie found".to_string()))?;
+    
+    // Validate the session JWT with Stytch
+    validate_stytch_session(ctx, session_jwt).await
+}
+
+/// Handle unauthenticated OAuth authorize request by stashing params and redirecting to login
+async fn handle_unauthenticated_authorize(ctx: &AppContext, params: AuthorizeParams) -> Result<Response> {
+    // Validate OAuth parameters first
+    if params.response_type != ResponseType::Code.as_str() {
+        return Err(Error::BadRequest("unsupported_response_type".to_string()));
+    }
+    
+    // PKCE validation - require code_challenge and code_challenge_method for security
+    let code_challenge = params.code_challenge.clone()
+        .ok_or_else(|| Error::BadRequest("PKCE parameter code_challenge is required".to_string()))?;
+    let code_challenge_method = params.code_challenge_method.clone()
+        .ok_or_else(|| Error::BadRequest("PKCE parameter code_challenge_method is required".to_string()))?;
+    
+    // Validate PKCE method
+    if code_challenge_method != "S256" {
+        return Err(Error::BadRequest("only S256 code_challenge_method is supported".to_string()));
+    }
+    
+    // Generate a unique key for this OAuth request
+    let stash_key = Uuid::new_v4().to_string();
+    
+    // Store OAuth parameters in the login stash
+    let stash = login_stash(ctx)?;
+    stash.store_oauth_params(
+        stash_key.clone(),
+        params.client_id,
+        params.redirect_uri,
+        params.response_type,
+        params.scope,
+        params.state,
+        code_challenge,
+        code_challenge_method,
+        params.nonce,
+        params.prompt,
+    ).await;
+    
+    // Redirect to login with return_to parameter
+    let redirect_url = format!("/login?return_to=/resume/{}", stash_key);
+    Ok(axum::response::Redirect::to(&redirect_url).into_response())
+}
+
 async fn authorize_get(
     State(ctx): State<AppContext>,
-    auth: StytchSessionAuth,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
     ViewEngine(v): ViewEngine<TeraView>,
 ) -> Result<Response> {
+    // Try to extract authentication from cookies
+    let auth = match extract_auth_from_headers(&ctx, &headers).await {
+        Ok(auth) => auth,
+        Err(_) => {
+            // User is not authenticated - store OAuth params and redirect to login
+            return handle_unauthenticated_authorize(&ctx, params).await;
+        }
+    };
+    
+    // User is authenticated - proceed with existing OAuth flow
     let client = stytch_client(&ctx)?;
     let state_store = oauth_state_store(&ctx)?;
 

@@ -425,8 +425,8 @@ impl StytchClient {
             .map_err(|err| Error::Message(format!("invalid JWK components: {err}")))?;
 
         let mut validation = Validation::new(Algorithm::RS256);
-        let issuer = [self.expected_issuer.as_str()];
-        validation.set_issuer(&issuer);
+        // Skip issuer validation to allow both session JWTs and OAuth2 access tokens
+        validation.iss = None;
 
         if !self.expected_audience.is_empty() {
             let audience_refs: Vec<&str> = self

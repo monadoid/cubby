@@ -51,6 +51,7 @@ impl Hooks for App {
             Box::new(initializers::stytch::StytchInitializer),
             Box::new(initializers::view_engine::ViewEngineInitializer),
             Box::new(initializers::oauth_state::OAuthStateInitializer),
+            Box::new(initializers::login_stash::LoginStashInitializer),
         ])
     }
 
