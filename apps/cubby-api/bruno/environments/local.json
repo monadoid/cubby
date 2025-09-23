@@ -1,7 +1,7 @@
 {
   "name": "local",
   "vars": {
-    "base_url": "http://localhost:4000",
+    "base_url": "http://localhost:5150",
     "project_domain": "surf-cap-4473.customers.stytch.dev",
     "client_id": "connected-app-test-f019736e-3425-4e27-a24f-7c235d9d058b",
     "client_secret": "Lf2x5Ca1DOwfTGCRHNB0x8Q6naamYs7-qhokDvHqEK_ffpY-",
@@ -11,6 +11,9 @@
     "code_verifier": "generated-code-verifier",
     "code_challenge": "generated-code-challenge",
     "authorization_code": "",
-    "access_token": ""
+    "access_token": "",
+    "session_jwt": "",
+    "test_email": "",
+    "test_password": ""
   }
 }

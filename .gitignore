@@ -19,9 +19,34 @@ target/
 *.sqlite
 *.sqlite-*
 .idea
-.env
-.envrc
+apps/cubby-api/.env
 
 # TailwindCSS binary
 tailwindcss
 logs
+
+# Node.js / npm / pnpm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+pnpm-lock.yaml
+
+# TypeScript / JavaScript build outputs
+dist/
+*.tsbuildinfo
+.cache/
+
+# Turborepo
+.turbo/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
