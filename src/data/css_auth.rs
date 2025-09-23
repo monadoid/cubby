@@ -75,6 +75,43 @@ impl CssAuthService {
         })
     }
 
+    /// Get an authenticated client that operates on a user's pod-specific URL
+    pub async fn get_pod_authenticated_client(
+        &self,
+        db: &sea_orm::DatabaseConnection,
+        user_id: Uuid,
+    ) -> Result<CssAuthenticatedClient> {
+        // Get user's pod with stored credentials and DPoP keys
+        let pod = pods::Model::find_by_user(db, user_id).await?
+            .ok_or_else(|| anyhow::anyhow!("User has no pod"))?;
+
+        let css_client_id = pod.css_client_id
+            .ok_or_else(|| anyhow::anyhow!("Pod missing CSS client ID"))?;
+        let css_client_secret = pod.css_client_secret
+            .ok_or_else(|| anyhow::anyhow!("Pod missing CSS client secret"))?;
+        let dpop_private_jwk = pod.dpop_private_jwk
+            .ok_or_else(|| anyhow::anyhow!("Pod missing DPoP private key"))?;
+        let pod_base_url = pod.link
+            .ok_or_else(|| anyhow::anyhow!("Pod missing base URL"))?;
+
+        // Request access token using client credentials flow with DPoP
+        let access_token_response = self.request_access_token(
+            &css_client_id,
+            &css_client_secret,
+            &dpop_private_jwk,
+        ).await?;
+
+        let expires_at = SystemTime::now() + Duration::from_secs(access_token_response.expires_in);
+
+        Ok(CssAuthenticatedClient {
+            client: self.client.clone(),
+            access_token: access_token_response.access_token,
+            expires_at,
+            dpop_private_jwk,
+            css_base_url: pod_base_url, // Use pod-specific URL instead of server base URL
+        })
+    }
+
     /// Request an access token using client credentials + DPoP
     async fn request_access_token(
         &self,
@@ -213,7 +250,9 @@ impl CssAuthenticatedClient {
 
         // Add body if provided
         if let Some(ref body_content) = body {
-            request_builder = request_builder.body(body_content.clone());
+            request_builder = request_builder
+                .header("Content-Length", body_content.len().to_string())
+                .body(body_content.clone());
         }
 
         let response = request_builder.send().await?;
@@ -255,7 +294,119 @@ impl CssAuthenticatedClient {
                 }
 
                 if let Some(ref body_content) = body {
-                    retry_builder = retry_builder.body(body_content.clone());
+                    retry_builder = retry_builder
+                        .header("Content-Length", body_content.len().to_string())
+                        .body(body_content.clone());
+                }
+
+                return Ok(retry_builder.send().await?);
+            }
+        }
+
+        Ok(response)
+    }
+
+    /// Make an authenticated HTTP request with binary data to the CSS server
+    pub async fn authenticated_binary_request(
+        &self,
+        method: &str,
+        path: &str,
+        headers: Option<&reqwest_middleware::reqwest::header::HeaderMap>,
+        body: Option<Vec<u8>>,
+    ) -> Result<reqwest_middleware::reqwest::Response> {
+        if self.is_expired() {
+            return Err(anyhow::anyhow!("Access token has expired"));
+        }
+
+        let url = if path.starts_with("http") {
+            path.to_string()
+        } else {
+            format!("{}{}", self.css_base_url, path)
+        };
+
+        // Create DPoP proof for this request
+        let dpop_params = DPoPProofParams {
+            method: method.to_uppercase(),
+            url: url.clone(),
+            access_token: Some(self.access_token.clone()),
+            nonce: None,
+        };
+        
+        let dpop_proof = create_dpop_proof(&self.dpop_private_jwk, &dpop_params).await?;
+
+        // Build request
+        let mut request_builder = match method.to_uppercase().as_str() {
+            "GET" => self.client.get(&url),
+            "POST" => self.client.post(&url),
+            "PUT" => self.client.put(&url),
+            "DELETE" => self.client.delete(&url),
+            "PATCH" => self.client.patch(&url),
+            "HEAD" => self.client.head(&url),
+            "OPTIONS" => self.client.request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
+            _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
+        };
+
+        // Add authentication headers
+        request_builder = request_builder
+            .header("Authorization", format!("DPoP {}", self.access_token))
+            .header("DPoP", dpop_proof);
+
+        // Add custom headers if provided
+        if let Some(custom_headers) = headers {
+            for (key, value) in custom_headers {
+                request_builder = request_builder.header(key, value);
+            }
+        }
+
+        // Add body if provided
+        if let Some(ref body_content) = body {
+            request_builder = request_builder
+                .header("Content-Length", body_content.len().to_string())
+                .body(body_content.clone());
+        }
+
+        let response = request_builder.send().await?;
+
+        // Handle DPoP nonce challenges
+        if response.status() == 400 || response.status() == 401 {
+            if let Some(nonce) = response.headers().get("DPoP-Nonce") {
+                let nonce_str = nonce.to_str()?;
+                
+                // Retry with nonce
+                let dpop_params_with_nonce = DPoPProofParams {
+                    method: method.to_uppercase(),
+                    url: url.clone(),
+                    access_token: Some(self.access_token.clone()),
+                    nonce: Some(nonce_str.to_string()),
+                };
+                
+                let dpop_proof_with_nonce = create_dpop_proof(&self.dpop_private_jwk, &dpop_params_with_nonce).await?;
+
+                let mut retry_builder = match method.to_uppercase().as_str() {
+                    "GET" => self.client.get(&url),
+                    "POST" => self.client.post(&url),
+                    "PUT" => self.client.put(&url),
+                    "DELETE" => self.client.delete(&url),
+                    "PATCH" => self.client.patch(&url),
+                    "HEAD" => self.client.head(&url),
+                    "OPTIONS" => self.client.request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
+                    _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
+                };
+
+                retry_builder = retry_builder
+                    .header("Authorization", format!("DPoP {}", self.access_token))
+                    .header("DPoP", dpop_proof_with_nonce);
+
+                if let Some(custom_headers) = headers {
+                    for (key, value) in custom_headers {
+                        retry_builder = retry_builder.header(key, value);
+                    }
+                }
+
+                if let Some(ref body_content) = body {
+                    retry_builder = retry_builder
+                        .header("Content-Length", body_content.len().to_string())
+                        .body(body_content.clone());
                 }
 
                 return Ok(retry_builder.send().await?);

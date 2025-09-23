@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Files{% endblock title %}
+
+{% block page_title %}Files{% endblock page_title %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto p-6">
+    <!-- Breadcrumb Navigation -->
+    <div class="breadcrumbs text-sm mb-4">
+        <ul>
+            <li><a href="/files" class="link link-hover">Root</a></li>
+            {% if current_path %}
+                {% set_global path_parts = current_path | split(pat="/") %}
+                {% set_global accumulated_path = "" %}
+                {% for part in path_parts %}
+                    {% if part %}
+                        {% set_global accumulated_path = accumulated_path ~ "/" ~ part %}
+                        <li><a href="/files?path={{ accumulated_path | urlencode }}" class="link link-hover">{{ part }}</a></li>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        </ul>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex gap-2 mb-6">
+        <button class="btn btn-primary btn-sm" hx-get="/files/upload?path={{ current_path | urlencode }}" hx-target="#upload-modal" hx-trigger="click">
+            Upload File
+        </button>
+        <button class="btn btn-outline btn-sm" hx-get="/files?path={{ current_path | urlencode }}" hx-target="#file-list" hx-trigger="click">
+            Refresh
+        </button>
+    </div>
+
+    <!-- File List -->
+    <div id="file-list" class="space-y-1">
+        <!-- Back Navigation -->
+        {% if parent_path is defined %}
+            <div class="flex items-center justify-between p-3 bg-base-100 rounded border">
+                <a href="/files{% if parent_path %}?path={{ parent_path | urlencode }}{% endif %}" class="link link-hover">
+                    📁 .. (Parent Directory)
+                </a>
+            </div>
+        {% endif %}
+
+        <!-- Files and Directories -->
+        {% for file in files %}
+            <div class="flex items-center justify-between p-3 bg-base-100 rounded border hover:bg-base-200 transition-colors">
+                <div class="flex items-center">
+                    {% if file.is_directory %}
+                        <a href="/files?path={{ file.path | urlencode }}" class="link link-hover">
+                            📁 {{ file.name }}/
+                        </a>
+                    {% else %}
+                        <span>📄 {{ file.name }}</span>
+                    {% endif %}
+                </div>
+                
+                {% if not file.is_directory %}
+                    <div class="flex gap-1">
+                        <a href="/files/view/{{ file.path | urlencode }}" target="_blank" class="btn btn-ghost btn-xs">
+                            View
+                        </a>
+                        <button class="btn btn-error btn-xs" 
+                                hx-post="/files/delete/{{ file.path | urlencode }}"
+                                hx-confirm="Are you sure you want to delete {{ file.name }}?"
+                                hx-target="#file-list"
+                                hx-trigger="confirmed">
+                            Delete
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+        {% if files | length == 0 %}
+            <div class="text-center py-12 text-base-content/70">
+                <p class="text-lg mb-2">This directory is empty</p>
+                <p class="text-sm">Upload a file to get started</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal"></div>
+</div>
+
+<script>
+document.body.addEventListener('htmx:afterRequest', function(event) {
+    if (event.detail.successful && (event.detail.xhr.getResponseHeader('HX-Trigger') === 'fileUploaded' || event.detail.xhr.getResponseHeader('HX-Trigger') === 'fileDeleted')) {
+        // Refresh the file list
+        htmx.trigger('#file-list', 'refresh');
+    }
+});
+
+// Handle file upload success
+document.body.addEventListener('fileUploaded', function() {
+    document.getElementById('upload-modal').innerHTML = '';
+    htmx.ajax('GET', '/files?path={{ current_path | urlencode }}', '#file-list');
+});
+
+// Handle file delete success
+document.body.addEventListener('fileDeleted', function() {
+    htmx.ajax('GET', '/files?path={{ current_path | urlencode }}', '#file-list');
+});
+</script>
+{% endblock content %}

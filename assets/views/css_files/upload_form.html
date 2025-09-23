@@ -1,0 +1,33 @@
+<div class="modal modal-open">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">Upload File</h3>
+        
+        <form hx-post="/files/upload?path={{ current_path | urlencode }}" 
+              hx-encoding="multipart/form-data"
+              hx-target="body"
+              hx-trigger="submit">
+            
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">Select file to upload</span>
+                </label>
+                <input type="file" 
+                       name="file" 
+                       class="file-input file-input-bordered w-full" 
+                       required />
+                <label class="label">
+                    <span class="label-text-alt">{% if current_path %}Uploading to: {{ current_path }}{% else %}Uploading to root directory{% endif %}</span>
+                </label>
+            </div>
+            
+            <div class="modal-action">
+                <button type="submit" class="btn btn-primary">
+                    Upload
+                </button>
+                <button type="button" class="btn" onclick="document.getElementById('upload-modal').innerHTML = ''">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

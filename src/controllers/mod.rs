@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod auth_htmx;
 pub mod client_credentials;
+pub mod css_files_htmx;
 pub mod css_proxy;
 
 pub mod movie;

@@ -60,6 +60,7 @@ impl Hooks for App {
             .add_route(controllers::client_credentials::routes())
             .add_route(controllers::css_proxy::routes())
             .add_route(controllers::css_proxy::additional_routes())
+            .add_route(controllers::css_files_htmx::routes())
             .add_route(controllers::movie::routes())
             .add_route(controllers::movie_htmx::routes())
             .add_route(controllers::auth::routes())
