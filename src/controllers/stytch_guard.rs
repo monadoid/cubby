@@ -100,6 +100,7 @@ pub struct StytchSessionAuth {
     pub custom_claims: serde_json::Map<String, serde_json::Value>,
     pub auth_id: String,
     pub user_id: uuid::Uuid,
+    pub session_jwt: String,
 }
 
 impl FromRequestParts<AppContext> for StytchSessionAuth {
@@ -188,6 +189,7 @@ impl FromRequestParts<AppContext> for StytchSessionAuth {
                 custom_claims: validated.claims.custom_claims.clone(),
                 auth_id: auth_id_value.to_string(),
                 user_id,
+                session_jwt: token.to_string(),
             })
         }
     }

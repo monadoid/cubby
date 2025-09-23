@@ -8,6 +8,7 @@ use reqwest_middleware::ClientWithMiddleware;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use url::Url;
 
 #[derive(Clone)]
@@ -176,6 +177,61 @@ impl HttpClient {
         let bytes = resp.bytes().await?;
         serde_json::from_slice::<Res>(&bytes)
             .map_err(|e| reqwest_middleware::Error::from(anyhow!(e)))
+    }
+
+    pub async fn send_form<Res>(
+        &self,
+        method: Method,
+        path: &str,
+        form_data: &HashMap<String, String>,
+    ) -> Result<Res, reqwest_middleware::Error>
+    where
+        Res: DeserializeOwned,
+    {
+        let url = self.base.join(path).expect("valid relative path");
+        let mut builder = self.client.request(method.clone(), url.clone());
+        
+        if let Some((ref user, ref pass)) = self.auth {
+            builder = builder.basic_auth(user, Some(pass));
+        } else if let Some(ref token) = self.bearer_token {
+            builder = builder.header(AUTHORIZATION, format!("Bearer {}", token));
+        }
+
+        // Set form content type and body
+        builder = builder
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .form(form_data);
+
+        let request = builder.build()
+            .map_err(|e: reqwest::Error| reqwest_middleware::Error::from(e))?;
+
+        // Log outgoing request
+        let formatted_headers = format_headers(request.headers());
+        tracing::debug!(
+            method = %method, 
+            url = %request.url(), 
+            headers = %formatted_headers, 
+            form_data = ?form_data,
+            "outgoing HTTP form request"
+        );
+
+        let resp = self.client.execute(request).await?;
+        
+        if let Err(err) = resp.error_for_status_ref() {
+            let status = resp.status();
+            match resp.bytes().await {
+                Ok(bytes) => {
+                    let body = String::from_utf8_lossy(&bytes);
+                    tracing::error!(status = %status, body = %truncate(&body, 1024), "HTTP error response");
+                }
+                Err(read_err) => {
+                    tracing::error!(status = %status, error = %read_err, "Failed to read error response body");
+                }
+            }
+            return Err(reqwest_middleware::Error::from(err));
+        }
+
+        resp.json().await.map_err(reqwest_middleware::Error::from)
     }
 }
 

@@ -50,6 +50,7 @@ impl Hooks for App {
         Ok(vec![
             Box::new(initializers::stytch::StytchInitializer),
             Box::new(initializers::view_engine::ViewEngineInitializer),
+            Box::new(initializers::oauth_state::OAuthStateInitializer),
         ])
     }
 
@@ -65,6 +66,7 @@ impl Hooks for App {
             .add_route(controllers::movie_htmx::routes())
             .add_route(controllers::auth::routes())
             .add_route(controllers::auth_htmx::routes())
+            .add_route(controllers::oauth::routes())
     }
 
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

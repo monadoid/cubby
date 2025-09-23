@@ -13,6 +13,128 @@ use tokio::sync::RwLock;
 
 use crate::data::http::HttpClient;
 
+#[derive(Debug, Serialize)]
+pub struct StytchAuthorizeStartRequest {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub response_type: String,
+    pub scopes: Vec<String>,
+    pub session_jwt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchAuthorizeStartResponse {
+    pub request_id: String,
+    pub user_id: String,
+    pub user: StytchUser,
+    pub connected_app: Option<StytchConnectedApp>,
+    pub consent_required: bool,
+    pub scope_results: Vec<StytchScopeResult>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchUser {
+    pub user_id: String,
+    pub status: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub name: Option<StytchUserName>,
+    #[serde(default)]
+    pub emails: Vec<StytchEmail>,
+    #[serde(default)]
+    pub phone_numbers: Vec<StytchPhoneNumber>,
+    #[serde(default)]
+    pub providers: Vec<StytchProvider>,
+    #[serde(default)]
+    pub trusted_metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub untrusted_metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchUserName {
+    #[serde(default)]
+    pub first_name: Option<String>,
+    #[serde(default)]
+    pub middle_name: Option<String>,
+    #[serde(default)]
+    pub last_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchEmail {
+    pub email_id: String,
+    pub email: String,
+    pub verified: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchPhoneNumber {
+    pub phone_id: String,
+    pub phone_number: String,
+    pub verified: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchProvider {
+    pub oauth_user_registration_id: String,
+    pub provider_subject: String,
+    pub provider_type: String,
+    #[serde(default)]
+    pub profile_picture_url: Option<String>,
+    #[serde(default)]
+    pub locale: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchConnectedApp {
+    pub client_id: String,
+    pub client_name: String,
+    pub client_description: String,
+    pub client_type: String,
+    #[serde(default)]
+    pub logo_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchScopeResult {
+    pub scope: String,
+    pub description: String,
+    pub is_grantable: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StytchAuthorizeRequest {
+    pub consent_granted: bool,
+    pub scopes: Vec<String>,
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub response_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_jwt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code_challenge: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StytchAuthorizeResponse {
+    pub request_id: String,
+    pub redirect_uri: String,
+    pub authorization_code: String,
+}
+
 fn default_base_url() -> String {
     "https://test.stytch.com/v1/".to_string()
 }
@@ -37,6 +159,8 @@ pub struct StytchSettings {
     pub required_scopes: Vec<String>,
     #[serde(default)]
     pub jwks_ttl_seconds: Option<u64>,
+    #[serde(default)]
+    pub project_domain: Option<String>,
 }
 
 impl StytchSettings {
@@ -93,6 +217,9 @@ pub struct StytchClient {
     expected_audience: Vec<String>,
     jwks_cache: Arc<RwLock<Option<CachedJwks>>>,
     jwks_ttl: Duration,
+    project_id: String,
+    secret: String,
+    project_domain: Option<String>,
 }
 
 impl StytchClient {
@@ -129,6 +256,9 @@ impl StytchClient {
             expected_audience,
             jwks_cache: Arc::new(RwLock::new(None)),
             jwks_ttl: ttl,
+            project_id: settings.project_id,
+            secret: settings.secret,
+            project_domain: settings.project_domain,
         })
     }
 
@@ -304,6 +434,37 @@ impl StytchClient {
         }
 
         Err(Error::Unauthorized("invalid access token".to_string()))
+    }
+
+    pub async fn authorize_start(&self, params: &StytchAuthorizeStartRequest) -> Result<StytchAuthorizeStartResponse> {
+        self.http
+            .send(Method::POST, "idp/oauth/authorize/start", Some(params))
+            .await
+            .map_err(|err| map_stytch_error(err, "failed to start OAuth authorization"))
+    }
+
+    pub async fn authorize(&self, params: &StytchAuthorizeRequest) -> Result<StytchAuthorizeResponse> {
+        self.http
+            .send(Method::POST, "idp/oauth/authorize", Some(params))
+            .await
+            .map_err(|err| map_stytch_error(err, "failed to complete OAuth authorization"))
+    }
+
+    pub async fn token_exchange(&self, params: std::collections::HashMap<String, String>) -> Result<Map<String, Value>> {
+        // Note: Token exchange happens on the project-specific endpoint
+        let project_domain = self.project_domain.as_ref().ok_or_else(|| {
+            Error::Message("project_domain not configured for OAuth token exchange".to_string())
+        })?;
+        
+        let project_base = format!("https://{}/v1/", project_domain);
+        
+        let project_http = HttpClient::from_base_url(&project_base, Some((self.project_id.clone(), self.secret.clone())))
+            .map_err(|err| Error::Message(err.to_string()))?;
+        
+        project_http
+            .send_form(Method::POST, "oauth2/token", &params)
+            .await
+            .map_err(|err| map_stytch_error(err, "failed to exchange OAuth token"))
     }
 
     async fn fetch_jwks(&self) -> Result<Jwks> {
