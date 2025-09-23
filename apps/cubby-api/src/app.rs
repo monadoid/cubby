@@ -66,7 +66,6 @@ impl Hooks for App {
             .add_route(controllers::movie_htmx::routes())
             .add_route(controllers::auth::routes())
             .add_route(controllers::auth_htmx::routes())
-            .add_route(controllers::oauth::routes())
             .add_route(controllers::oauth_htmx::routes())
     }
 

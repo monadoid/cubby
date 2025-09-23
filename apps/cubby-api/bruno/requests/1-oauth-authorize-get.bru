@@ -11,7 +11,7 @@ get {
 
 headers {
   Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
-  Authorization: Bearer {{session_jwt}}
+  Cookie: session_jwt={{session_jwt}}
 }
 
 docs {

@@ -22,7 +22,7 @@ logger:
     rotation: never
     dir: ./logs
     filename_prefix: app
-    filename_suffix: .log
+    filename_suffix: log
     max_log_files: 3
 
 

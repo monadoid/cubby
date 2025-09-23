@@ -11,7 +11,7 @@ post {
 
 headers {
   Content-Type: application/x-www-form-urlencoded
-  Authorization: Bearer {{session_jwt}}
+  Cookie: session_jwt={{session_jwt}}
 }
 
 body:form-urlencoded {
@@ -29,16 +29,33 @@ settings {
   followRedirects: false
 }
 
+assert {
+  res.status: in [301, 302, 303]
+}
+
 script:post-response {
-  // Extract the authorization code from the Location header
+  console.log('Response status:', res.status);
+  
+  // Extract the authorization code from the Location header  
   const location = res.getHeader('location');
   if (location) {
-    const url = new URL(location);
-    const code = url.searchParams.get('code');
-    if (code) {
-      bru.setEnvVar('authorization_code', code);
-      console.log('Authorization code extracted:', code);
+    console.log('Redirect location:', location);
+    try {
+      const url = new URL(location);
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+      if (code) {
+        bru.setEnvVar('authorization_code', code);
+        console.log('✅ Authorization code extracted:', code.substring(0, 20) + '...');
+        console.log('State parameter:', state);
+      } else {
+        console.log('❌ No code found in location:', location);
+      }
+    } catch (e) {
+      console.log('❌ Failed to parse redirect URL:', e.message);
     }
+  } else {
+    console.log('❌ No location header found');
   }
 }
 

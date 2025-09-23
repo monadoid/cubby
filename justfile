@@ -11,16 +11,12 @@ test:
     cargo test --workspace
     pnpm -w test
 
-# Generate types and schemas
-gen:
-    pnpm -w gen
-
 # Run development servers
 dev-api:
     cd apps/cubby-api && cargo loco start
 
 dev-worker:
-    cd apps/exampleCoWebsite && pnpm dev
+    cd apps/exampleco_website && pnpm dev
 
 # Run Bruno tests against already running server
 bruno-test:
