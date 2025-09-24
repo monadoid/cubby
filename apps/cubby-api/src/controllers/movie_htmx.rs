@@ -2,7 +2,7 @@
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
 use axum::debug_handler;
-use loco_rs::{prelude::*, controller::views::engines::TeraView};
+use loco_rs::{controller::views::engines::TeraView, prelude::*};
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -36,7 +36,11 @@ async fn load_item(ctx: &AppContext, id: Uuid, user_id: Uuid) -> Result<Model> {
 }
 
 #[debug_handler]
-pub async fn list(auth: StytchSessionAuth, ViewEngine(v): ViewEngine<TeraView>, State(ctx): State<AppContext>) -> Result<Response> {
+pub async fn list(
+    auth: StytchSessionAuth,
+    ViewEngine(v): ViewEngine<TeraView>,
+    State(ctx): State<AppContext>,
+) -> Result<Response> {
     let user_id = auth.user_id;
     let movies = Entity::find()
         .filter(crate::models::_entities::movies::Column::UserId.eq(user_id))
@@ -80,7 +84,7 @@ pub async fn create(
     };
     params.update(&mut item);
     let _item = item.insert(&ctx.db).await?;
-    
+
     // Redirect to list after successful creation
     format::redirect("/movies")
 }
@@ -110,7 +114,7 @@ pub async fn update(
     let mut item = item.into_active_model();
     params.update(&mut item);
     let _item = item.update(&ctx.db).await?;
-    
+
     // Redirect to list after successful update
     format::redirect("/movies")
 }
@@ -123,7 +127,7 @@ pub async fn remove(
 ) -> Result<Response> {
     let user_id = auth.user_id;
     load_item(&ctx, id, user_id).await?.delete(&ctx.db).await?;
-    
+
     // Redirect to list after successful deletion
     format::redirect("/movies")
 }

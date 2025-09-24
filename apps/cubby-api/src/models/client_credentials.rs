@@ -1,6 +1,9 @@
 use chrono::Utc;
 use loco_rs::prelude::*;
-use sea_orm::{ActiveModelBehavior, ActiveModelTrait, ActiveValue, ConnectionTrait, DbErr, EntityTrait, ModelTrait, QueryFilter, ColumnTrait};
+use sea_orm::{
+    ActiveModelBehavior, ActiveModelTrait, ActiveValue, ColumnTrait, ConnectionTrait, DbErr,
+    EntityTrait, ModelTrait, QueryFilter,
+};
 use serde_json::{json, Value};
 use uuid::Uuid;
 

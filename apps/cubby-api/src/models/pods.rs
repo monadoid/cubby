@@ -12,7 +12,6 @@ pub struct CreatePodParams {
     pub password: String,
 }
 
-
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {
     async fn before_save<C>(self, _db: &C, insert: bool) -> std::result::Result<Self, DbErr>
@@ -92,7 +91,7 @@ impl Model {
         dpop_public_jwk_thumbprint: &str,
     ) -> ModelResult<Self> {
         let now = chrono::Utc::now().into();
-        
+
         let active_model = ActiveModel {
             name: ActiveValue::Set(Some(params.name.clone())),
             link: ActiveValue::Set(Some(css_result.pod_base_url.clone())),
@@ -104,12 +103,14 @@ impl Model {
             webid: ActiveValue::Set(Some(css_result.web_id.clone())),
             css_email: ActiveValue::Set(Some(css_result.css_email.clone())),
             dpop_private_jwk: ActiveValue::Set(Some(dpop_private_jwk.to_string())),
-            dpop_public_jwk_thumbprint: ActiveValue::Set(Some(dpop_public_jwk_thumbprint.to_string())),
+            dpop_public_jwk_thumbprint: ActiveValue::Set(Some(
+                dpop_public_jwk_thumbprint.to_string(),
+            )),
             dpop_key_created_at: ActiveValue::Set(Some(now)),
             dpop_key_rotated_at: ActiveValue::Set(None),
             ..Default::default()
         };
-        
+
         active_model.insert(db).await.map_err(ModelError::from)
     }
 }

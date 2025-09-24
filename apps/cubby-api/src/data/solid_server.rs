@@ -61,36 +61,55 @@ impl SolidServerClient {
 
     /// Complete CSS account and pod creation flow
     /// Following: https://communitysolidserver.github.io/CommunitySolidServer/7.x/usage/account/json-api/
-    pub async fn create_user_and_pod(&self, params: CreateUserPodParams<'_>) -> Result<CssProvisioningResult> {
+    pub async fn create_user_and_pod(
+        &self,
+        params: CreateUserPodParams<'_>,
+    ) -> Result<CssProvisioningResult> {
         tracing::info!(
-            email = %params.email, 
-            pod_name = %params.pod_name, 
+            email = %params.email,
+            pod_name = %params.pod_name,
             "Starting CSS account and pod creation"
         );
 
         // Step 1: Discover controls (not needed for account creation, but good for validation)
         let _controls = self.discover_controls().await?;
-        
+
         // Step 2: Create new account (unauthenticated)
         let account_result = self.create_account().await?;
-        
+
         // Step 3: Get authenticated controls with account-specific URLs
-        let auth_controls = self.get_authenticated_controls(&account_result.account_token).await?;
-        
+        let auth_controls = self
+            .get_authenticated_controls(&account_result.account_token)
+            .await?;
+
         // Step 4: Add email/password login to the account
-        self.add_password_login(&account_result.account_token, &auth_controls, params.email, params.password).await?;
-        
-        // Step 5: Create pod for the account
-        let pod_result = self.create_pod(&account_result.account_token, &auth_controls, params.pod_name).await?;
-        
-        // Step 6: Create client credentials for server-to-server access
-        let client_creds = self.create_client_credentials(
-            &account_result.account_token, 
+        self.add_password_login(
+            &account_result.account_token,
             &auth_controls,
-            &pod_result.web_id,
-            params.pod_name
-        ).await?;
-        
+            params.email,
+            params.password,
+        )
+        .await?;
+
+        // Step 5: Create pod for the account
+        let pod_result = self
+            .create_pod(
+                &account_result.account_token,
+                &auth_controls,
+                params.pod_name,
+            )
+            .await?;
+
+        // Step 6: Create client credentials for server-to-server access
+        let client_creds = self
+            .create_client_credentials(
+                &account_result.account_token,
+                &auth_controls,
+                &pod_result.web_id,
+                params.pod_name,
+            )
+            .await?;
+
         Ok(CssProvisioningResult {
             account_token: account_result.account_token,
             pod_base_url: pod_result.base_url,
@@ -105,7 +124,7 @@ impl SolidServerClient {
     /// Step 1: Discover CSS account API controls
     async fn discover_controls(&self) -> Result<CssControls> {
         tracing::debug!("Discovering CSS account API controls");
-        
+
         let response: CssControlsResponse = self
             .http
             .send(Method::GET, "", None::<&()>)
@@ -114,14 +133,14 @@ impl SolidServerClient {
                 tracing::error!(error = %err, "Failed to discover CSS controls");
                 Error::BadRequest(format!("Failed to discover CSS controls: {}", err))
             })?;
-            
+
         Ok(response.controls)
     }
 
     /// Step 2: Create new CSS account
     async fn create_account(&self) -> Result<AccountCreationResult> {
         tracing::debug!("Creating new CSS account");
-        
+
         // POST to account creation endpoint
         let response: AccountCreationResponse = self
             .http
@@ -131,7 +150,7 @@ impl SolidServerClient {
                 tracing::error!(error = %err, "Failed to create CSS account");
                 Error::BadRequest(format!("Failed to create CSS account: {}", err))
             })?;
-            
+
         Ok(AccountCreationResult {
             account_token: response.authorization,
         })
@@ -146,78 +165,104 @@ impl SolidServerClient {
     /// Step 3: Get authenticated controls with account-specific URLs
     async fn get_authenticated_controls(&self, account_token: &str) -> Result<CssControls> {
         tracing::debug!("Getting authenticated CSS controls");
-        
+
         let auth_http = self.create_auth_client()?;
-            
+
         let response: CssControlsResponse = auth_http
-            .send_with_auth_header(Method::GET, "", None::<&()>, &format!("CSS-Account-Token {}", account_token))
+            .send_with_auth_header(
+                Method::GET,
+                "",
+                None::<&()>,
+                &format!("CSS-Account-Token {}", account_token),
+            )
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "Failed to get authenticated controls");
                 Error::BadRequest(format!("Failed to get authenticated controls: {}", err))
             })?;
-            
+
         Ok(response.controls)
     }
 
     /// Step 4: Add email/password login to account
-    async fn add_password_login(&self, account_token: &str, auth_controls: &CssControls, email: &str, password: &str) -> Result<()> {
+    async fn add_password_login(
+        &self,
+        account_token: &str,
+        auth_controls: &CssControls,
+        email: &str,
+        password: &str,
+    ) -> Result<()> {
         tracing::debug!(email = %email, "Adding password login to CSS account");
-        
+
         // Extract the account-specific password creation URL
-        let password_create_url = auth_controls.password.create
-            .as_ref()
-            .ok_or_else(|| Error::BadRequest("No password create URL in authenticated controls".to_string()))?;
+        let password_create_url = auth_controls.password.create.as_ref().ok_or_else(|| {
+            Error::BadRequest("No password create URL in authenticated controls".to_string())
+        })?;
         let path = password_create_url
             .strip_prefix(&self.settings.account_index)
             .unwrap_or(password_create_url);
-        
+
         let body = serde_json::json!({
             "email": email,
             "password": password
         });
-        
+
         // Create authenticated HTTP client for this request
         let auth_http = self.create_auth_client()?;
-        
+
         let _response: Value = auth_http
-            .send_with_auth_header(Method::POST, path, Some(&body), &format!("CSS-Account-Token {}", account_token))
+            .send_with_auth_header(
+                Method::POST,
+                path,
+                Some(&body),
+                &format!("CSS-Account-Token {}", account_token),
+            )
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "Failed to add password login");
                 Error::BadRequest(format!("Failed to add password login: {}", err))
             })?;
-            
+
         tracing::debug!("Password login added successfully");
         Ok(())
     }
 
     /// Step 5: Create pod for the account
-    async fn create_pod(&self, account_token: &str, auth_controls: &CssControls, pod_name: &str) -> Result<PodCreationResult> {
+    async fn create_pod(
+        &self,
+        account_token: &str,
+        auth_controls: &CssControls,
+        pod_name: &str,
+    ) -> Result<PodCreationResult> {
         tracing::debug!(pod_name = %pod_name, "Creating pod for CSS account");
-        
+
         // Extract the account-specific pod creation URL
-        let pod_create_url = auth_controls.account.pod
-            .as_ref()
-            .ok_or_else(|| Error::BadRequest("No pod create URL in authenticated controls".to_string()))?;
+        let pod_create_url = auth_controls.account.pod.as_ref().ok_or_else(|| {
+            Error::BadRequest("No pod create URL in authenticated controls".to_string())
+        })?;
         let path = pod_create_url
             .strip_prefix(&self.settings.account_index)
             .unwrap_or(pod_create_url);
-        
+
         let body = serde_json::json!({
             "name": pod_name
         });
-        
+
         let auth_http = self.create_auth_client()?;
-            
+
         let response: PodCreationResponse = auth_http
-            .send_with_auth_header(Method::POST, path, Some(&body), &format!("CSS-Account-Token {}", account_token))
+            .send_with_auth_header(
+                Method::POST,
+                path,
+                Some(&body),
+                &format!("CSS-Account-Token {}", account_token),
+            )
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "Failed to create pod");
                 Error::BadRequest(format!("Failed to create pod: {}", err))
             })?;
-            
+
         Ok(PodCreationResult {
             base_url: response.pod,
             web_id: response.web_id,
@@ -225,32 +270,49 @@ impl SolidServerClient {
     }
 
     /// Step 6: Create client credentials for server-to-server access
-    async fn create_client_credentials(&self, account_token: &str, auth_controls: &CssControls, web_id: &str, name: &str) -> Result<ClientCredentialsResult> {
+    async fn create_client_credentials(
+        &self,
+        account_token: &str,
+        auth_controls: &CssControls,
+        web_id: &str,
+        name: &str,
+    ) -> Result<ClientCredentialsResult> {
         tracing::debug!(web_id = %web_id, "Creating client credentials");
-        
+
         // Extract the account-specific client credentials creation URL
-        let cc_create_url = auth_controls.account.client_credentials
+        let cc_create_url = auth_controls
+            .account
+            .client_credentials
             .as_ref()
-            .ok_or_else(|| Error::BadRequest("No client credentials create URL in authenticated controls".to_string()))?;
+            .ok_or_else(|| {
+                Error::BadRequest(
+                    "No client credentials create URL in authenticated controls".to_string(),
+                )
+            })?;
         let path = cc_create_url
             .strip_prefix(&self.settings.account_index)
             .unwrap_or(cc_create_url);
-        
+
         let body = serde_json::json!({
             "name": format!("cubby-{}", name),
             "webId": web_id
         });
-        
+
         let auth_http = self.create_auth_client()?;
-            
+
         let response: ClientCredentialsResponse = auth_http
-            .send_with_auth_header(Method::POST, path, Some(&body), &format!("CSS-Account-Token {}", account_token))
+            .send_with_auth_header(
+                Method::POST,
+                path,
+                Some(&body),
+                &format!("CSS-Account-Token {}", account_token),
+            )
             .await
             .map_err(|err| {
                 tracing::error!(error = %err, "Failed to create client credentials");
                 Error::BadRequest(format!("Failed to create client credentials: {}", err))
             })?;
-            
+
         Ok(ClientCredentialsResult {
             id: response.id,
             secret: response.secret,
@@ -258,11 +320,14 @@ impl SolidServerClient {
         })
     }
 
-
     /// Delete a pod and its associated CSS account resources
-    pub async fn delete_user_pod(&self, _account_token: &str, client_resource_url: &str) -> Result<()> {
+    pub async fn delete_user_pod(
+        &self,
+        _account_token: &str,
+        client_resource_url: &str,
+    ) -> Result<()> {
         tracing::info!(client_resource_url = %client_resource_url, "Deleting CSS client credentials");
-        
+
         // For now, just log the action - actual implementation would delete the client credentials
         tracing::info!("CSS client credentials deleted (stubbed)");
         Ok(())

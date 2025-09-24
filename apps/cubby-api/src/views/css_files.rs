@@ -28,7 +28,7 @@ fn get_parent_path(current_path: &str) -> Option<String> {
     if current_path.is_empty() || current_path == "/" {
         return None;
     }
-    
+
     let trimmed = current_path.trim_end_matches('/');
     if let Some(last_slash) = trimmed.rfind('/') {
         if last_slash == 0 {

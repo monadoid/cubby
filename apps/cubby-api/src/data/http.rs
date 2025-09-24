@@ -1,7 +1,7 @@
 #![allow(unused)]
 use anyhow::anyhow;
 use reqwest_middleware::reqwest;
-use reqwest_middleware::reqwest::header::{HeaderMap, CONTENT_TYPE, AUTHORIZATION};
+use reqwest_middleware::reqwest::header::{HeaderMap, AUTHORIZATION, CONTENT_TYPE};
 use reqwest_middleware::reqwest::Method;
 use reqwest_middleware::ClientBuilder;
 use reqwest_middleware::ClientWithMiddleware;
@@ -25,7 +25,12 @@ impl HttpClient {
         client: ClientWithMiddleware,
         auth: Option<(String, String)>,
     ) -> Self {
-        Self { client, base, auth, bearer_token: None }
+        Self {
+            client,
+            base,
+            auth,
+            bearer_token: None,
+        }
     }
 
     pub fn with_client_and_bearer(
@@ -33,7 +38,12 @@ impl HttpClient {
         client: ClientWithMiddleware,
         bearer_token: String,
     ) -> Self {
-        Self { client, base, auth: None, bearer_token: Some(bearer_token) }
+        Self {
+            client,
+            base,
+            auth: None,
+            bearer_token: Some(bearer_token),
+        }
     }
 
     pub fn from_url(base: Url, auth: Option<(String, String)>) -> anyhow::Result<Self> {
@@ -49,7 +59,11 @@ impl HttpClient {
     pub fn from_base_url_with_bearer_auth(base: &str, bearer_token: &str) -> anyhow::Result<Self> {
         let url = Url::parse(base)?;
         let inner = ClientBuilder::new(reqwest::Client::builder().build()?).build();
-        Ok(Self::with_client_and_bearer(url, inner, bearer_token.to_string()))
+        Ok(Self::with_client_and_bearer(
+            url,
+            inner,
+            bearer_token.to_string(),
+        ))
     }
 
     pub async fn send<Req, Res>(
@@ -129,7 +143,7 @@ impl HttpClient {
     {
         let url = self.base.join(path).expect("valid relative path");
         let mut builder = self.client.request(method.clone(), url.clone());
-        
+
         // Set custom authorization header
         builder = builder.header(AUTHORIZATION, auth_header);
 
@@ -190,7 +204,7 @@ impl HttpClient {
     {
         let url = self.base.join(path).expect("valid relative path");
         let mut builder = self.client.request(method.clone(), url.clone());
-        
+
         if let Some((ref user, ref pass)) = self.auth {
             builder = builder.basic_auth(user, Some(pass));
         } else if let Some(ref token) = self.bearer_token {
@@ -202,21 +216,22 @@ impl HttpClient {
             .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
             .form(form_data);
 
-        let request = builder.build()
+        let request = builder
+            .build()
             .map_err(|e: reqwest::Error| reqwest_middleware::Error::from(e))?;
 
         // Log outgoing request
         let formatted_headers = format_headers(request.headers());
         tracing::debug!(
-            method = %method, 
-            url = %request.url(), 
-            headers = %formatted_headers, 
+            method = %method,
+            url = %request.url(),
+            headers = %formatted_headers,
             form_data = ?form_data,
             "outgoing HTTP form request"
         );
 
         let resp = self.client.execute(request).await?;
-        
+
         if let Err(err) = resp.error_for_status_ref() {
             let status = resp.status();
             match resp.bytes().await {

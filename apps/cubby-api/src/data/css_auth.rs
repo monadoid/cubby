@@ -1,6 +1,6 @@
 use anyhow::Result;
-use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as b64;
+use base64::Engine as _;
 use reqwest_middleware::reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
@@ -47,22 +47,24 @@ impl CssAuthService {
         user_id: Uuid,
     ) -> Result<CssAuthenticatedClient> {
         // Get user's pod with stored credentials and DPoP keys
-        let pod = pods::Model::find_by_user(db, user_id).await?
+        let pod = pods::Model::find_by_user(db, user_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("User has no pod"))?;
 
-        let css_client_id = pod.css_client_id
+        let css_client_id = pod
+            .css_client_id
             .ok_or_else(|| anyhow::anyhow!("Pod missing CSS client ID"))?;
-        let css_client_secret = pod.css_client_secret
+        let css_client_secret = pod
+            .css_client_secret
             .ok_or_else(|| anyhow::anyhow!("Pod missing CSS client secret"))?;
-        let dpop_private_jwk = pod.dpop_private_jwk
+        let dpop_private_jwk = pod
+            .dpop_private_jwk
             .ok_or_else(|| anyhow::anyhow!("Pod missing DPoP private key"))?;
 
         // Request access token using client credentials flow with DPoP
-        let access_token_response = self.request_access_token(
-            &css_client_id,
-            &css_client_secret,
-            &dpop_private_jwk,
-        ).await?;
+        let access_token_response = self
+            .request_access_token(&css_client_id, &css_client_secret, &dpop_private_jwk)
+            .await?;
 
         let expires_at = SystemTime::now() + Duration::from_secs(access_token_response.expires_in);
 
@@ -82,24 +84,27 @@ impl CssAuthService {
         user_id: Uuid,
     ) -> Result<CssAuthenticatedClient> {
         // Get user's pod with stored credentials and DPoP keys
-        let pod = pods::Model::find_by_user(db, user_id).await?
+        let pod = pods::Model::find_by_user(db, user_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("User has no pod"))?;
 
-        let css_client_id = pod.css_client_id
+        let css_client_id = pod
+            .css_client_id
             .ok_or_else(|| anyhow::anyhow!("Pod missing CSS client ID"))?;
-        let css_client_secret = pod.css_client_secret
+        let css_client_secret = pod
+            .css_client_secret
             .ok_or_else(|| anyhow::anyhow!("Pod missing CSS client secret"))?;
-        let dpop_private_jwk = pod.dpop_private_jwk
+        let dpop_private_jwk = pod
+            .dpop_private_jwk
             .ok_or_else(|| anyhow::anyhow!("Pod missing DPoP private key"))?;
-        let pod_base_url = pod.link
+        let pod_base_url = pod
+            .link
             .ok_or_else(|| anyhow::anyhow!("Pod missing base URL"))?;
 
         // Request access token using client credentials flow with DPoP
-        let access_token_response = self.request_access_token(
-            &css_client_id,
-            &css_client_secret,
-            &dpop_private_jwk,
-        ).await?;
+        let access_token_response = self
+            .request_access_token(&css_client_id, &css_client_secret, &dpop_private_jwk)
+            .await?;
 
         let expires_at = SystemTime::now() + Duration::from_secs(access_token_response.expires_in);
 
@@ -120,10 +125,11 @@ impl CssAuthService {
         dpop_private_jwk: &str,
     ) -> Result<AccessTokenResponse> {
         let token_url = format!("{}/.oidc/token", self.css_base_url);
-        
+
         // Create basic auth header
-        let auth_string = format!("{}:{}", 
-            urlencoding::encode(client_id), 
+        let auth_string = format!(
+            "{}:{}",
+            urlencoding::encode(client_id),
             urlencoding::encode(client_secret)
         );
         let auth_header = format!("Basic {}", b64.encode(auth_string.as_bytes()));
@@ -135,11 +141,12 @@ impl CssAuthService {
             access_token: None,
             nonce: None,
         };
-        
+
         let dpop_proof = create_dpop_proof(dpop_private_jwk, &dpop_params).await?;
 
         // Make token request
-        let response = self.client
+        let response = self
+            .client
             .post(&token_url)
             .header("Authorization", auth_header.clone())
             .header("Content-Type", "application/x-www-form-urlencoded")
@@ -155,7 +162,7 @@ impl CssAuthService {
             // Check for DPoP nonce requirement
             if let Some(nonce) = response.headers().get("DPoP-Nonce") {
                 let nonce_str = nonce.to_str()?;
-                
+
                 // Retry with nonce
                 let dpop_params_with_nonce = DPoPProofParams {
                     method: "POST".to_string(),
@@ -163,10 +170,12 @@ impl CssAuthService {
                     access_token: None,
                     nonce: Some(nonce_str.to_string()),
                 };
-                
-                let dpop_proof_with_nonce = create_dpop_proof(dpop_private_jwk, &dpop_params_with_nonce).await?;
 
-                let retry_response = self.client
+                let dpop_proof_with_nonce =
+                    create_dpop_proof(dpop_private_jwk, &dpop_params_with_nonce).await?;
+
+                let retry_response = self
+                    .client
                     .post(&token_url)
                     .header("Authorization", auth_header)
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -180,7 +189,10 @@ impl CssAuthService {
                     Ok(token_response)
                 } else {
                     let error_body = retry_response.text().await?;
-                    Err(anyhow::anyhow!("Token request failed after nonce retry: {}", error_body))
+                    Err(anyhow::anyhow!(
+                        "Token request failed after nonce retry: {}",
+                        error_body
+                    ))
                 }
             } else {
                 let error_body = response.text().await?;
@@ -221,7 +233,7 @@ impl CssAuthenticatedClient {
             access_token: Some(self.access_token.clone()),
             nonce: None,
         };
-        
+
         let dpop_proof = create_dpop_proof(&self.dpop_private_jwk, &dpop_params).await?;
 
         // Build request
@@ -232,7 +244,9 @@ impl CssAuthenticatedClient {
             "DELETE" => self.client.delete(&url),
             "PATCH" => self.client.patch(&url),
             "HEAD" => self.client.head(&url),
-            "OPTIONS" => self.client.request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
+            "OPTIONS" => self
+                .client
+                .request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
             _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
         };
 
@@ -261,7 +275,7 @@ impl CssAuthenticatedClient {
         if response.status() == 400 || response.status() == 401 {
             if let Some(nonce) = response.headers().get("DPoP-Nonce") {
                 let nonce_str = nonce.to_str()?;
-                
+
                 // Retry with nonce
                 let dpop_params_with_nonce = DPoPProofParams {
                     method: method.to_uppercase(),
@@ -269,8 +283,9 @@ impl CssAuthenticatedClient {
                     access_token: Some(self.access_token.clone()),
                     nonce: Some(nonce_str.to_string()),
                 };
-                
-                let dpop_proof_with_nonce = create_dpop_proof(&self.dpop_private_jwk, &dpop_params_with_nonce).await?;
+
+                let dpop_proof_with_nonce =
+                    create_dpop_proof(&self.dpop_private_jwk, &dpop_params_with_nonce).await?;
 
                 let mut retry_builder = match method.to_uppercase().as_str() {
                     "GET" => self.client.get(&url),
@@ -279,7 +294,9 @@ impl CssAuthenticatedClient {
                     "DELETE" => self.client.delete(&url),
                     "PATCH" => self.client.patch(&url),
                     "HEAD" => self.client.head(&url),
-                    "OPTIONS" => self.client.request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
+                    "OPTIONS" => self
+                        .client
+                        .request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
                     _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
                 };
 
@@ -331,7 +348,7 @@ impl CssAuthenticatedClient {
             access_token: Some(self.access_token.clone()),
             nonce: None,
         };
-        
+
         let dpop_proof = create_dpop_proof(&self.dpop_private_jwk, &dpop_params).await?;
 
         // Build request
@@ -342,7 +359,9 @@ impl CssAuthenticatedClient {
             "DELETE" => self.client.delete(&url),
             "PATCH" => self.client.patch(&url),
             "HEAD" => self.client.head(&url),
-            "OPTIONS" => self.client.request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
+            "OPTIONS" => self
+                .client
+                .request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
             _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
         };
 
@@ -371,7 +390,7 @@ impl CssAuthenticatedClient {
         if response.status() == 400 || response.status() == 401 {
             if let Some(nonce) = response.headers().get("DPoP-Nonce") {
                 let nonce_str = nonce.to_str()?;
-                
+
                 // Retry with nonce
                 let dpop_params_with_nonce = DPoPProofParams {
                     method: method.to_uppercase(),
@@ -379,8 +398,9 @@ impl CssAuthenticatedClient {
                     access_token: Some(self.access_token.clone()),
                     nonce: Some(nonce_str.to_string()),
                 };
-                
-                let dpop_proof_with_nonce = create_dpop_proof(&self.dpop_private_jwk, &dpop_params_with_nonce).await?;
+
+                let dpop_proof_with_nonce =
+                    create_dpop_proof(&self.dpop_private_jwk, &dpop_params_with_nonce).await?;
 
                 let mut retry_builder = match method.to_uppercase().as_str() {
                     "GET" => self.client.get(&url),
@@ -389,7 +409,9 @@ impl CssAuthenticatedClient {
                     "DELETE" => self.client.delete(&url),
                     "PATCH" => self.client.patch(&url),
                     "HEAD" => self.client.head(&url),
-                    "OPTIONS" => self.client.request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
+                    "OPTIONS" => self
+                        .client
+                        .request(reqwest_middleware::reqwest::Method::OPTIONS, &url),
                     _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
                 };
 

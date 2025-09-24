@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::{Duration, Instant}};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
@@ -63,21 +67,21 @@ impl LoginStash {
 
         let mut entries = self.entries.write().await;
         entries.insert(key, entry);
-        
+
         // Clean up expired entries (simple cleanup)
         entries.retain(|_, entry| !entry.is_expired(self.ttl));
     }
 
     pub async fn retrieve_and_consume_oauth_params(&self, key: &str) -> Option<LoginStashEntry> {
         let mut entries = self.entries.write().await;
-        
+
         if let Some(entry) = entries.remove(key) {
             if entry.is_expired(self.ttl) {
                 return None;
             }
             return Some(entry);
         }
-        
+
         None
     }
 

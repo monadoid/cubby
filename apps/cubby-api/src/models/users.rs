@@ -125,18 +125,18 @@ impl Model {
         }
 
         tracing::debug!(uuid = %params.id, email = %params.email, "Creating user with specific UUID");
-        
+
         let active_model = users::ActiveModel {
             id: ActiveValue::set(params.id),
             email: ActiveValue::set(params.email.to_owned()),
             auth_id: ActiveValue::set(params.auth_id.to_owned()),
             ..Default::default()
         };
-        
+
         let result = active_model.insert(db).await.map_err(ModelError::from)?;
-        
+
         tracing::debug!(created_uuid = %result.id, "User created with UUID");
-        
+
         Ok(result)
     }
 }

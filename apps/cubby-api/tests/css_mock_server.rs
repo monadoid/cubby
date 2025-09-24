@@ -1,7 +1,7 @@
-use wiremock::{Mock, MockServer, ResponseTemplate, Request};
 use serde_json::{json, Value};
-use wiremock::matchers::{method, path, path_regex, header};
 use uuid::Uuid;
+use wiremock::matchers::{header, method, path, path_regex};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 const CSS_ACCOUNT_TOKEN: &str = "css-account-test-token-123";
 const TEST_USER_EMAIL: &str = "test@example.com";
@@ -93,7 +93,10 @@ impl CssMockServer {
         // Logout endpoint
         Mock::given(method("POST"))
             .and(path("/.account/account/test-account-id/logout/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
             .mount(&self.server)
             .await;
@@ -104,7 +107,10 @@ impl CssMockServer {
         // Get all pods for account
         Mock::given(method("GET"))
             .and(path("/.account/account/test-account-id/pod/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "pods": {}
             })))
@@ -114,32 +120,36 @@ impl CssMockServer {
         // Create pod endpoint
         Mock::given(method("POST"))
             .and(path("/.account/account/test-account-id/pod/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(|req: &Request| {
                 let body: Value = serde_json::from_slice(&req.body).unwrap_or_default();
-                let pod_name = body.get("name")
+                let pod_name = body
+                    .get("name")
                     .and_then(|n| n.as_str())
                     .unwrap_or(TEST_POD_NAME);
-                
+
                 let pod_base_url = format!("http://localhost:3000/{}/", pod_name);
                 let default_web_id = format!("{}profile/card#me", pod_base_url);
-                let web_id = body.get("settings")
+                let web_id = body
+                    .get("settings")
                     .and_then(|s| s.get("webId"))
                     .and_then(|w| w.as_str())
                     .unwrap_or(&default_web_id);
 
                 let pod_resource_url = format!(
-                    "{}/.account/account/test-account-id/pod/{}/", 
+                    "{}/.account/account/test-account-id/pod/{}/",
                     TEST_BASE_URL,
                     Uuid::new_v4()
                 );
 
-                ResponseTemplate::new(201)
-                    .set_body_json(json!({
-                        "baseUrl": pod_base_url,
-                        "webId": web_id,
-                        "podResourceUrl": pod_resource_url
-                    }))
+                ResponseTemplate::new(201).set_body_json(json!({
+                    "baseUrl": pod_base_url,
+                    "webId": web_id,
+                    "podResourceUrl": pod_resource_url
+                }))
             })
             .mount(&self.server)
             .await;
@@ -173,7 +183,10 @@ impl CssMockServer {
         // Get specific pod info endpoint
         Mock::given(method("GET"))
             .and(path_regex(r"/.account/account/test-account-id/pod/[^/]+/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "baseUrl": format!("http://localhost:3000/{}/", TEST_POD_NAME),
                 "owners": [
@@ -192,7 +205,10 @@ impl CssMockServer {
         // Get WebIDs
         Mock::given(method("GET"))
             .and(path("/.account/account/test-account-id/webid/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "webIdLinks": {}
             })))
@@ -202,24 +218,27 @@ impl CssMockServer {
         // Link WebID
         Mock::given(method("POST"))
             .and(path("/.account/account/test-account-id/webid/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(|req: &Request| {
                 let body: Value = serde_json::from_slice(&req.body).unwrap_or_default();
-                let web_id = body.get("webId")
+                let web_id = body
+                    .get("webId")
                     .and_then(|w| w.as_str())
                     .unwrap_or("http://localhost:3000/test-pod/profile/card#me");
 
                 let webid_resource_url = format!(
-                    "{}/.account/account/test-account-id/webid/{}/", 
+                    "{}/.account/account/test-account-id/webid/{}/",
                     TEST_BASE_URL,
                     Uuid::new_v4()
                 );
 
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({
-                        "webId": web_id,
-                        "resourceUrl": webid_resource_url
-                    }))
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "webId": web_id,
+                    "resourceUrl": webid_resource_url
+                }))
             })
             .mount(&self.server)
             .await;
@@ -229,41 +248,52 @@ impl CssMockServer {
     async fn setup_client_credentials_endpoints(&self) {
         // Create client credentials endpoint
         Mock::given(method("POST"))
-            .and(path("/.account/account/test-account-id/client-credentials/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(path(
+                "/.account/account/test-account-id/client-credentials/",
+            ))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(|req: &Request| {
                 let body: Value = serde_json::from_slice(&req.body).unwrap_or_default();
-                let name = body.get("name")
+                let name = body
+                    .get("name")
                     .and_then(|n| n.as_str())
                     .unwrap_or("cubby-test");
-                let web_id = body.get("webId")
+                let web_id = body
+                    .get("webId")
                     .and_then(|w| w.as_str())
                     .unwrap_or("http://localhost:3000/test-pod/profile/card#me");
 
                 let client_id = format!("client-{}", Uuid::new_v4());
                 let client_secret = format!("secret-{}", Uuid::new_v4());
                 let resource_url = format!(
-                    "{}/.account/account/test-account-id/client-credentials/{}/", 
+                    "{}/.account/account/test-account-id/client-credentials/{}/",
                     TEST_BASE_URL,
                     Uuid::new_v4()
                 );
 
-                ResponseTemplate::new(201)
-                    .set_body_json(json!({
-                        "id": client_id,
-                        "secret": client_secret,
-                        "resource": resource_url,
-                        "name": name,
-                        "webId": web_id
-                    }))
+                ResponseTemplate::new(201).set_body_json(json!({
+                    "id": client_id,
+                    "secret": client_secret,
+                    "resource": resource_url,
+                    "name": name,
+                    "webId": web_id
+                }))
             })
             .mount(&self.server)
             .await;
 
         // Get client credentials endpoint
         Mock::given(method("GET"))
-            .and(path("/.account/account/test-account-id/client-credentials/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(path(
+                "/.account/account/test-account-id/client-credentials/",
+            ))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "clientCredentials": {}
             })))
@@ -272,8 +302,13 @@ impl CssMockServer {
 
         // Delete client credentials endpoint (for cleanup)
         Mock::given(method("DELETE"))
-            .and(path_regex(r"/.account/account/test-account-id/client-credentials/[^/]+/"))
-            .and(header("authorization", format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN)))
+            .and(path_regex(
+                r"/.account/account/test-account-id/client-credentials/[^/]+/",
+            ))
+            .and(header(
+                "authorization",
+                format!("CSS-Account-Token {}", CSS_ACCOUNT_TOKEN),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
             .mount(&self.server)
             .await;
@@ -283,12 +318,14 @@ impl CssMockServer {
     async fn setup_account_endpoints(&self) {
         Mock::given(method("POST"))
             .and(path("/.account/account/"))
-            .respond_with(ResponseTemplate::new(201)
-                .insert_header("set-cookie", format!("css-account={}", CSS_ACCOUNT_TOKEN))
-                .set_body_json(json!({
-                    "authorization": CSS_ACCOUNT_TOKEN,
-                    "accountId": "test-account-id"
-                })))
+            .respond_with(
+                ResponseTemplate::new(201)
+                    .insert_header("set-cookie", format!("css-account={}", CSS_ACCOUNT_TOKEN))
+                    .set_body_json(json!({
+                        "authorization": CSS_ACCOUNT_TOKEN,
+                        "accountId": "test-account-id"
+                    })),
+            )
             .mount(&self.server)
             .await;
     }

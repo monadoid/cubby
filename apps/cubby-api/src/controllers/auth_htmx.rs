@@ -2,15 +2,15 @@
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
 use axum::{debug_handler, extract::Query, http::header::SET_COOKIE, response::AppendHeaders};
-use loco_rs::{prelude::*, controller::views::engines::TeraView};
+use loco_rs::{controller::views::engines::TeraView, prelude::*};
 use serde::{Deserialize, Serialize};
 
 use crate::controllers::{
-    stytch_guard::StytchSessionAuth, 
     oauth_helpers::{login_stash, stytch_client},
+    stytch_guard::StytchSessionAuth,
 };
-use crate::{views, models::users};
 use crate::data::stytch::PasswordAuthParams;
+use crate::{models::users, views};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SignUpParams {
@@ -46,7 +46,7 @@ pub async fn sign_up_form(
 #[debug_handler]
 pub async fn dashboard(
     auth: StytchSessionAuth,
-    ViewEngine(v): ViewEngine<TeraView>, 
+    ViewEngine(v): ViewEngine<TeraView>,
     State(_ctx): State<AppContext>,
 ) -> Result<Response> {
     views::auth_htmx::dashboard(&v, &auth.user_id.to_string())
@@ -77,7 +77,8 @@ pub async fn login_post(
     Json(params): Json<LoginFormParams>,
 ) -> Result<Response> {
     // First find the existing user to get their UUID
-    let _user = users::Model::find_by_email(&ctx.db, &params.email).await
+    let _user = users::Model::find_by_email(&ctx.db, &params.email)
+        .await
         .map_err(|_| Error::Unauthorized("Invalid credentials".to_string()))?;
 
     let stytch = stytch_client(&ctx)?;
@@ -108,19 +109,17 @@ pub async fn login_post(
         Ok((
             AppendHeaders([(SET_COOKIE, cookie)]),
             format::json(serde_json::json!({"redirect_to": redirect_to}))?,
-        ).into_response())
+        )
+            .into_response())
     } else {
         format::json(serde_json::json!({"redirect_to": redirect_to}))
     }
 }
 
 #[debug_handler]
-pub async fn resume(
-    State(ctx): State<AppContext>,
-    Path(key): Path<String>,
-) -> Result<Response> {
+pub async fn resume(State(ctx): State<AppContext>, Path(key): Path<String>) -> Result<Response> {
     let stash = login_stash(&ctx)?;
-    
+
     // Retrieve the OAuth parameters from the stash
     let oauth_params = match stash.retrieve_and_consume_oauth_params(&key).await {
         Some(params) => params,
@@ -132,21 +131,39 @@ pub async fn resume(
 
     // Redirect to the authorize endpoint with the original OAuth parameters
     let mut redirect_url = "/oauth/authorize?".to_string();
-    redirect_url.push_str(&format!("client_id={}", urlencoding::encode(&oauth_params.client_id)));
-    redirect_url.push_str(&format!("&redirect_uri={}", urlencoding::encode(&oauth_params.redirect_uri)));
-    redirect_url.push_str(&format!("&response_type={}", urlencoding::encode(&oauth_params.response_type)));
-    redirect_url.push_str(&format!("&scope={}", urlencoding::encode(&oauth_params.scope)));
-    redirect_url.push_str(&format!("&code_challenge={}", urlencoding::encode(&oauth_params.code_challenge)));
-    redirect_url.push_str(&format!("&code_challenge_method={}", urlencoding::encode(&oauth_params.code_challenge_method)));
-    
+    redirect_url.push_str(&format!(
+        "client_id={}",
+        urlencoding::encode(&oauth_params.client_id)
+    ));
+    redirect_url.push_str(&format!(
+        "&redirect_uri={}",
+        urlencoding::encode(&oauth_params.redirect_uri)
+    ));
+    redirect_url.push_str(&format!(
+        "&response_type={}",
+        urlencoding::encode(&oauth_params.response_type)
+    ));
+    redirect_url.push_str(&format!(
+        "&scope={}",
+        urlencoding::encode(&oauth_params.scope)
+    ));
+    redirect_url.push_str(&format!(
+        "&code_challenge={}",
+        urlencoding::encode(&oauth_params.code_challenge)
+    ));
+    redirect_url.push_str(&format!(
+        "&code_challenge_method={}",
+        urlencoding::encode(&oauth_params.code_challenge_method)
+    ));
+
     if let Some(state) = &oauth_params.state {
         redirect_url.push_str(&format!("&state={}", urlencoding::encode(state)));
     }
-    
+
     if let Some(nonce) = &oauth_params.nonce {
         redirect_url.push_str(&format!("&nonce={}", urlencoding::encode(nonce)));
     }
-    
+
     if let Some(prompt) = &oauth_params.prompt {
         redirect_url.push_str(&format!("&prompt={}", urlencoding::encode(prompt)));
     }

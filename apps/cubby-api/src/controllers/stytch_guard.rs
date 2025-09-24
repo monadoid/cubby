@@ -119,11 +119,11 @@ impl FromRequestParts<AppContext> for StytchSessionAuth {
                 .headers
                 .get(COOKIE)
                 .ok_or_else(|| Error::Unauthorized("missing session cookie".to_string()))?;
-            
+
             let cookie_str = cookie_header
                 .to_str()
                 .map_err(|_| Error::Unauthorized("invalid cookie header".to_string()))?;
-            
+
             // Parse cookies to find session_jwt
             let token = cookie_str
                 .split(';')
@@ -196,7 +196,10 @@ impl FromRequestParts<AppContext> for StytchSessionAuth {
 }
 
 /// Validate a session JWT directly without using the extractor
-pub async fn validate_stytch_session(ctx: &AppContext, session_jwt: &str) -> Result<StytchSessionAuth, Error> {
+pub async fn validate_stytch_session(
+    ctx: &AppContext,
+    session_jwt: &str,
+) -> Result<StytchSessionAuth, Error> {
     let client = ctx.shared_store.get::<Arc<StytchClient>>().ok_or_else(|| {
         tracing::error!("stytch client not initialised");
         Error::InternalServerError
@@ -232,21 +235,21 @@ pub async fn validate_stytch_session(ctx: &AppContext, session_jwt: &str) -> Res
         }
     }
 
-    let auth_id_value = extract_user_id(&validated.claims).ok_or_else(|| {
-        Error::Unauthorized("missing user binding in session token".to_string())
-    })?;
+    let auth_id_value = extract_user_id(&validated.claims)
+        .ok_or_else(|| Error::Unauthorized("missing user binding in session token".to_string()))?;
 
     if auth_id_value.is_empty() {
         return Err(Error::Unauthorized("invalid user binding".to_string()));
     }
 
     // Extract database user_id from the token
-    let user_id_str = validated.claims.user_id.as_deref().ok_or_else(|| {
-        Error::Unauthorized("missing user_id in session token".to_string())
-    })?;
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        Error::Unauthorized("invalid user_id format in session token".to_string())
-    })?;
+    let user_id_str = validated
+        .claims
+        .user_id
+        .as_deref()
+        .ok_or_else(|| Error::Unauthorized("missing user_id in session token".to_string()))?;
+    let user_id = uuid::Uuid::parse_str(user_id_str)
+        .map_err(|_| Error::Unauthorized("invalid user_id format in session token".to_string()))?;
 
     Ok(StytchSessionAuth {
         client_id: validated.claims.sub.clone().unwrap_or_default(),

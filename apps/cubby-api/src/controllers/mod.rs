@@ -10,5 +10,5 @@ pub mod oauth_helpers;
 pub mod oauth_htmx;
 pub mod stytch_guard;
 
-pub mod pods;
 pub mod pod_htmx;
+pub mod pods;

@@ -34,7 +34,6 @@ async fn load_item(ctx: &AppContext, id: Uuid, user_id: Uuid) -> Result<Model> {
     item.ok_or_else(|| Error::NotFound)
 }
 
-
 #[debug_handler]
 pub async fn list(auth: StytchAuth, State(ctx): State<AppContext>) -> Result<Response> {
     let user_id = auth.user_id;

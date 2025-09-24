@@ -5,10 +5,7 @@ use axum::{
     http::HeaderMap,
     response::Response,
 };
-use loco_rs::{
-    prelude::*,
-    app::AppContext,
-};
+use loco_rs::{app::AppContext, prelude::*};
 use std::collections::HashMap;
 
 use crate::{
@@ -51,7 +48,16 @@ pub async fn post_resource(
     headers: HeaderMap,
     body: String,
 ) -> Result<Response> {
-    proxy_request(auth, ctx, "POST", resource_path, params, headers, Some(body)).await
+    proxy_request(
+        auth,
+        ctx,
+        "POST",
+        resource_path,
+        params,
+        headers,
+        Some(body),
+    )
+    .await
 }
 
 /// Proxy DELETE requests to CSS server
@@ -76,7 +82,16 @@ pub async fn patch_resource(
     headers: HeaderMap,
     body: String,
 ) -> Result<Response> {
-    proxy_request(auth, ctx, "PATCH", resource_path, params, headers, Some(body)).await
+    proxy_request(
+        auth,
+        ctx,
+        "PATCH",
+        resource_path,
+        params,
+        headers,
+        Some(body),
+    )
+    .await
 }
 
 /// Proxy HEAD requests to CSS server
@@ -116,12 +131,12 @@ async fn proxy_request(
     let user_id = auth.user_id;
 
     // Get CSS base URL from config
-    let settings = SolidServerSettings::from_config(&ctx.config)
-        .map_err(|e| Error::string(&e.to_string()))?;
+    let settings =
+        SolidServerSettings::from_config(&ctx.config).map_err(|e| Error::string(&e.to_string()))?;
 
     // Initialize CSS auth service
     let css_auth_service = CssAuthService::new(settings.base_url);
-    
+
     // Get authenticated client for this user
     let auth_client = css_auth_service
         .get_authenticated_client(&ctx.db, user_id)
@@ -156,10 +171,14 @@ async fn proxy_request(
 }
 
 /// Convert reqwest::Response to axum::Response
-async fn convert_css_response_to_axum(css_response: reqwest_middleware::reqwest::Response) -> Result<Response> {
+async fn convert_css_response_to_axum(
+    css_response: reqwest_middleware::reqwest::Response,
+) -> Result<Response> {
     let status = css_response.status();
     let headers = css_response.headers().clone();
-    let body_bytes = css_response.bytes().await
+    let body_bytes = css_response
+        .bytes()
+        .await
         .map_err(|e| Error::string(&e.to_string()))?;
 
     let mut response_builder = Response::builder().status(status);
@@ -167,7 +186,8 @@ async fn convert_css_response_to_axum(css_response: reqwest_middleware::reqwest:
     // Copy headers from CSS response
     for (key, value) in headers.iter() {
         // Skip headers that Axum handles automatically or might cause issues
-        if !matches!(key.as_str().to_lowercase().as_str(), 
+        if !matches!(
+            key.as_str().to_lowercase().as_str(),
             "content-length" | "transfer-encoding" | "connection"
         ) {
             response_builder = response_builder.header(key, value);
@@ -183,14 +203,12 @@ async fn convert_css_response_to_axum(css_response: reqwest_middleware::reqwest:
 
 /// Get user's pod information
 #[debug_handler]
-pub async fn get_pod_info(
-    auth: StytchAuth,
-    State(ctx): State<AppContext>,
-) -> Result<Response> {
+pub async fn get_pod_info(auth: StytchAuth, State(ctx): State<AppContext>) -> Result<Response> {
     let user_id = auth.user_id;
 
     // Get user's pod
-    let pod = crate::models::pods::Model::find_by_user(&ctx.db, user_id).await?
+    let pod = crate::models::pods::Model::find_by_user(&ctx.db, user_id)
+        .await?
         .ok_or_else(|| Error::string("User has no pod"))?;
 
     let pod_info = serde_json::json!({
@@ -213,8 +231,8 @@ pub fn routes() -> Routes {
         .add("/{*path}", post(post_resource))
         .add("/{*path}", delete(delete_resource))
         .add("/{*path}", patch(patch_resource))
-        // Note: Axum doesn't support HEAD and OPTIONS in the same way
-        // We'll need to handle these specially in the application setup
+    // Note: Axum doesn't support HEAD and OPTIONS in the same way
+    // We'll need to handle these specially in the application setup
 }
 
 /// Routes specifically for HEAD and OPTIONS methods

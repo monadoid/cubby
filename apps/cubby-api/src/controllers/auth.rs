@@ -1,6 +1,6 @@
+use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
-use serde_json::json;
 
 use axum::{debug_handler, http::header::SET_COOKIE, response::AppendHeaders};
 use loco_rs::{model::ModelError, prelude::*};
@@ -8,7 +8,7 @@ use loco_rs::{model::ModelError, prelude::*};
 use crate::{
     controllers::stytch_guard::StytchAuth,
     data::{
-        solid_server::{SolidServerClient, SolidServerSettings, CreateUserPodParams},
+        solid_server::{CreateUserPodParams, SolidServerClient, SolidServerSettings},
         stytch::{PasswordAuthParams, StytchClient},
     },
     models::{
@@ -55,7 +55,7 @@ async fn register(
 
     // Generate our own UUID for the user
     let user_id = Uuid::new_v4();
-    
+
     let stytch = stytch_client(&ctx)?;
 
     let trusted_metadata = json!({
@@ -85,14 +85,15 @@ async fn register(
     provision_pod_for_user(&ctx, user_id, &params.email, &params.password).await;
 
     let response = AuthResponse::new(&user, &stytch_response);
-    
+
     // Set session_jwt as httponly cookie if it exists
     if let Some(session_jwt) = &stytch_response.session_jwt {
         let cookie = create_session_cookie(session_jwt, DEFAULT_SESSION_DURATION);
         Ok((
             AppendHeaders([(SET_COOKIE, cookie)]),
             format::json(response)?,
-        ).into_response())
+        )
+            .into_response())
     } else {
         format::json(response)
     }
@@ -101,7 +102,8 @@ async fn register(
 #[debug_handler]
 async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -> Result<Response> {
     // First find the existing user to get their UUID
-    let user = users::Model::find_by_email(&ctx.db, &params.email).await
+    let user = users::Model::find_by_email(&ctx.db, &params.email)
+        .await
         .map_err(|_| Error::Unauthorized("Invalid credentials".to_string()))?;
 
     let stytch = stytch_client(&ctx)?;
@@ -124,14 +126,15 @@ async fn login(State(ctx): State<AppContext>, Json(params): Json<LoginParams>) -
     };
 
     let response = AuthResponse::new(&user, &stytch_response);
-    
+
     // Set session_jwt as httponly cookie if it exists
     if let Some(session_jwt) = &stytch_response.session_jwt {
         let cookie = create_session_cookie(session_jwt, DEFAULT_SESSION_DURATION);
         Ok((
             AppendHeaders([(SET_COOKIE, cookie)]),
             format::json(response)?,
-        ).into_response())
+        )
+            .into_response())
     } else {
         format::json(response)
     }
@@ -150,7 +153,8 @@ async fn logout() -> Result<Response> {
     Ok((
         AppendHeaders([(SET_COOKIE, cookie)]),
         format::json(serde_json::json!({"message": "Logged out successfully"}))?,
-    ).into_response())
+    )
+        .into_response())
 }
 
 /// Provisions a pod for a newly registered user
@@ -176,11 +180,7 @@ async fn provision_pod_for_user(ctx: &AppContext, user_id: Uuid, email: &str, pa
     }
 
     // Generate a default pod name based on email
-    let pod_name = email
-        .split('@')
-        .next()
-        .unwrap_or("mypod")
-        .to_string();
+    let pod_name = email.split('@').next().unwrap_or("mypod").to_string();
 
     match provision_pod_internal(ctx, user_id, email, password, &pod_name).await {
         Ok(()) => {
@@ -213,36 +213,37 @@ async fn provision_pod_internal(
     // Create pod on CSS with full provisioning flow
     let settings = SolidServerSettings::from_config(&ctx.config)?;
     let client = SolidServerClient::new(settings)?;
-    
+
     let css_params = CreateUserPodParams {
         email,
         password,
         pod_name,
     };
-    
+
     let css_result = client.create_user_and_pod(css_params).await?;
-    
+
     // Generate DPoP keypair
-    let dpop_keypair = crate::data::dpop::generate_dpop_keypair()
-        .map_err(|e| Error::string(&e.to_string()))?;
-    
+    let dpop_keypair =
+        crate::data::dpop::generate_dpop_keypair().map_err(|e| Error::string(&e.to_string()))?;
+
     // Create pod parameters for database insertion
     let create_params = CreatePodParams {
         name: pod_name.to_string(),
         email: email.to_string(),
         password: password.to_string(),
     };
-    
+
     // Create pod in database with CSS provisioning data and DPoP keys
     pods::Model::create_with_css_data(
-        &ctx.db, 
-        user_id, 
-        &create_params, 
+        &ctx.db,
+        user_id,
+        &create_params,
         &css_result,
         &dpop_keypair.private_jwk,
         &dpop_keypair.public_jwk_thumbprint,
-    ).await?;
-    
+    )
+    .await?;
+
     Ok(())
 }
 

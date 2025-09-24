@@ -2,11 +2,11 @@
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
 use axum::debug_handler;
-use loco_rs::{prelude::*, controller::views::engines::TeraView};
+use loco_rs::{controller::views::engines::TeraView, prelude::*};
 use uuid::Uuid;
 
 use crate::controllers::stytch_guard::StytchSessionAuth;
-use crate::models::pods::{Model};
+use crate::models::pods::Model;
 use crate::views;
 
 async fn load_item(ctx: &AppContext, user_id: Uuid) -> Result<Option<Model>> {
@@ -17,16 +17,16 @@ async fn load_item(ctx: &AppContext, user_id: Uuid) -> Result<Option<Model>> {
 
 #[debug_handler]
 pub async fn show(
-    auth: StytchSessionAuth, 
-    ViewEngine(v): ViewEngine<TeraView>, 
-    State(ctx): State<AppContext>
+    auth: StytchSessionAuth,
+    ViewEngine(v): ViewEngine<TeraView>,
+    State(ctx): State<AppContext>,
 ) -> Result<Response> {
     let user_id = auth.user_id;
     let pod = load_item(&ctx, user_id).await?;
     views::pod::show(&v, &pod)
 }
 
-#[debug_handler]  
+#[debug_handler]
 pub async fn credentials(
     auth: StytchSessionAuth,
     ViewEngine(v): ViewEngine<TeraView>,

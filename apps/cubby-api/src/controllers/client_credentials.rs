@@ -19,7 +19,6 @@ fn stytch_client(ctx: &AppContext) -> Result<Arc<StytchClient>> {
     })
 }
 
-
 #[derive(Debug, Deserialize, Serialize)]
 struct CreateClientPayload {
     #[serde(default)]
@@ -122,7 +121,6 @@ impl RotateSecretResponse {
         }
     }
 }
-
 
 #[debug_handler]
 async fn create(

@@ -19,9 +19,8 @@ impl Initializer for OAuthStateInitializer {
     async fn before_run(&self, ctx: &AppContext) -> Result<()> {
         // Initialize OAuth state store with 10 minute TTL
         let state_store = OAuthStateStore::new(600); // 10 minutes
-        
-        ctx.shared_store
-            .insert(Arc::new(state_store));
+
+        ctx.shared_store.insert(Arc::new(state_store));
 
         tracing::info!("OAuth state store initialized");
         Ok(())

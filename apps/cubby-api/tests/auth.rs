@@ -6,8 +6,8 @@ use loco_rs::testing::prelude::*;
 use loco_rs::TestServer;
 use serde_json::{json, Value};
 use serial_test::serial;
-use uuid::Uuid;
 use stytch_mock_server::StytchMockServer;
+use uuid::Uuid;
 
 mod stytch_mock_server;
 
@@ -26,7 +26,7 @@ async fn create_client_credentials(request: &TestServer, user_token: &str) -> Uu
         .json(&create_payload)
         .await;
     assert_eq!(create_response.status_code(), 200);
-    
+
     let create_body: Value = serde_json::from_str(&create_response.text()).unwrap();
     create_body
         .get("id")
@@ -64,7 +64,7 @@ async fn test_create_user_and_credentials() {
             .json(&register_payload)
             .await;
         assert_eq!(register_response.status_code(), 200);
-        
+
         let register_body: Value = serde_json::from_str(&register_response.text()).unwrap();
         let user_access_token = register_body
             .get("access_token")
@@ -72,7 +72,9 @@ async fn test_create_user_and_credentials() {
             .expect("access token present")
             .to_string();
 
-        let user = users::Model::find_by_email(&ctx.db, &email).await.expect("user created");
+        let user = users::Model::find_by_email(&ctx.db, &email)
+            .await
+            .expect("user created");
         assert_eq!(user.auth_id, STYTCH_USER_ID);
 
         let _credential_id = create_client_credentials(&request, &user_access_token).await;
@@ -101,7 +103,7 @@ async fn user_flow_creates_credentials_and_accesses_movies() {
             .json(&register_payload)
             .await;
         assert_eq!(register_response.status_code(), 200);
-        
+
         let register_body: Value = serde_json::from_str(&register_response.text()).unwrap();
         let user_access_token = register_body
             .get("access_token")
@@ -109,7 +111,9 @@ async fn user_flow_creates_credentials_and_accesses_movies() {
             .expect("access token present")
             .to_string();
 
-        let user = users::Model::find_by_email(&ctx.db, &email).await.expect("user created");
+        let user = users::Model::find_by_email(&ctx.db, &email)
+            .await
+            .expect("user created");
         assert_eq!(user.auth_id, STYTCH_USER_ID);
 
         let login_payload = json!({ "email": email, "password": password });
@@ -119,7 +123,7 @@ async fn user_flow_creates_credentials_and_accesses_movies() {
         assert!(login_body.get("access_token").is_some());
 
         let credential_id = create_client_credentials(&request, &user_access_token).await;
-        
+
         let list_response = request
             .get("/api/me/clients/list")
             .add_header("Authorization", format!("Bearer {}", user_access_token))
@@ -134,7 +138,10 @@ async fn user_flow_creates_credentials_and_accesses_movies() {
             .await;
         assert_eq!(rotate_response.status_code(), 200);
         let rotate_body: Value = serde_json::from_str(&rotate_response.text()).unwrap();
-        assert_eq!(rotate_body["client_secret"].as_str().unwrap(), ROTATED_SECRET);
+        assert_eq!(
+            rotate_body["client_secret"].as_str().unwrap(),
+            ROTATED_SECRET
+        );
 
         let delete_response = request
             .delete(&format!("/api/me/clients/{}", credential_id))
@@ -152,7 +159,8 @@ async fn user_flow_creates_credentials_and_accesses_movies() {
             .await;
         assert_eq!(movies_response.status_code(), 200);
 
-        let machine_token = mock_server.issue_token(CLIENT_ID, &user.id.to_string(), Some("movies:read"));
+        let machine_token =
+            mock_server.issue_token(CLIENT_ID, &user.id.to_string(), Some("movies:read"));
         let machine_response = request
             .get("/api/movies/list")
             .add_header("Authorization", format!("Bearer {}", machine_token))

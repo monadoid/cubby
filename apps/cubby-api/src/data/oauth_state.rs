@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc, time::{Duration, Instant}};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -58,7 +62,7 @@ impl OAuthStateStore {
 
         let mut states = self.states.write().await;
         states.insert(state, entry);
-        
+
         // Clean up expired states (simple cleanup)
         states.retain(|_, entry| !entry.is_expired(self.ttl));
     }
@@ -72,12 +76,12 @@ impl OAuthStateStore {
         scope: &str,
     ) -> Option<StateEntry> {
         let mut states = self.states.write().await;
-        
+
         if let Some(entry) = states.remove(state) {
             if entry.is_expired(self.ttl) {
                 return None;
             }
-            
+
             // Verify the parameters match
             if entry.user_id == user_id
                 && entry.client_id == client_id
@@ -87,7 +91,7 @@ impl OAuthStateStore {
                 return Some(entry);
             }
         }
-        
+
         None
     }
 

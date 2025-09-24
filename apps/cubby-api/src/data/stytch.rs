@@ -323,7 +323,7 @@ impl StytchClient {
         params: PasswordAuthParams<'_>,
     ) -> Result<PasswordAuthResponse> {
         let trusted_metadata = params.trusted_metadata.as_ref();
-        
+
         let body = PasswordAuthRequest {
             email: params.email,
             password: params.password,
@@ -342,7 +342,7 @@ impl StytchClient {
         params: PasswordAuthParams<'_>,
     ) -> Result<PasswordAuthResponse> {
         let trusted_metadata = params.trusted_metadata.as_ref();
-        
+
         let body = PasswordAuthRequest {
             email: params.email,
             password: params.password,
@@ -488,31 +488,43 @@ impl StytchClient {
         Err(Error::Unauthorized("invalid access token".to_string()))
     }
 
-    pub async fn authorize_start(&self, params: &StytchAuthorizeStartRequest) -> Result<StytchAuthorizeStartResponse> {
+    pub async fn authorize_start(
+        &self,
+        params: &StytchAuthorizeStartRequest,
+    ) -> Result<StytchAuthorizeStartResponse> {
         self.http
             .send(Method::POST, "idp/oauth/authorize/start", Some(params))
             .await
             .map_err(|err| map_stytch_error(err, "failed to start OAuth authorization"))
     }
 
-    pub async fn authorize(&self, params: &StytchAuthorizeRequest) -> Result<StytchAuthorizeResponse> {
+    pub async fn authorize(
+        &self,
+        params: &StytchAuthorizeRequest,
+    ) -> Result<StytchAuthorizeResponse> {
         self.http
             .send(Method::POST, "idp/oauth/authorize", Some(params))
             .await
             .map_err(|err| map_stytch_error(err, "failed to complete OAuth authorization"))
     }
 
-    pub async fn token_exchange(&self, request: &StytchTokenExchangeRequest) -> Result<StytchTokenResponse> {
+    pub async fn token_exchange(
+        &self,
+        request: &StytchTokenExchangeRequest,
+    ) -> Result<StytchTokenResponse> {
         // Note: Token exchange happens on the project-specific endpoint
         let project_domain = self.project_domain.as_ref().ok_or_else(|| {
             Error::Message("project_domain not configured for OAuth token exchange".to_string())
         })?;
-        
+
         let project_base = format!("https://{}/v1/", project_domain);
-        
-        let project_http = HttpClient::from_base_url(&project_base, Some((self.project_id.clone(), self.secret.clone())))
-            .map_err(|err| Error::Message(err.to_string()))?;
-        
+
+        let project_http = HttpClient::from_base_url(
+            &project_base,
+            Some((self.project_id.clone(), self.secret.clone())),
+        )
+        .map_err(|err| Error::Message(err.to_string()))?;
+
         project_http
             .send(Method::POST, "oauth2/token", Some(request))
             .await
@@ -595,10 +607,10 @@ pub struct BasicResponse {
 fn map_stytch_error(err: MiddlewareError, context: &'static str) -> Error {
     let status = extract_status(&err);
     tracing::error!(error = %err, ?status, context, "stytch request failed");
-    
+
     // Try to extract more detailed error information
     let error_details = format!("{}: {} (status: {:?})", context, err, status);
-    
+
     match status {
         Some(StatusCode::UNAUTHORIZED) => {
             Error::Unauthorized("unauthorized credentials".to_string())

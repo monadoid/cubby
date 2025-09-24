@@ -1,9 +1,9 @@
-use wiremock::{Mock, MockServer, ResponseTemplate};
-use jsonwebtoken::{EncodingKey, Header};
 use chrono::{Duration, Utc};
+use jsonwebtoken::{EncodingKey, Header};
+use serde::Serialize;
 use serde_json::{json, Value};
 use wiremock::matchers::{method, path};
-use serde::Serialize;
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const PROJECT_ID: &str = "project-test";
 const PRIVATE_KEY_PEM: &str = "-----BEGIN RSA PRIVATE KEY-----
@@ -118,7 +118,7 @@ impl StytchMockServer {
             .respond_with(ResponseTemplate::new(200).set_body_json(jwks_body.clone()))
             .mount(&self.server)
             .await;
-        
+
         Mock::given(method("GET"))
             .and(path(JWKS_PATH))
             .respond_with(ResponseTemplate::new(200).set_body_json(jwks_body))
@@ -134,7 +134,7 @@ impl StytchMockServer {
                 let db_user_id = body["trusted_metadata"]["user_id"]
                     .as_str()
                     .unwrap_or(STYTCH_USER_ID);
-                
+
                 let header = Header {
                     kid: Some("test-key".to_string()),
                     ..Header::new(jsonwebtoken::Algorithm::RS256)
@@ -154,7 +154,7 @@ impl StytchMockServer {
                     &EncodingKey::from_rsa_pem(PRIVATE_KEY_PEM.as_bytes()).expect("valid key"),
                 )
                 .expect("token to be encoded");
-                
+
                 let response = json!({
                     "user_id": STYTCH_USER_ID,
                     "session_jwt": session_jwt,
@@ -163,7 +163,7 @@ impl StytchMockServer {
                         "expires_at": (Utc::now() + Duration::minutes(60)).to_rfc3339()
                     }
                 });
-                
+
                 ResponseTemplate::new(200)
                     .insert_header("content-type", "application/json")
                     .set_body_string(response.to_string())
@@ -178,7 +178,7 @@ impl StytchMockServer {
                 let db_user_id = body["trusted_metadata"]["user_id"]
                     .as_str()
                     .unwrap_or(STYTCH_USER_ID);
-                
+
                 let header = Header {
                     kid: Some("test-key".to_string()),
                     ..Header::new(jsonwebtoken::Algorithm::RS256)
@@ -198,7 +198,7 @@ impl StytchMockServer {
                     &EncodingKey::from_rsa_pem(PRIVATE_KEY_PEM.as_bytes()).expect("valid key"),
                 )
                 .expect("token to be encoded");
-                
+
                 let response = json!({
                     "user_id": STYTCH_USER_ID,
                     "session_jwt": login_jwt,
@@ -207,7 +207,7 @@ impl StytchMockServer {
                         "expires_at": (Utc::now() + Duration::minutes(60)).to_rfc3339()
                     }
                 });
-                
+
                 ResponseTemplate::new(200)
                     .insert_header("content-type", "application/json")
                     .set_body_string(response.to_string())
