@@ -1,0 +1,18 @@
+meta {
+  name: MCP Status
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{base_url}}/mcp-status
+  body: none
+}
+
+headers {
+  Accept: application/json
+}
+
+docs {
+  Basic health check for the MCP service.
+}

@@ -42,6 +42,7 @@ sha2 = { version = "0.10" }
 picky = { version = "7.0.0-rc.17" }
 urlencoding = { version = "2.1" }
 turbomcp-dpop = "=1.1.0-exp.5"
+rmcp = { version = "0.6.4", features = ["transport-streamable-http-server"] }
 
 [[bin]]
 name = "cubby-cli"
