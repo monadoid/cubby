@@ -13,7 +13,7 @@ test:
 
 # Run development servers
 dev-api:
-    cd apps/cubby-api && cargo loco start
+    cd apps/cubby-api && exec cargo loco start
 
 dev-worker:
     cd apps/exampleco_website && pnpm dev
