@@ -1,8 +1,8 @@
 /**
- * Constructs an authorization URL for an upstream service.
+ * Constructs an authorization URL for Stytch OAuth.
  *
  * @param {Object} options
- * @param {string} options.upstream_url - The base URL of the upstream service.
+ * @param {string} options.upstream_url - The base URL of the Stytch OAuth service.
  * @param {string} options.client_id - The client ID of the application.
  * @param {string} options.redirect_uri - The redirect URI of the application.
  * @param {string} [options.state] - The state parameter.
@@ -15,24 +15,27 @@ export function getUpstreamAuthorizeUrl({
 	scope,
 	redirect_uri,
 	state,
+	response_type = "code",
 }: {
 	upstream_url: string;
 	client_id: string;
 	scope: string;
 	redirect_uri: string;
 	state?: string;
+	response_type?: string;
 }) {
 	const upstream = new URL(upstream_url);
 	upstream.searchParams.set("client_id", client_id);
 	upstream.searchParams.set("redirect_uri", redirect_uri);
 	upstream.searchParams.set("scope", scope);
 	if (state) upstream.searchParams.set("state", state);
-	upstream.searchParams.set("response_type", "code");
+	upstream.searchParams.set("response_type", response_type);
 	return upstream.href;
 }
 
 /**
  * Fetches an authorization token from an upstream service.
+ * Note: This function is kept for compatibility but not used in Stytch flow.
  *
  * @param {Object} options
  * @param {string} options.client_id - The client ID of the application.
@@ -79,11 +82,11 @@ export async function fetchUpstreamAuthToken({
 	return [accessToken, null];
 }
 
-// Context from the auth process, encrypted & stored in the auth token
+// Context from the Stytch auth process, encrypted & stored in the auth token
 // and provided to the DurableMCP as this.props
 export type Props = {
-	login: string;
-	name: string;
-	email: string;
-	accessToken: string;
+	login: string; // user_id from Stytch
+	name: string; // user name from Stytch
+	email: string; // user email from Stytch
+	accessToken: string; // session_token from Stytch
 };

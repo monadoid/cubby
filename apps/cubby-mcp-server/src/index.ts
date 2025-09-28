@@ -1,9 +1,8 @@
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { McpAgent } from "agents/mcp";
-import { Octokit } from "octokit";
 import { z } from "zod";
-import { GitHubHandler } from "./github-handler";
+import { StytchHandler } from "./stytch-handler";
 
 // Context from the auth process, encrypted & stored in the auth token
 // and provided to the DurableMCP as this.props
@@ -14,14 +13,14 @@ type Props = {
 	accessToken: string;
 };
 
-const ALLOWED_USERNAMES = new Set<string>([
-	// Add GitHub usernames of users who should have access to the image generation tool
-	// For example: 'yourusername', 'coworkerusername'
+const ALLOWED_USER_IDS = new Set<string>([
+	// Add Stytch user IDs of users who should have access to the image generation tool
+	// For example: 'user-test-11111111-1111-1111-1111-111111111111'
 ]);
 
 export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 	server = new McpServer({
-		name: "Github OAuth Proxy Demo",
+		name: "Stytch OAuth Proxy Demo",
 		version: "1.0.0",
 	});
 
@@ -36,17 +35,20 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			}),
 		);
 
-		// Use the upstream access token to facilitate tools
+		// Use the Stytch session to get user info
 		this.server.tool(
-			"userInfoOctokit",
-			"Get user info from GitHub, via Octokit",
+			"userInfoStytch",
+			"Get user info from Stytch session",
 			{},
 			async () => {
-				const octokit = new Octokit({ auth: this.props!.accessToken });
 				return {
 					content: [
 						{
-							text: JSON.stringify(await octokit.rest.users.getAuthenticated()),
+							text: JSON.stringify({
+								user_id: this.props!.login,
+								name: this.props!.name,
+								email: this.props!.email,
+							}),
 							type: "text",
 						},
 					],
@@ -54,9 +56,9 @@ export class MyMCP extends McpAgent<Env, Record<string, never>, Props> {
 			},
 		);
 
-		// Dynamically add tools based on the user's login. In this case, I want to limit
+		// Dynamically add tools based on the user's ID. In this case, I want to limit
 		// access to my Image Generation tool to just me
-		if (ALLOWED_USERNAMES.has(this.props!.login)) {
+		if (ALLOWED_USER_IDS.has(this.props!.login)) {
 			this.server.tool(
 				"generateImage",
 				"Generate an image using the `flux-1-schnell` model. Works best with 8 steps.",
@@ -97,6 +99,6 @@ export default new OAuthProvider({
 	},
 	authorizeEndpoint: "/authorize",
 	clientRegistrationEndpoint: "/register",
-	defaultHandler: GitHubHandler as any,
+	defaultHandler: StytchHandler as any,
 	tokenEndpoint: "/token",
 });
