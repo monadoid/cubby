@@ -1,8 +1,15 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
+use cliclack::{input, intro, outro};
 
 mod bootstrap;
 mod service_manager;
+
+// Include generated OpenAPI client
+#[allow(dead_code, unused_imports, clippy::all)]
+mod generated_api {
+    include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
+}
 
 #[derive(Parser)]
 #[command(name = "cubby")]
@@ -39,6 +46,52 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_start() -> Result<()> {
+    intro("🚀 Cubby Setup")?;
+
+    // Get user credentials for account creation
+    let email: String = input("What's your email address?")
+        .placeholder("user@example.com")
+        .validate(|input: &String| {
+            if input.is_empty() {
+                Err("Please enter an email address.")
+            } else if !input.contains('@') {
+                Err("Please enter a valid email address.")
+            } else {
+                Ok(())
+            }
+        })
+        .interact()?;
+
+    let password: String = input("Create a password:")
+        .placeholder("Enter a secure password")
+        .validate(|input: &String| {
+            if input.is_empty() {
+                Err("Please enter a password.")
+            } else if input.len() < 8 {
+                Err("Password must be at least 8 characters long.")
+            } else {
+                Ok(())
+            }
+        })
+        .interact()?;
+
+    // Create account using generated API client
+    let client = generated_api::Client::new("http://localhost:8787");
+    
+    println!("Creating your account...");
+    match client.post_sign_up(&generated_api::types::PostSignUpBody {
+        email: email.clone(),
+        password,
+    }).await {
+        Ok(response) => {
+            println!("✅ Account created successfully!");
+            println!("Response: {:?}", response);
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to create account: {}", e));
+        }
+    }
+
     // 1) Ensure external dependencies are available
     println!("Ensuring dependencies are available...");
     let bins = bootstrap::ensure_binaries()?;
@@ -53,7 +106,7 @@ async fn handle_start() -> Result<()> {
     // 3) Wait for localhost:3030 to accept TCP connections
     wait_for_tcp("127.0.0.1:3030", 30).await?;
 
-    println!("Services started successfully");
+    outro("🎉 Setup complete! Your services are running.")?;
     Ok(())
 }
 

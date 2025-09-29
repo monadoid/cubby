@@ -102,6 +102,7 @@ app.get(
   '/openapi',
   openAPIRouteHandler(app, {
     documentation: {
+      openapi: '3.0.0',
       info: {
         title: 'Cubby API',
         version: '1.0.0',
