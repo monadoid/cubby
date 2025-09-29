@@ -2,7 +2,6 @@ use service_manager::*;
 use std::{ffi::OsString, path::PathBuf};
 
 pub const SERVICE_LABEL_SCREENPIPE: &str = "com.example.cubby.screenpipe";
-pub const SERVICE_LABEL_CLOUDFLARED: &str = "com.example.cubby.cloudflared";
 
 // Re-export types for use in main.rs
 pub use service_manager::{ServiceLabel, ServiceLevel, ServiceStatus};
@@ -23,7 +22,11 @@ impl Service {
         Ok(m)
     }
 
-    pub fn install_and_start(&self, program: PathBuf, args: Vec<OsString>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn install_and_start(
+        &self,
+        program: PathBuf,
+        args: Vec<OsString>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let m = self.manager()?;
         m.install(ServiceInstallCtx {
             label: self.label.clone(),
@@ -36,47 +39,63 @@ impl Service {
             autostart: true,
             disable_restart_on_failure: false,
         })?;
-        m.start(ServiceStartCtx { label: self.label.clone() })?;
+        m.start(ServiceStartCtx {
+            label: self.label.clone(),
+        })?;
         Ok(())
     }
 
     pub fn uninstall(&self) -> Result<(), Box<dyn std::error::Error>> {
         let m = self.manager()?;
-        let _ = m.stop(ServiceStopCtx { label: self.label.clone() });
-        m.uninstall(ServiceUninstallCtx { label: self.label.clone() })?;
+        let _ = m.stop(ServiceStopCtx {
+            label: self.label.clone(),
+        });
+        m.uninstall(ServiceUninstallCtx {
+            label: self.label.clone(),
+        })?;
         Ok(())
     }
 
     pub fn restart(&self) -> Result<(), Box<dyn std::error::Error>> {
         let m = self.manager()?;
-        let _ = m.stop(ServiceStopCtx { label: self.label.clone() });
-        m.start(ServiceStartCtx { label: self.label.clone() })?;
+        let _ = m.stop(ServiceStopCtx {
+            label: self.label.clone(),
+        });
+        m.start(ServiceStartCtx {
+            label: self.label.clone(),
+        })?;
         Ok(())
     }
 
     pub fn status(&self) -> Result<ServiceStatus, Box<dyn std::error::Error>> {
         let m = self.manager()?;
-        m.status(ServiceStatusCtx { label: self.label.clone() }).map_err(Into::into)
+        m.status(ServiceStatusCtx {
+            label: self.label.clone(),
+        })
+        .map_err(Into::into)
     }
 }
 
-pub fn install_both(screenpipe: PathBuf, cloudflared: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+pub fn install_both(
+    screenpipe: PathBuf,
+    cloudflared: PathBuf,
+    tunnel_token: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
-    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse()?;
     let svc_screen = Service::new(label_screen, ServiceLevel::User);
-    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
 
     // Install and start screenpipe (listening on 127.0.0.1:3030)
     svc_screen.install_and_start(screenpipe, vec![])?;
 
-    // Install and start cloudflared quick tunnel to localhost:3030
-    let args = vec![
-        OsString::from("tunnel"),
-        OsString::from("--no-autoupdate"),
-        OsString::from("--url"), 
-        OsString::from("http://127.0.0.1:3030"),
-    ];
-    svc_cloud.install_and_start(cloudflared, args)?;
+    // Install cloudflared service using its native service install command
+    let output = std::process::Command::new(cloudflared)
+        .args(&["service", "install", tunnel_token])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to install cloudflared service: {}", stderr).into());
+    }
 
     Ok(())
 }
@@ -92,20 +111,30 @@ impl DualServiceStatus {
     }
 }
 
-pub fn status_both() -> DualServiceStatus {
+pub fn status_both(cloudflared_path: Option<PathBuf>) -> DualServiceStatus {
     let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse().unwrap();
-    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse().unwrap();
     let svc_screen = Service::new(label_screen, ServiceLevel::User);
-    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
 
     let screenpipe_running = matches!(
-        svc_screen.status(), 
+        svc_screen.status(),
         Ok(service_manager::ServiceStatus::Running)
     );
-    let cloudflared_running = matches!(
-        svc_cloud.status(), 
-        Ok(service_manager::ServiceStatus::Running)
-    );
+
+    // Check cloudflared service status using its native command
+    let cloudflared_running = if let Some(cloudflared) = cloudflared_path {
+        std::process::Command::new(cloudflared)
+            .args(&["service", "status"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    } else {
+        // Try to find cloudflared in PATH
+        std::process::Command::new("cloudflared")
+            .args(&["service", "status"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    };
 
     DualServiceStatus {
         screenpipe_running,
@@ -113,33 +142,49 @@ pub fn status_both() -> DualServiceStatus {
     }
 }
 
-pub fn restart_both() -> Result<(), Box<dyn std::error::Error>> {
+pub fn restart_both(cloudflared_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
-    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse()?;
     let svc_screen = Service::new(label_screen, ServiceLevel::User);
-    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
 
-    // Restart both services
+    // Restart screenpipe service
     let _ = svc_screen.restart();
-    let _ = svc_cloud.restart();
+
+    // Restart cloudflared service using its native command
+    if let Some(cloudflared) = cloudflared_path {
+        let _ = std::process::Command::new(cloudflared)
+            .args(&["service", "restart"])
+            .output();
+    } else {
+        // Try to find cloudflared in PATH
+        let _ = std::process::Command::new("cloudflared")
+            .args(&["service", "restart"])
+            .output();
+    }
 
     Ok(())
 }
 
-pub fn uninstall_both() -> Result<(), Box<dyn std::error::Error>> {
+pub fn uninstall_both(cloudflared_path: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
-    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse()?;
     let svc_screen = Service::new(label_screen, ServiceLevel::User);
-    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
 
-    // Uninstall both services (ignore errors if services don't exist)
+    // Uninstall screenpipe service (ignore errors if service doesn't exist)
     let _ = svc_screen.uninstall();
-    let _ = svc_cloud.uninstall();
+
+    // Uninstall cloudflared service using its native command
+    if let Some(cloudflared) = cloudflared_path {
+        let _ = std::process::Command::new(cloudflared)
+            .args(&["service", "uninstall"])
+            .output();
+    } else {
+        // Try to find cloudflared in PATH
+        let _ = std::process::Command::new("cloudflared")
+            .args(&["service", "uninstall"])
+            .output();
+    }
 
     Ok(())
 }
-
-
 
 #[cfg(test)]
 mod integration_tests {
@@ -152,13 +197,9 @@ mod integration_tests {
 
     const SERVER_URL: &str = "http://127.0.0.1:3030";
 
-    fn get_services() -> (Service, Service) {
+    fn get_services() -> Service {
         let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse().unwrap();
-        let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse().unwrap();
-        (
-            Service::new(label_screen, ServiceLevel::User),
-            Service::new(label_cloud, ServiceLevel::User)
-        )
+        Service::new(label_screen, ServiceLevel::User)
     }
 
     #[tokio::test]
@@ -168,12 +209,15 @@ mod integration_tests {
             .arg("--help")
             .assert()
             .success()
-            .stdout(predicate::str::contains("Give your computer MCP superpowers"));
+            .stdout(predicate::str::contains(
+                "Give your computer MCP superpowers",
+            ));
     }
 
     #[tokio::test]
     async fn test_cli_version() {
-        Command::cargo_bin("cubby").unwrap()
+        Command::cargo_bin("cubby")
+            .unwrap()
             .arg("--version")
             .assert()
             .success()
@@ -203,7 +247,8 @@ mod integration_tests {
             .stdout(predicate::str::contains("Overall status: Running"));
 
         // Test server is actually responding on port 3030
-        tokio::time::timeout(Duration::from_secs(30), test_server_health()).await
+        tokio::time::timeout(Duration::from_secs(30), test_server_health())
+            .await
             .expect("Server health check timed out")
             .expect("Server should be healthy");
 
@@ -237,7 +282,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    #[serial] 
+    #[serial]
     async fn test_direct_service_start_and_health() {
         cleanup_service().await;
 
@@ -288,7 +333,7 @@ mod integration_tests {
 
     async fn test_server_health() -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
-        
+
         // Try to connect to the MCP server
         let response = client
             .get(SERVER_URL)
@@ -310,9 +355,9 @@ mod integration_tests {
 
     async fn cleanup_service() {
         // Use our service manager to clean up both services
-        let _ = uninstall_both();
+        let _ = uninstall_both(None);
 
-        // Kill any processes using port 3030 
+        // Kill any processes using port 3030
         let _ = Command::new("bash")
             .args(&["-c", "lsof -ti:3030 | xargs kill -9 2>/dev/null || true"])
             .output();

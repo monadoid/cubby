@@ -1,14 +1,17 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use cliclack::{input, intro, outro};
+use serde::{Deserialize, Serialize};
 
 mod bootstrap;
+mod cubby_client;
 mod service_manager;
 
-// Include generated OpenAPI client
-#[allow(dead_code, unused_imports, clippy::all)]
-mod generated_api {
-    include!(concat!(env!("OUT_DIR"), "/codegen.rs"));
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct Config {
+    device_id: String,
+    email: Option<String>,
+    tunnel_token: Option<String>,
 }
 
 #[derive(Parser)]
@@ -48,6 +51,16 @@ async fn main() -> Result<()> {
 async fn handle_start() -> Result<()> {
     intro("🚀 Cubby Setup")?;
 
+    // Load or generate device ID
+    let mut config: Config = confy::load("cubby", None).unwrap_or_default();
+    if config.device_id.is_empty() {
+        config.device_id = nanoid::nanoid!();
+        confy::store("cubby", None, &config)?;
+        println!("Generated new device ID: {}", config.device_id);
+    } else {
+        println!("Using existing device ID: {}", config.device_id);
+    }
+
     // Get user credentials for account creation
     let email: String = input("What's your email address?")
         .placeholder("user@example.com")
@@ -75,20 +88,49 @@ async fn handle_start() -> Result<()> {
         })
         .interact()?;
 
-    // Create account using generated API client
-    let client = generated_api::Client::new("http://localhost:8787");
-    
+    // Create account using our custom client
+    let client = cubby_client::CubbyClient::new("http://localhost:8787");
+
     println!("Creating your account...");
-    match client.post_sign_up(&generated_api::types::PostSignUpBody {
-        email: email.clone(),
-        password,
-    }).await {
+    match client
+        .sign_up(&cubby_client::SignUpRequest {
+            email: email.clone(),
+            password,
+        })
+        .await
+    {
         Ok(response) => {
             println!("✅ Account created successfully!");
             println!("Response: {:?}", response);
+
+            // Store email in config
+            config.email = Some(email.clone());
+            confy::store("cubby", None, &config)?;
         }
         Err(e) => {
             return Err(anyhow::anyhow!("Failed to create account: {}", e));
+        }
+    }
+
+    println!("Enrolling device...");
+    match client
+        .enroll_device(&cubby_client::DeviceEnrollRequest {
+            device_id: config.device_id.clone(),
+        })
+        .await
+    {
+        Ok(response) => {
+            println!("✅ Device enrolled successfully!");
+            println!("Device ID: {}", response.device_id);
+            println!("Hostname: {}", response.hostname);
+            println!("Tunnel Token: {}", response.tunnel_token);
+
+            // Store tunnel token in config
+            config.tunnel_token = Some(response.tunnel_token.clone());
+            confy::store("cubby", None, &config)?;
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("Failed to enroll device: {}", e));
         }
     }
 
@@ -98,8 +140,16 @@ async fn handle_start() -> Result<()> {
 
     // 2) Install/start both services
     println!("Installing and starting services...");
-    service_manager::install_both(bins.screenpipe.clone(), bins.cloudflared.clone())
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let tunnel_token = config
+        .tunnel_token
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("Tunnel token not found in config"))?;
+    service_manager::install_both(
+        bins.screenpipe.clone(),
+        bins.cloudflared.clone(),
+        tunnel_token,
+    )
+    .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     println!("Services created, waiting for screenpipe on http://127.0.0.1:3030 ...");
 
@@ -111,11 +161,26 @@ async fn handle_start() -> Result<()> {
 }
 
 fn handle_status() -> Result<()> {
-    let status = service_manager::status_both();
-    
-    println!("Screenpipe: {}", if status.screenpipe_running { "Running" } else { "Not running" });
-    println!("Cloudflared: {}", if status.cloudflared_running { "Running" } else { "Not running" });
-    
+    let bins = bootstrap::ensure_binaries()?;
+    let status = service_manager::status_both(Some(bins.cloudflared));
+
+    println!(
+        "Screenpipe: {}",
+        if status.screenpipe_running {
+            "Running"
+        } else {
+            "Not running"
+        }
+    );
+    println!(
+        "Cloudflared: {}",
+        if status.cloudflared_running {
+            "Running"
+        } else {
+            "Not running"
+        }
+    );
+
     if status.both_running() {
         println!("Overall status: Running");
     } else {
@@ -125,37 +190,41 @@ fn handle_status() -> Result<()> {
 }
 
 fn handle_restart() -> Result<()> {
-    service_manager::restart_both().map_err(|e| anyhow::anyhow!("{}", e))?;
+    let bins = bootstrap::ensure_binaries()?;
+    service_manager::restart_both(Some(bins.cloudflared)).map_err(|e| anyhow::anyhow!("{}", e))?;
     println!("Services restarted successfully");
     Ok(())
 }
 
 fn handle_uninstall() -> Result<()> {
-    service_manager::uninstall_both().map_err(|e| anyhow::anyhow!("{}", e))?;
+    let bins = bootstrap::ensure_binaries()?;
+    service_manager::uninstall_both(Some(bins.cloudflared))
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
     println!("Services uninstalled successfully");
     Ok(())
 }
 
 async fn wait_for_tcp(addr: &str, timeout_s: u64) -> Result<()> {
-    use tokio::{net::TcpStream, time::{sleep, Duration, Instant}};
+    use tokio::{
+        net::TcpStream,
+        time::{Duration, Instant, sleep},
+    };
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(timeout_s) {
-        if TcpStream::connect(addr).await.is_ok() { 
-            return Ok(()); 
+        if TcpStream::connect(addr).await.is_ok() {
+            return Ok(());
         }
         sleep(Duration::from_millis(300)).await;
     }
     Err(anyhow::anyhow!("Timeout waiting for {}", addr))
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
-    use ::service_manager::{ServiceLabel, ServiceLevel};
     use crate::service_manager::Service;
+    use ::service_manager::{ServiceLabel, ServiceLevel};
+    use clap::Parser;
 
     #[derive(clap::Parser)]
     #[command(name = "cubby")]
@@ -214,10 +283,9 @@ mod tests {
     #[test]
     fn test_status_both_function() {
         // This should not crash even if services aren't installed
-        let status = service_manager::status_both();
+        let status = service_manager::status_both(None);
         // We can't assume the services are running, but the function should work
         assert!(status.screenpipe_running == true || status.screenpipe_running == false);
         assert!(status.cloudflared_running == true || status.cloudflared_running == false);
     }
 }
-

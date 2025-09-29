@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { describeRoute, resolver, validator, openAPIRouteHandler } from 'hono-openapi'
 import { z } from 'zod'
+import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from "./clients/cloudflare";
 
 type Env = {
   STYTCH_PROJECT_ID: string
   STYTCH_SECRET: string
+  CF_API_TOKEN: string
+  CF_ACCOUNT_ID: string
+  CF_ZONE_ID: string
 }
 
 const signUpRequestSchema = z.object({
@@ -27,6 +31,17 @@ const stytchSuccessResponseSchema = z.object({
 const stytchErrorResponseSchema = z.object({
   error_message: z.string(),
   error_type: z.string(),
+})
+
+// Device enrollment schemas
+const deviceEnrollRequestSchema = z.object({
+  device_id: z.string().min(1),
+})
+
+const deviceEnrollResponseSchema = z.object({
+  device_id: z.string(),
+  hostname: z.string(),
+  tunnel_token: z.string()
 })
 
 const app = new Hono<{ Bindings: Env }>()
@@ -94,6 +109,68 @@ app.post(
     } catch (error) {
       console.error('Sign-up error:', error)
       return c.json({ error: 'Internal server error' }, 500)
+    }
+  }
+)
+
+app.post(
+  '/devices/enroll',
+  describeRoute({
+    description: 'Enroll a new device and create Cloudflare tunnel',
+    responses: {
+      200: {
+        description: 'Device enrolled successfully',
+        content: {
+          'application/json': { schema: resolver(deviceEnrollResponseSchema) },
+        },
+      },
+      400: {
+        description: 'Bad request - invalid device information',
+      },
+      500: {
+        description: 'Internal server error',
+      },
+    },
+    tags: ['Devices'],
+  }),
+  validator('json', deviceEnrollRequestSchema),
+  async (c) => {
+    const { device_id} = c.req.valid('json')
+
+    try {
+      // Initialize Cloudflare client
+      const cf = new CloudflareClient({
+        apiToken: c.env.CF_API_TOKEN,
+        accountId: c.env.CF_ACCOUNT_ID,
+        zoneId: c.env.CF_ZONE_ID,
+      })
+
+      const hostname = `${device_id}.cubby.sh`
+
+      // 1) Create tunnel
+      const created = await cf.createTunnel({
+        name: `cubby-${device_id}`,
+        config_src: 'cloudflare',
+      })
+      const tunnel_id = created.id
+
+      // 2) PUT configuration (ingress rules)
+      await cf.putTunnelConfig(tunnel_id, buildIngressForHost(hostname, 'http://localhost:3030'))
+
+      // 3) Create DNS CNAME <device-id>.cubby.sh -> <tunnel_uuid>.cfargotunnel.com
+      await cf.createCnameRecord(buildCnameForTunnel(hostname, tunnel_id))
+
+      // 4) Token (if not returned at creation)
+      const tunnel_token = created.token ?? (await cf.getTunnelToken(tunnel_id))
+
+      return c.json({
+        device_id,
+        hostname,
+        tunnel_token
+      }, 200)
+    } catch (error) {
+      console.error('Device enrollment error:', error)
+      return c.json({ error: 'Failed to enroll device' }, 500)
     }
   }
 )
