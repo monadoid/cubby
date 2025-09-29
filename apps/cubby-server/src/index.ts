@@ -135,7 +135,7 @@ app.post(
   }),
   validator('json', deviceEnrollRequestSchema),
   async (c) => {
-    const { device_id} = c.req.valid('json')
+    const { device_id } = c.req.valid('json')
 
     try {
       // Initialize Cloudflare client
@@ -145,23 +145,21 @@ app.post(
         zoneId: c.env.CF_ZONE_ID,
       })
 
+      const name = `cubby-${device_id}`
       const hostname = `${device_id}.cubby.sh`
 
-      // 1) Create tunnel
-      const created = await cf.createTunnel({
-        name: `cubby-${device_id}`,
-        config_src: 'cloudflare',
-      })
-      const tunnel_id = created.id
+      // 1) Create or reuse tunnel (idempotent)
+      const createdOrExisting = await cf.createOrGetTunnel(name)
+      const tunnel_id = createdOrExisting.id
 
-      // 2) PUT configuration (ingress rules)
+      // 2) Ensure config is correct (PUT is idempotent)
       await cf.putTunnelConfig(tunnel_id, buildIngressForHost(hostname, 'http://localhost:3030'))
 
-      // 3) Create DNS CNAME <device-id>.cubby.sh -> <tunnel_uuid>.cfargotunnel.com
-      await cf.createCnameRecord(buildCnameForTunnel(hostname, tunnel_id))
+      // 3) Ensure DNS points to the tunnel (idempotent)
+      await cf.upsertCnameRecord(buildCnameForTunnel(hostname, tunnel_id))
 
-      // 4) Token (if not returned at creation)
-      const tunnel_token = created.token ?? (await cf.getTunnelToken(tunnel_id))
+      // 4) Ensure we have a token (create may not return it)
+      const tunnel_token = createdOrExisting.token ?? (await cf.getTunnelToken(tunnel_id))
 
       return c.json({
         device_id,

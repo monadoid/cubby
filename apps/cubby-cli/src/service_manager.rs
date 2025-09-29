@@ -1,5 +1,9 @@
+use cliclack::confirm;
 use service_manager::*;
-use std::{ffi::OsString, path::PathBuf};
+use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::{env, ffi::OsString, thread};
 
 pub const SERVICE_LABEL_SCREENPIPE: &str = "com.example.cubby.screenpipe";
 
@@ -76,30 +80,6 @@ impl Service {
     }
 }
 
-pub fn install_both(
-    screenpipe: PathBuf,
-    cloudflared: PathBuf,
-    tunnel_token: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
-    let svc_screen = Service::new(label_screen, ServiceLevel::User);
-
-    // Install and start screenpipe (listening on 127.0.0.1:3030)
-    svc_screen.install_and_start(screenpipe, vec![])?;
-
-    // Install cloudflared service using its native service install command
-    let output = std::process::Command::new(cloudflared)
-        .args(&["service", "install", tunnel_token])
-        .output()?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to install cloudflared service: {}", stderr).into());
-    }
-
-    Ok(())
-}
-
 pub struct DualServiceStatus {
     pub screenpipe_running: bool,
     pub cloudflared_running: bool,
@@ -115,21 +95,18 @@ pub fn status_both(cloudflared_path: Option<PathBuf>) -> DualServiceStatus {
     let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse().unwrap();
     let svc_screen = Service::new(label_screen, ServiceLevel::User);
 
-    let screenpipe_running = matches!(
-        svc_screen.status(),
-        Ok(service_manager::ServiceStatus::Running)
-    );
+    let screenpipe_running = matches!(svc_screen.status(), Ok(ServiceStatus::Running));
 
     // Check cloudflared service status using its native command
     let cloudflared_running = if let Some(cloudflared) = cloudflared_path {
-        std::process::Command::new(cloudflared)
+        Command::new(cloudflared)
             .args(&["service", "status"])
             .output()
             .map(|output| output.status.success())
             .unwrap_or(false)
     } else {
         // Try to find cloudflared in PATH
-        std::process::Command::new("cloudflared")
+        Command::new("cloudflared")
             .args(&["service", "status"])
             .output()
             .map(|output| output.status.success())
@@ -151,12 +128,12 @@ pub fn restart_both(cloudflared_path: Option<PathBuf>) -> Result<(), Box<dyn std
 
     // Restart cloudflared service using its native command
     if let Some(cloudflared) = cloudflared_path {
-        let _ = std::process::Command::new(cloudflared)
+        let _ = Command::new(cloudflared)
             .args(&["service", "restart"])
             .output();
     } else {
         // Try to find cloudflared in PATH
-        let _ = std::process::Command::new("cloudflared")
+        let _ = Command::new("cloudflared")
             .args(&["service", "restart"])
             .output();
     }
@@ -173,14 +150,212 @@ pub fn uninstall_both(cloudflared_path: Option<PathBuf>) -> Result<(), Box<dyn s
 
     // Uninstall cloudflared service using its native command
     if let Some(cloudflared) = cloudflared_path {
-        let _ = std::process::Command::new(cloudflared)
+        let _ = Command::new(cloudflared)
             .args(&["service", "uninstall"])
             .output();
     } else {
         // Try to find cloudflared in PATH
-        let _ = std::process::Command::new("cloudflared")
+        let _ = Command::new("cloudflared")
             .args(&["service", "uninstall"])
             .output();
+    }
+
+    Ok(())
+}
+
+pub fn install_both(
+    screenpipe: PathBuf,
+    cloudflared: PathBuf,
+    tunnel_token: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // 1) install/start screenpipe via your ServiceManager
+    let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
+    let svc_screen = Service::new(label_screen, ServiceLevel::User);
+    svc_screen.install_and_start(screenpipe, vec![])?;
+
+    // 2) cloudflared install via its own CLI.
+    if cloudflared_service_installed(&cloudflared)? {
+        println!(
+            "cloudflared service already installed (detected via `service status`). Skipping."
+        );
+        return Ok(());
+    }
+
+    if let Some(existing) = detect_existing_cloudflared_install(&cloudflared)? {
+        println!("cloudflared appears to be already set up: {existing}");
+        let overwrite =
+            confirm("A cloudflared service is already present. Do you want to overwrite it?")
+                .initial_value(false)
+                .interact()
+                .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })?;
+
+        if !overwrite {
+            return Err("cloudflared service already installed; aborting per user choice.".into());
+        }
+
+        uninstall_cloudflared_service(&cloudflared)?;
+    }
+
+    println!(
+        "Executing: {:?} service install <token>",
+        cloudflared.display()
+    );
+    let (code, out, err) = run_and_tee(
+        cloudflared.clone(),
+        &["service", "install", tunnel_token],
+        "cloudflared",
+    )?;
+
+    if code != 0 {
+        return Err(format_cloudflared_install_error(code, &out, &err).into());
+    }
+
+    Ok(())
+}
+
+fn cloudflared_service_installed(
+    cloudflared: &PathBuf,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let status = Command::new(cloudflared)
+        .args(["service", "status"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    Ok(matches!(status, Ok(s) if s.success()))
+}
+
+fn run_and_tee(
+    program: PathBuf,
+    args: &[&str],
+    tag: &str,
+) -> Result<(i32, String, String), Box<dyn std::error::Error>> {
+    let mut child = Command::new(&program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let tag_out = tag.to_owned();
+    let out_handle = thread::spawn(move || {
+        let mut buf = String::new();
+        for line in BufReader::new(stdout).lines() {
+            if let Ok(l) = line {
+                println!("[{tag_out}][stdout] {l}");
+                buf.push_str(&l);
+                buf.push('\n');
+            }
+        }
+        buf
+    });
+
+    let tag_err = tag.to_owned();
+    let err_handle = thread::spawn(move || {
+        let mut buf = String::new();
+        for line in BufReader::new(stderr).lines() {
+            if let Ok(l) = line {
+                eprintln!("[{tag_err}][stderr] {l}");
+                buf.push_str(&l);
+                buf.push('\n');
+            }
+        }
+        buf
+    });
+
+    let status = child.wait()?;
+    let out = out_handle.join().unwrap();
+    let err = err_handle.join().unwrap();
+    let code = status.code().unwrap_or(-1);
+
+    Ok((code, out, err))
+}
+
+#[cfg(target_os = "macos")]
+fn format_cloudflared_install_error(code: i32, out: &str, err: &str) -> String {
+    use std::fs;
+    let tail = |p: &str| fs::read_to_string(p).unwrap_or_default();
+    let out_log = tail("/Library/Logs/com.cloudflare.cloudflared.out.log");
+    let err_log = tail("/Library/Logs/com.cloudflare.cloudflared.err.log");
+
+    format!(
+        "cloudflared service install failed (exit {code})\n\
+         --- stdout ---\n{out}\n\
+         --- stderr ---\n{err}\n\
+         --- /Library/Logs/com.cloudflare.cloudflared.out.log ---\n{out_log}\n\
+         --- /Library/Logs/com.cloudflare.cloudflared.err.log ---\n{err_log}\n"
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn format_cloudflared_install_error(code: i32, out: &str, err: &str) -> String {
+    format!(
+        "cloudflared service install failed (exit {code})\n--- stdout ---\n{out}\n--- stderr ---\n{err}\n"
+    )
+}
+
+fn detect_existing_cloudflared_install(
+    cloudflared: &Path,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    if let Ok(status) = Command::new(cloudflared)
+        .args(["service", "status"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        if status.success() {
+            return Ok(Some(
+                "`cloudflared service status` reports running".to_string(),
+            ));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = env::var_os("HOME") {
+            let launch_agent =
+                Path::new(&home).join("Library/LaunchAgents/com.cloudflare.cloudflared.plist");
+            if launch_agent.exists() {
+                return Ok(Some(format!(
+                    "LaunchAgent plist already exists at {}",
+                    launch_agent.display()
+                )));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn uninstall_cloudflared_service(cloudflared: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Uninstalling existing cloudflared service...");
+    let uninstall = Command::new(cloudflared)
+        .args(["service", "uninstall"])
+        .output()?;
+
+    if !uninstall.status.success() {
+        let uninstall_stdout = String::from_utf8_lossy(&uninstall.stdout);
+        let uninstall_stderr = String::from_utf8_lossy(&uninstall.stderr);
+        return Err(format!(
+            "Failed to uninstall existing cloudflared service\n--- stdout ---\n{uninstall_stdout}\n--- stderr ---\n{uninstall_stderr}\n"
+        )
+        .into());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = env::var_os("HOME") {
+            let launch_agent =
+                Path::new(&home).join("Library/LaunchAgents/com.cloudflare.cloudflared.plist");
+            if launch_agent.exists() {
+                println!(
+                    "cloudflared uninstall reported success but plist still present at {}",
+                    launch_agent.display()
+                );
+            }
+        }
     }
 
     Ok(())

@@ -102,10 +102,52 @@ export const CreateDnsRecordResponseSchema = EnvelopeBase.extend({
 }).passthrough()
 export type CreateDnsRecordResponse = z.infer<typeof CreateDnsRecordResponseSchema>
 
+/** List & Update DNS records (CNAME upsert helpers) */
+const ListDnsRecordsResponseSchema = EnvelopeBase.extend({
+    success: z.literal(true),
+    result: z.array(
+        z.object({
+            id: z.string(),
+            type: z.literal('CNAME'),
+            name: z.string(),
+            content: z.string(),
+            proxied: z.boolean().optional(),
+            ttl: z.number().optional(),
+        }).passthrough()
+    ),
+}).passthrough()
+type ListDnsRecordsResponse = z.infer<typeof ListDnsRecordsResponseSchema>
+
+const UpdateDnsRecordRequestSchema = CreateDnsRecordRequestSchema
+type UpdateDnsRecordRequest = z.infer<typeof UpdateDnsRecordRequestSchema>
+
+const UpdateDnsRecordResponseSchema = EnvelopeBase.extend({
+    success: z.literal(true),
+    result: DnsRecordMinimalSchema,
+}).passthrough()
+type UpdateDnsRecordResponse = z.infer<typeof UpdateDnsRecordResponseSchema>
+
+
+/** -----------------------
+ *  List Tunnels (filter by name)
+ *  GET /accounts/{account_id}/cfd_tunnel?name={name}
+ *  ----------------------*/
+const TunnelItemSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    deleted_at: z.string().nullable().optional(),
+}).passthrough()
+
+const ListTunnelsResponseSchema = EnvelopeBase.extend({
+    success: z.literal(true),
+    result: z.array(TunnelItemSchema),
+}).passthrough()
+type ListTunnelsResponse = z.infer<typeof ListTunnelsResponseSchema>
+
+
 /** -----------------------
  *  Get Tunnel Token
  *  GET /accounts/{account_id}/cfd_tunnel/{tunnel_id}/token
- *  Docs example shows result is the token string.
  *  ----------------------*/
 export const GetTunnelTokenResponseSchema = EnvelopeBase.extend({
     success: z.literal(true),
@@ -137,7 +179,7 @@ export class CloudflareClient {
     /** Helpers */
     private headers(): HeadersInit {
         return {
-            'Authorization': `Bearer ${this.apiToken}`,
+            Authorization: `Bearer ${this.apiToken}`,
             'Content-Type': 'application/json',
         }
     }
@@ -185,6 +227,47 @@ export class CloudflareClient {
         return out.result // { id, token? }
     }
 
+    /** Find a tunnel by exact name (ignoring deleted ones) */
+    async getTunnelByName(name: string) {
+        const out: ListTunnelsResponse = await this.do(
+            `/accounts/${this.accountId}/cfd_tunnel?name=${encodeURIComponent(name)}`,
+            { method: 'GET' },
+            ListTunnelsResponseSchema
+        )
+        // @ts-ignore
+        return out.result.find((t: { deleted_at: any }) => !t.deleted_at)
+    }
+
+    /**
+     * Create or reuse a tunnel by name.
+     * Handles "already exists" (409 / code 1013) by fetching the existing tunnel.
+     */
+    async createOrGetTunnel(name: string) {
+        try {
+            const created = await this.createTunnel({ name, config_src: 'cloudflare' })
+            console.log(`✅ Created new tunnel: ${name} (${created.id})`)
+            return created // { id, token? }
+        } catch (err: any) {
+            const status = err?.status
+            const envelope = err?.envelope as z.infer<typeof EnvelopeBase> | undefined
+            const code1013 = envelope?.errors?.some(e => (e as any)?.code === 1013)
+            const msg = String(err?.message ?? '')
+            const indicatesExists =
+                status === 409 ||
+                code1013 ||
+                msg.includes('already have a tunnel with this name')
+
+            if (!indicatesExists) throw err
+
+            const existing = await this.getTunnelByName(name)
+            if (!existing) throw err // race or soft-deleted; bubble up
+
+            console.log(`🔄 Reusing existing tunnel: ${name} (${existing.id})`)
+            // Token may not be immediately available here; caller can call getTunnelToken
+            return { id: existing.id, token: undefined as string | undefined }
+        }
+    }
+
     /** Put the tunnel configuration (ingress rules). Include a catch-all as needed. */
     async putTunnelConfig(tunnelId: string, req: PutTunnelConfigRequest) {
         const body = PutTunnelConfigRequestSchema.parse(req)
@@ -205,6 +288,47 @@ export class CloudflareClient {
             CreateDnsRecordResponseSchema
         )
         return out.result // { id, name }
+    }
+
+    /** List DNS records by name/type */
+    private async listDnsRecordsByName(name: string, type: 'CNAME') {
+        const out: ListDnsRecordsResponse = await this.do(
+            `/zones/${this.zoneId}/dns_records?type=${type}&name=${encodeURIComponent(name)}`,
+            { method: 'GET' },
+            ListDnsRecordsResponseSchema
+        )
+        return out.result
+    }
+
+    /** Update DNS record by id */
+    private async updateDnsRecord(recordId: string, req: UpdateDnsRecordRequest) {
+        const body = UpdateDnsRecordRequestSchema.parse(req)
+        const out: UpdateDnsRecordResponse = await this.do(
+            `/zones/${this.zoneId}/dns_records/${encodeURIComponent(recordId)}`,
+            { method: 'PUT', body: JSON.stringify(body) },
+            UpdateDnsRecordResponseSchema
+        )
+        return out.result
+    }
+
+    /**
+     * Upsert a CNAME record (create if missing, otherwise update in place).
+     * This makes /devices/enroll idempotent and safe to retry.
+     */
+    async upsertCnameRecord(req: CreateDnsRecordRequest) {
+        try {
+            const result = await this.createCnameRecord(req)
+            console.log(`✅ Created new DNS record: ${req.name} -> ${req.content}`)
+            return result
+        } catch (err: any) {
+            // If creation failed (likely because record exists), try list+update
+            const existing = await this.listDnsRecordsByName(req.name, 'CNAME')
+            if (!existing.length) throw err
+            const record = existing[0]
+            const result = await this.updateDnsRecord(record.id, req)
+            console.log(`🔄 Updated existing DNS record: ${req.name} -> ${req.content}`)
+            return result
+        }
     }
 
     /** Retrieve the tunnel token if it wasn’t returned at creation (or after rotation) */
