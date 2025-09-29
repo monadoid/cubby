@@ -1,4 +1,4 @@
-use cubby::app::App;
+use cubby_api::app::App;
 use loco_rs::cli;
 use migration::Migrator;
 

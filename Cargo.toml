@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "apps/cubby-api",
+  "apps/cubby-cli",
 ]
 resolver = "2"
 

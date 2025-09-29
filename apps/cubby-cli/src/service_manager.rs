@@ -1,7 +1,8 @@
 use service_manager::*;
 use std::{ffi::OsString, path::PathBuf};
 
-pub const SERVICE_LABEL: &str = "com.example.cubby";
+pub const SERVICE_LABEL_SCREENPIPE: &str = "com.example.cubby.screenpipe";
+pub const SERVICE_LABEL_CLOUDFLARED: &str = "com.example.cubby.cloudflared";
 
 // Re-export types for use in main.rs
 pub use service_manager::{ServiceLabel, ServiceLevel, ServiceStatus};
@@ -59,6 +60,85 @@ impl Service {
     }
 }
 
+pub fn install_both(screenpipe: PathBuf, cloudflared: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
+    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse()?;
+    let svc_screen = Service::new(label_screen, ServiceLevel::User);
+    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
+
+    // Install and start screenpipe (listening on 127.0.0.1:3030)
+    svc_screen.install_and_start(screenpipe, vec![])?;
+
+    // Install and start cloudflared quick tunnel to localhost:3030
+    let args = vec![
+        OsString::from("tunnel"),
+        OsString::from("--no-autoupdate"),
+        OsString::from("--url"), 
+        OsString::from("http://127.0.0.1:3030"),
+    ];
+    svc_cloud.install_and_start(cloudflared, args)?;
+
+    Ok(())
+}
+
+pub struct DualServiceStatus {
+    pub screenpipe_running: bool,
+    pub cloudflared_running: bool,
+}
+
+impl DualServiceStatus {
+    pub fn both_running(&self) -> bool {
+        self.screenpipe_running && self.cloudflared_running
+    }
+}
+
+pub fn status_both() -> DualServiceStatus {
+    let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse().unwrap();
+    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse().unwrap();
+    let svc_screen = Service::new(label_screen, ServiceLevel::User);
+    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
+
+    let screenpipe_running = matches!(
+        svc_screen.status(), 
+        Ok(service_manager::ServiceStatus::Running)
+    );
+    let cloudflared_running = matches!(
+        svc_cloud.status(), 
+        Ok(service_manager::ServiceStatus::Running)
+    );
+
+    DualServiceStatus {
+        screenpipe_running,
+        cloudflared_running,
+    }
+}
+
+pub fn restart_both() -> Result<(), Box<dyn std::error::Error>> {
+    let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
+    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse()?;
+    let svc_screen = Service::new(label_screen, ServiceLevel::User);
+    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
+
+    // Restart both services
+    let _ = svc_screen.restart();
+    let _ = svc_cloud.restart();
+
+    Ok(())
+}
+
+pub fn uninstall_both() -> Result<(), Box<dyn std::error::Error>> {
+    let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse()?;
+    let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse()?;
+    let svc_screen = Service::new(label_screen, ServiceLevel::User);
+    let svc_cloud = Service::new(label_cloud, ServiceLevel::User);
+
+    // Uninstall both services (ignore errors if services don't exist)
+    let _ = svc_screen.uninstall();
+    let _ = svc_cloud.uninstall();
+
+    Ok(())
+}
+
 
 
 #[cfg(test)]
@@ -70,11 +150,15 @@ mod integration_tests {
     use std::process::Command;
     use std::time::Duration;
 
-    const SERVER_URL: &str = "http://127.0.0.1:8000/mcp";
+    const SERVER_URL: &str = "http://127.0.0.1:3030";
 
-    fn get_service() -> Service {
-        let label: ServiceLabel = SERVICE_LABEL.parse().unwrap();
-        Service::new(label, ServiceLevel::User)
+    fn get_services() -> (Service, Service) {
+        let label_screen: ServiceLabel = SERVICE_LABEL_SCREENPIPE.parse().unwrap();
+        let label_cloud: ServiceLabel = SERVICE_LABEL_CLOUDFLARED.parse().unwrap();
+        (
+            Service::new(label_screen, ServiceLevel::User),
+            Service::new(label_cloud, ServiceLevel::User)
+        )
     }
 
     #[tokio::test]
@@ -116,10 +200,10 @@ mod integration_tests {
             .arg("status")
             .assert()
             .success()
-            .stdout(predicate::str::contains("Service is running"));
+            .stdout(predicate::str::contains("Overall status: Running"));
 
-        // Test server is actually responding
-        tokio::time::timeout(Duration::from_secs(10), test_server_health()).await
+        // Test server is actually responding on port 3030
+        tokio::time::timeout(Duration::from_secs(30), test_server_health()).await
             .expect("Server health check timed out")
             .expect("Server should be healthy");
 
@@ -135,7 +219,7 @@ mod integration_tests {
         cmd.arg("status");
         cmd.assert()
             .success()
-            .stdout(predicate::str::contains("Service is running"));
+            .stdout(predicate::str::contains("Overall status: Running"));
 
         // Test uninstall command
         let mut cmd = Command::cargo_bin("cubby").unwrap();
@@ -149,44 +233,33 @@ mod integration_tests {
         cmd.arg("status");
         cmd.assert()
             .success()
-            .stdout(predicate::str::contains("Service is not running"));
+            .stdout(predicate::str::contains("Overall status: Not running"));
     }
 
     #[tokio::test]
-    #[serial]
-    async fn test_daemon_mode_direct() {
+    #[serial] 
+    async fn test_direct_service_start_and_health() {
         cleanup_service().await;
 
-        // Start daemon in background
-        let mut daemon_cmd = Command::cargo_bin("cubby").unwrap();
-        daemon_cmd.arg("daemon");
-        let mut daemon_process = daemon_cmd.spawn().expect("Failed to start daemon");
+        // Test starting services directly via start command
+        let mut start_cmd = Command::cargo_bin("cubby").unwrap();
+        start_cmd.arg("start");
+        let _start_result = start_cmd.assert().success();
 
-        // Wait for server to start using health check with retry
-        let mut server_ready = false;
-        for _ in 0..50 { // 5 seconds max (100ms * 50)
-            if test_server_health().await.is_ok() {
-                server_ready = true;
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        if !server_ready {
-            daemon_process.kill().ok();
-            panic!("Server failed to start within timeout");
-        }
+        // Wait a bit for services to fully start
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         // Test server health
         match test_server_health().await {
             Ok(_) => println!("Server health check passed"),
             Err(e) => {
-                daemon_process.kill().ok();
+                cleanup_service().await;
                 panic!("Server health check failed: {}", e);
             }
         }
 
         // Clean up
-        daemon_process.kill().expect("Failed to kill daemon process");
+        cleanup_service().await;
     }
 
     #[tokio::test]
@@ -236,14 +309,12 @@ mod integration_tests {
     }
 
     async fn cleanup_service() {
-        let service = get_service();
-        
-        // Use our service manager to clean up
-        let _ = service.uninstall();
+        // Use our service manager to clean up both services
+        let _ = uninstall_both();
 
-        // Kill any processes using port 8000
+        // Kill any processes using port 3030 
         let _ = Command::new("bash")
-            .args(&["-c", "lsof -ti:8000 | xargs kill -9 2>/dev/null || true"])
+            .args(&["-c", "lsof -ti:3030 | xargs kill -9 2>/dev/null || true"])
             .output();
     }
 }

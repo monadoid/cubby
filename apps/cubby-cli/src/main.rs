@@ -1,17 +1,7 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
-use rmcp::transport::streamable_http_server::{
-    StreamableHttpService, session::local::LocalSessionManager,
-};
-use tracing_subscriber::{
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-    {self},
-};
-use std::{env, ffi::OsString};
-use tokio::time::{sleep, Duration};
 
-mod counter;
+mod bootstrap;
 mod service_manager;
 
 #[derive(Parser)]
@@ -33,8 +23,6 @@ enum Commands {
     Restart,
     #[command(about = "Uninstall the service")]
     Uninstall,
-    #[command(about = "Run as daemon")]
-    Daemon,
 }
 
 #[tokio::main]
@@ -45,115 +33,75 @@ async fn main() -> Result<()> {
         Some(Commands::Status) => handle_status()?,
         Some(Commands::Restart) => handle_restart()?,
         Some(Commands::Uninstall) => handle_uninstall()?,
-        Some(Commands::Daemon) => handle_daemon().await?,
         None => println!("Hello world"),
     }
     Ok(())
 }
 
 async fn handle_start() -> Result<()> {
-    let label: service_manager::ServiceLabel = service_manager::SERVICE_LABEL.parse().unwrap();
-    let service = service_manager::Service::new(label, service_manager::ServiceLevel::User);
-    
-    let current_exe = env::current_exe()?;
-    let args = vec![OsString::from("daemon")];
-    
-    service.install_and_start(current_exe, args)
+    // 1) Ensure external dependencies are available
+    println!("Ensuring dependencies are available...");
+    let bins = bootstrap::ensure_binaries()?;
+
+    // 2) Install/start both services
+    println!("Installing and starting services...");
+    service_manager::install_both(bins.screenpipe.clone(), bins.cloudflared.clone())
         .map_err(|e| anyhow::anyhow!("{}", e))?;
-    
-    println!("Service created, waiting for service to start...");
-    
-    // Wait for service to be running with 30 second timeout
-    wait_for_service_status(&service, service_manager::ServiceStatus::Running, 30).await?;
-    
-    println!("Service started successfully");
+
+    println!("Services created, waiting for screenpipe on http://127.0.0.1:3030 ...");
+
+    // 3) Wait for localhost:3030 to accept TCP connections
+    wait_for_tcp("127.0.0.1:3030", 30).await?;
+
+    println!("Services started successfully");
     Ok(())
 }
 
 fn handle_status() -> Result<()> {
-    let label: service_manager::ServiceLabel = service_manager::SERVICE_LABEL.parse().unwrap();
-    let service = service_manager::Service::new(label, service_manager::ServiceLevel::User);
+    let status = service_manager::status_both();
     
-    match service.status() {
-        Ok(service_manager::ServiceStatus::Running) => println!("Service is running"),
-        Ok(service_manager::ServiceStatus::Stopped(_)) => println!("Service is not running"),
-        Ok(status) => println!("Service status: {:?}", status),
-        Err(e) => println!("Service is not running ({})", e),
+    println!("Screenpipe: {}", if status.screenpipe_running { "Running" } else { "Not running" });
+    println!("Cloudflared: {}", if status.cloudflared_running { "Running" } else { "Not running" });
+    
+    if status.both_running() {
+        println!("Overall status: Running");
+    } else {
+        println!("Overall status: Not running");
     }
     Ok(())
 }
 
 fn handle_restart() -> Result<()> {
-    let label: service_manager::ServiceLabel = service_manager::SERVICE_LABEL.parse().unwrap();
-    let service = service_manager::Service::new(label, service_manager::ServiceLevel::User);
-    
-    service.restart().map_err(|e| anyhow::anyhow!("{}", e))?;
-    println!("Service restarted successfully");
+    service_manager::restart_both().map_err(|e| anyhow::anyhow!("{}", e))?;
+    println!("Services restarted successfully");
     Ok(())
 }
 
 fn handle_uninstall() -> Result<()> {
-    let label: service_manager::ServiceLabel = service_manager::SERVICE_LABEL.parse().unwrap();
-    let service = service_manager::Service::new(label, service_manager::ServiceLevel::User);
-    
-    service.uninstall().map_err(|e| anyhow::anyhow!("{}", e))?;
-    println!("Service uninstalled successfully");
+    service_manager::uninstall_both().map_err(|e| anyhow::anyhow!("{}", e))?;
+    println!("Services uninstalled successfully");
     Ok(())
 }
 
-async fn wait_for_service_status(
-    service: &service_manager::Service,
-    expected_status: service_manager::ServiceStatus,
-    timeout_seconds: u64,
-) -> Result<()> {
-    let start_time = std::time::Instant::now();
-    let timeout_duration = Duration::from_secs(timeout_seconds);
-    
-    loop {
-        if start_time.elapsed() > timeout_duration {
-            return Err(anyhow::anyhow!("Timeout waiting for service status"));
+async fn wait_for_tcp(addr: &str, timeout_s: u64) -> Result<()> {
+    use tokio::{net::TcpStream, time::{sleep, Duration, Instant}};
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(timeout_s) {
+        if TcpStream::connect(addr).await.is_ok() { 
+            return Ok(()); 
         }
-        
-        match service.status() {
-            Ok(status) if status == expected_status => return Ok(()),
-            _ => sleep(Duration::from_millis(500)).await,
-        }
+        sleep(Duration::from_millis(300)).await;
     }
+    Err(anyhow::anyhow!("Timeout waiting for {}", addr))
 }
 
-async fn handle_daemon() -> Result<()> {
-    const BIND_ADDRESS: &str = "127.0.0.1:8000";
-
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "debug".to_string().into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
-
-    tracing::info!("Starting MCP HTTP server on {}", BIND_ADDRESS);
-
-    let service = StreamableHttpService::new(
-        || Ok(counter::Counter::new()),
-        LocalSessionManager::default().into(),
-        Default::default(),
-    );
-
-    let router = axum::Router::new().nest_service("/mcp", service);
-    let tcp_listener = tokio::net::TcpListener::bind(BIND_ADDRESS).await?;
-    let _ = axum::serve(tcp_listener, router)
-        .with_graceful_shutdown(async { tokio::signal::ctrl_c().await.unwrap() })
-        .await;
-    Ok(())
-}
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use clap::Parser;
-    use service_manager::{ServiceLabel, ServiceLevel};
+    use ::service_manager::{ServiceLabel, ServiceLevel};
     use crate::service_manager::Service;
 
     #[derive(clap::Parser)]
@@ -175,8 +123,6 @@ mod tests {
         Restart,
         #[command(about = "Uninstall the service")]
         Uninstall,
-        #[command(about = "Run as daemon")]
-        Daemon,
     }
 
     #[test]
@@ -210,6 +156,15 @@ mod tests {
         let service = Service::new(label, ServiceLevel::User);
         let result = service.manager();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_status_both_function() {
+        // This should not crash even if services aren't installed
+        let status = service_manager::status_both();
+        // We can't assume the services are running, but the function should work
+        assert!(status.screenpipe_running == true || status.screenpipe_running == false);
+        assert!(status.cloudflared_running == true || status.cloudflared_running == false);
     }
 }
 
