@@ -151,10 +151,18 @@ async fn handle_start() -> Result<()> {
     )
     .map_err(|e| anyhow::anyhow!("{}", e))?;
 
-    println!("Services created, waiting for screenpipe on http://127.0.0.1:3030 ...");
+    println!(
+        "Services created, waiting for screenpipe on {} ...",
+        service_manager::SCREENPIPE_HTTP_URL
+    );
 
-    // 3) Wait for localhost:3030 to accept TCP connections
-    wait_for_tcp("127.0.0.1:3030", 30).await?;
+    // 3) Wait for screenpipe to accept TCP connections on either loopback
+    if let Err(e) = wait_for_tcp(service_manager::SCREENPIPE_TCP_ADDR, 30).await {
+        if let Some(diagnostics) = service_manager::screenpipe_diagnostics() {
+            eprintln!("\nScreenpipe diagnostics:\n{diagnostics}\n");
+        }
+        return Err(e);
+    }
 
     outro("🎉 Setup complete! Your services are running.")?;
     Ok(())
@@ -209,14 +217,42 @@ async fn wait_for_tcp(addr: &str, timeout_s: u64) -> Result<()> {
         net::TcpStream,
         time::{Duration, Instant, sleep},
     };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()?;
+    let http_url = format!("http://{addr}");
+    let mut last_http_error: Option<String> = None;
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(timeout_s) {
+        // NOTE(dev): We hit the HTTP endpoint via reqwest to surface real errors quickly.
+        // Comment this block out if it becomes too noisy for production builds.
+        match client.get(&http_url).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    return Ok(());
+                }
+                last_http_error = Some(format!("HTTP {} from {}", resp.status(), http_url));
+                if resp.status().is_redirection()
+                    || resp.status().is_client_error()
+                    || resp.status().is_server_error()
+                {
+                    // Any HTTP response implies the listener is up even if it's not 200.
+                    return Ok(());
+                }
+            }
+            Err(err) => last_http_error = Some(format!("reqwest error hitting {http_url}: {err}")),
+        }
+
         if TcpStream::connect(addr).await.is_ok() {
             return Ok(());
         }
         sleep(Duration::from_millis(300)).await;
     }
-    Err(anyhow::anyhow!("Timeout waiting for {}", addr))
+    let mut msg = format!("Timeout waiting for {}", addr);
+    if let Some(err) = last_http_error {
+        msg.push_str(&format!("; last HTTP error: {err}"));
+    }
+    Err(anyhow::anyhow!(msg))
 }
 
 #[cfg(test)]
