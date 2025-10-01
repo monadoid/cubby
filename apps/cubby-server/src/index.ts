@@ -41,7 +41,8 @@ const deviceEnrollRequestSchema = z.object({
 const deviceEnrollResponseSchema = z.object({
   device_id: z.string(),
   hostname: z.string(),
-  tunnel_token: z.string()
+  tunnel_token: z.string(),
+  tunnel_url: z.string()
 })
 
 const app = new Hono<{ Bindings: Env }>()
