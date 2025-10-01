@@ -1,6 +1,3 @@
-# Load environment variables from cubby-api .env file
-set dotenv-path := "apps/cubby-api/.env"
-
 # Build all projects
 build:
     cargo build --workspace
@@ -12,15 +9,11 @@ test:
     pnpm -w test
 
 # Run development servers
-dev-api:
-    cd apps/cubby-api && exec cargo loco start
+cubby-start:
+    cd apps/cubby && cargo run -- start
 
 dev-worker:
     cd apps/exampleco_website && pnpm dev
-
-# Run Bruno tests against already running server
-bruno-test:
-    cd apps/cubby-api/bruno && bru run . -r --env local
 
 # Install dependencies
 install:

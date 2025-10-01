@@ -1,9 +1,5 @@
 [workspace]
 members = [
-  "apps/cubby-api",
-  "apps/cubby-cli",
+  "apps/cubby",
 ]
 resolver = "2"
-
-[workspace.dependencies]
-loco-rs = { version = "0.16" }
