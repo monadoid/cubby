@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -41,7 +41,7 @@ impl CubbyRelayClient {
 
     pub fn sign_up(&self, request: SignUpRequest) -> Result<SignUpResponse> {
         let url = format!("{}/sign-up", self.base_url);
-        
+
         let response = self
             .client
             .post(&url)
@@ -65,7 +65,7 @@ impl CubbyRelayClient {
 
     pub fn enroll_device(&self, request: DeviceEnrollRequest) -> Result<DeviceEnrollResponse> {
         let url = format!("{}/devices/enroll", self.base_url);
-        
+
         let response = self
             .client
             .post(&url)
@@ -74,7 +74,7 @@ impl CubbyRelayClient {
             .context("Failed to send device enrollment request")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Device enrollment request failed with status: {}",
                 response.status()
             ));
@@ -82,7 +82,7 @@ impl CubbyRelayClient {
 
         let response_text = response.text().context("Failed to get response text")?;
         println!("Raw API response: {}", response_text);
-        
+
         let enroll_response: DeviceEnrollResponse = serde_json::from_str(&response_text)
             .context("Failed to parse device enrollment response")?;
 

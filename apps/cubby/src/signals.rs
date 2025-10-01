@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub fn install_signal_flag() -> Arc<AtomicBool> {
     let running = Arc::new(AtomicBool::new(true));
@@ -9,7 +9,7 @@ pub fn install_signal_flag() -> Arc<AtomicBool> {
     ctrlc::set_handler(move || {
         r.store(false, Ordering::SeqCst);
     })
-        .expect("failed to install Ctrl-C handler");
+    .expect("failed to install Ctrl-C handler");
 
     running
 }

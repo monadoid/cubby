@@ -1,4 +1,4 @@
-use crate::embedded_assets::{EmbeddedBin, ensure_embedded_bin};
+use crate::embedded_assets::{ensure_embedded_bin, EmbeddedBin};
 use anyhow::Result;
 use reqwest::StatusCode;
 use service_manager::{

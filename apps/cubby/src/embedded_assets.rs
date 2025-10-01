@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use directories::ProjectDirs;
 use rust_embed::RustEmbed;
 use std::path::PathBuf;
@@ -49,7 +49,7 @@ pub fn ensure_embedded_bin(bin: EmbeddedBin) -> Result<PathBuf> {
 
     let target = bindir.join(bin.target_filename());
     if target.exists() {
-        anyhow!("{} already exists", target.display());
+        return Err(anyhow!("{} already exists", target.display()));
     }
     // Write atomically
     let tmp = target.with_extension("tmp");

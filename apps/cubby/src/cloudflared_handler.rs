@@ -1,5 +1,5 @@
-use crate::embedded_assets::{EmbeddedBin, ensure_embedded_bin};
-use anyhow::{Context, Result, anyhow};
+use crate::embedded_assets::{ensure_embedded_bin, EmbeddedBin};
+use anyhow::{anyhow, Context, Result};
 use cliclack::confirm;
 use duct::cmd;
 use std::path::{Path, PathBuf};
