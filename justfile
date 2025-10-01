@@ -12,7 +12,10 @@ test:
 cubby-start:
     cd apps/cubby && cargo run -- start
 
-dev-worker:
+dev-server:
+    cd apps/cubby-server && pnpm dev
+
+dev-example:
     cd apps/exampleco_website && pnpm dev
 
 # Install dependencies
