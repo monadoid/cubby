@@ -1,3 +1,0 @@
-@import "tailwindcss" source(none);
-@source "./assets/views/**/*.{html,htm}";
-@plugin "./daisyui.js";
