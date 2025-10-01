@@ -26,12 +26,12 @@ pub struct DeviceEnrollResponse {
     pub tunnel_token: String,
 }
 
-pub struct CubbyRelayClient {
+pub struct CubbyApiClient {
     base_url: String,
     client: reqwest::blocking::Client,
 }
 
-impl CubbyRelayClient {
+impl CubbyApiClient {
     pub fn new(base_url: String) -> Self {
         Self {
             base_url,

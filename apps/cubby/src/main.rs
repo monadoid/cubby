@@ -1,11 +1,11 @@
 mod cloudflared_handler;
-mod cubby_relay_client;
+mod cubby_api_client;
 mod embedded_assets;
 mod screenpipe_handler;
 mod signals;
 
 use crate::cloudflared_handler::CloudflaredService;
-use crate::cubby_relay_client::{CubbyRelayClient, DeviceEnrollRequest};
+use crate::cubby_api_client::{CubbyApiClient, DeviceEnrollRequest};
 use crate::screenpipe_handler::ScreenpipeService;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -48,7 +48,7 @@ fn main() -> Result<()> {
             println!("Generated device ID: {}", device_id);
 
             // Enroll device to get tunnel token
-            let client = CubbyRelayClient::new("http://localhost:8787".to_string());
+            let client = CubbyApiClient::new("http://localhost:8787".to_string());
             let enroll_request = DeviceEnrollRequest { device_id };
             let enroll_response = client
                 .enroll_device(enroll_request)
