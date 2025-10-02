@@ -1,229 +1,263 @@
 import { Hono } from 'hono'
-import * as client from 'openid-client'
+import type { Context } from 'hono'
+import {
+  AuthorizationSession,
+  buildAuthorizationUrl,
+  calculatePKCECodeChallenge,
+  createOAuthContext,
+  exchangeAuthorizationCode,
+  generateRandomCodeVerifier,
+  generateRandomState,
+  validateCallbackParameters,
+} from './lib/oauth'
+import { SESSION_COOKIE_NAME, SESSION_TTL_SECONDS, decodeSession, encodeSession } from './lib/session'
 
 type Bindings = {
-	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
-	// MY_KV_NAMESPACE: KVNamespace;
-	//
-	// Example binding to Durable Object. Learn more at https://developers.cloudflare.com/workers/runtime-apis/durable-objects/
-	// MY_DURABLE_OBJECT: DurableObjectNamespace;
-	//
-	// Example binding to R2. Learn more at https://developers.cloudflare.com/workers/runtime-apis/r2/
-	// MY_BUCKET: R2Bucket;
-	//
-	// Example binding to a Service. Learn more at https://developers.cloudflare.com/workers/runtime-apis/service-bindings/
-	// MY_SERVICE: Fetcher;
-	//
-	// Example binding to a Queue. Learn more at https://developers.cloudflare.com/workers/runtime-apis/queues/
-	// MY_QUEUE: Queue;
-
-
-	// For production you'd use KV or similar for session storage
+  STYTCH_CLIENT_ID: string
+  STYTCH_AUTH_URL: string
+  STYTCH_TOKEN_URL: string
+  REDIRECT_URI: string
+  REQUESTED_SCOPES: string
+  CUBBY_API_URL: string
+  SESSION_SECRET: string
 }
 
-// In-memory storage for OAuth state (for local dev only)
-const oauthStates = new Map<string, { code_verifier: string; state: string }>()
-const accessTokens = new Map<string, string>()
-
-// OAuth Configuration - matches Bruno test environment
-const OAUTH_CONFIG = {
-	base_url: 'http://localhost:5150',
-	project_domain: 'surf-cap-4473.customers.stytch.dev',
-	client_id: 'connected-app-test-f019736e-3425-4e27-a24f-7c235d9d058b',
-	client_secret: 'Lf2x5Ca1DOwfTGCRHNB0x8Q6naamYs7-qhokDvHqEK_ffpY-',
-	scope: 'openid',
-	redirect_uri: 'http://localhost:8670/oauth/callback'
+type Env = {
+  config: Bindings
+  secure: boolean
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// Simple session management using cookies
-function getSessionId(c: any): string | null {
-	const cookie = c.req.header('Cookie')
-	if (!cookie) return null
-	const match = cookie.match(/session_id=([^;]+)/)
-	return match ? match[1] : null
-}
-
-function setSessionId(c: any, sessionId: string) {
-	c.header('Set-Cookie', `session_id=${sessionId}; Path=/; HttpOnly; Max-Age=3600`)
-}
-
 app.get('/', (c) => {
-	return c.html(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>ExampleCo</title>
-			<style>
-				body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
-				button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; }
-				button:hover { background: #0056b3; }
-			</style>
-		</head>
-		<body>
-			<h1>ExampleCo</h1>
-			<p>Welcome to ExampleCo! Click below to access your dashboard:</p>
-			<a href="/home"><button>Go to Dashboard</button></a>
-		</body>
-		</html>
-	`)
+  const env = getEnv(c)
+
+  return c.html(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ExampleCo OAuth Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-qCLVqL0KleChX2NDSSSXqoQZnIcXtNCmieYwgd0CQpZgdKzac8AjtKqwrQmuFmXy" crossorigin="anonymous"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 640px; padding: 0 1rem; }
+    h1 { font-size: 1.75rem; margin-bottom: 1rem; }
+    button, a.button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: #2563eb; color: #fff; border: none; border-radius: 0.375rem; font-size: 1rem; cursor: pointer; text-decoration: none; }
+    button.secondary { background: #4b5563; }
+    button:disabled { opacity: 0.65; cursor: not-allowed; }
+    pre { background: #0f172a; color: #f8fafc; padding: 1rem; border-radius: 0.375rem; min-height: 7rem; overflow-x: auto; }
+    .cta { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Connected App OAuth + PKCE Demo</h1>
+  <p>This page demonstrates ExampleCo acting as an OAuth client against Stytch to obtain a Cubby access token.</p>
+  <div class="cta">
+    <a class="button" href="/connect">Connect Cubby</a>
+    <button type="button" class="secondary" id="call-cubby">Call Cubby (/whoami)</button>
+  </div>
+  <pre id="result">Click "Call Cubby" to fetch the protected endpoint.</pre>
+  <script type="module">
+    const cubbyApiUrl = ${JSON.stringify(env.config.CUBBY_API_URL)};
+    const result = document.getElementById('result');
+    const callButton = document.getElementById('call-cubby');
+    const whoamiUrl = new URL('/whoami', cubbyApiUrl).toString();
+
+    callButton?.addEventListener('click', async () => {
+      const token = sessionStorage.getItem('cubby_access_token');
+      if (!token) {
+        result.textContent = '⚠️ No access token found. Connect Cubby first.';
+        return;
+      }
+
+      try {
+        const response = await fetch(whoamiUrl, {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+
+        const body = await response.json().catch(() => ({ error: 'Failed to parse response body' }));
+        if (!response.ok) {
+          result.textContent = JSON.stringify({ status: response.status, body }, null, 2);
+          return;
+        }
+
+        result.textContent = JSON.stringify(body, null, 2);
+      } catch (error) {
+        console.error('Error calling Cubby', error);
+        result.textContent = JSON.stringify({ error: String(error) }, null, 2);
+      }
+    });
+  </script>
+</body>
+</html>`)
 })
 
-app.get('/home', (c) => {
-	const sessionId = getSessionId(c)
-	const hasAccess = sessionId && accessTokens.has(sessionId)
-	
-	return c.html(`
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>Dashboard - ExampleCo</title>
-			<style>
-				body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
-				button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 4px; cursor: pointer; margin: 8px; }
-				button:hover { background: #0056b3; }
-				.success { background: #28a745; }
-				.success:hover { background: #1e7e34; }
-				.movies { margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 4px; }
-			</style>
-		</head>
-		<body>
-			<h1>Dashboard</h1>
-			${hasAccess ? `
-				<p>✅ Connected to Cubby API!</p>
-				<button class="success" onclick="fetchMovies()">Fetch Movies from Cubby API</button>
-				<div id="movies" class="movies" style="display: none;"></div>
-			` : `
-				<p>Connect to Cubby API to access your data:</p>
-				<a href="/oauth/authorize"><button>Connect to Cubby API</button></a>
-			`}
-			<script>
-				async function fetchMovies() {
-					try {
-						const response = await fetch('/api/movies')
-						const data = await response.json()
-						document.getElementById('movies').style.display = 'block'
-						document.getElementById('movies').innerHTML = '<h3>Movies from Cubby API:</h3><pre>' + JSON.stringify(data, null, 2) + '</pre>'
-					} catch (error) {
-						document.getElementById('movies').style.display = 'block'
-						document.getElementById('movies').innerHTML = '<h3>Error:</h3><p>' + error.message + '</p>'
-					}
-				}
-			</script>
-		</body>
-		</html>
-	`)
+app.get('/connect', async (c) => {
+  const env = getEnv(c)
+  const oauthConfig = getOAuthConfig(env)
+  const context = createOAuthContext(oauthConfig)
+
+  const codeVerifier = generateRandomCodeVerifier()
+  const codeChallenge = await calculatePKCECodeChallenge(codeVerifier)
+  const state = generateRandomState()
+
+  const session: AuthorizationSession = {
+    state,
+    codeVerifier,
+    issuedAt: Date.now(),
+  }
+
+  const cookieValue = await encodeSession(session, env.config.SESSION_SECRET)
+  const cookie = createCookie(SESSION_COOKIE_NAME, cookieValue, {
+    httpOnly: true,
+    maxAge: SESSION_TTL_SECONDS,
+    path: '/',
+    sameSite: 'Lax',
+    secure: env.secure,
+  })
+  c.header('Set-Cookie', cookie, { append: true })
+
+  const authorizationUrl = buildAuthorizationUrl(oauthConfig, state, codeChallenge)
+  return c.redirect(authorizationUrl.toString(), 302)
 })
 
-app.get('/oauth/authorize', async (c) => {
-	try {
-		// Generate PKCE parameters
-		const code_verifier = client.randomPKCECodeVerifier()
-		const code_challenge = await client.calculatePKCECodeChallenge(code_verifier)
-		const state = client.randomState()
-		
-		// Store PKCE parameters for callback
-		oauthStates.set(state, { code_verifier, state })
-		
-		// Build authorization URL
-		const authUrl = new URL(`${OAUTH_CONFIG.base_url}/oauth/authorize`)
-		authUrl.searchParams.set('client_id', OAUTH_CONFIG.client_id)
-		authUrl.searchParams.set('redirect_uri', OAUTH_CONFIG.redirect_uri)
-		authUrl.searchParams.set('response_type', 'code')
-		authUrl.searchParams.set('scope', OAUTH_CONFIG.scope)
-		authUrl.searchParams.set('state', state)
-		authUrl.searchParams.set('code_challenge', code_challenge)
-		authUrl.searchParams.set('code_challenge_method', 'S256')
-		
-		return c.redirect(authUrl.toString())
-	} catch (error) {
-		return c.json({ error: 'Failed to initiate OAuth flow', details: error instanceof Error ? error.message : 'Unknown error' }, 500)
-	}
+app.get('/callback', async (c) => {
+  const env = getEnv(c)
+  const oauthConfig = getOAuthConfig(env)
+  const context = createOAuthContext(oauthConfig)
+
+  const cookieHeader = c.req.header('Cookie')
+  const sessionCookie = getCookie(cookieHeader, SESSION_COOKIE_NAME)
+  const session = await decodeSession(sessionCookie, env.config.SESSION_SECRET)
+
+  if (!session) {
+    return c.text('Invalid or expired OAuth session. Start over from /connect', 400)
+  }
+
+  let callbackParameters: URLSearchParams
+  try {
+    callbackParameters = validateCallbackParameters(context, new URL(c.req.url), session.state)
+  } catch (error) {
+    console.error('Invalid callback parameters', error)
+    clearSessionCookie(c, env.secure)
+    return c.text('Invalid callback parameters', 400)
+  }
+
+  try {
+    const connection = await exchangeAuthorizationCode(
+      context,
+      callbackParameters,
+      oauthConfig.redirectUri,
+      session.codeVerifier,
+    )
+
+    clearSessionCookie(c, env.secure)
+
+    const accessToken = JSON.stringify(connection.accessToken)
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Completing OAuth</title>
+</head>
+<body>
+  <script>
+    sessionStorage.setItem('cubby_access_token', ${accessToken});
+    window.location.href = '/';
+  </script>
+</body>
+</html>`
+
+    return c.html(html)
+  } catch (error) {
+    console.error('Token exchange failed', error)
+    clearSessionCookie(c, env.secure)
+    const message = getErrorMessage(error)
+    return c.text(`Token exchange failed: ${message}`, 502)
+  }
 })
 
-app.get('/oauth/callback', async (c) => {
-	try {
-		const url = new URL(c.req.url)
-		const code = url.searchParams.get('code')
-		const state = url.searchParams.get('state')
-		
-		if (!code || !state) {
-			return c.json({ error: 'Missing code or state parameter' }, 400)
-		}
-		
-		// Retrieve stored PKCE parameters
-		const storedState = oauthStates.get(state)
-		if (!storedState) {
-			return c.json({ error: 'Invalid or expired state' }, 400)
-		}
-		
-		// Exchange code for token
-		const tokenUrl = `https://${OAUTH_CONFIG.project_domain}/v1/oauth2/token`
-		const tokenResponse = await fetch(tokenUrl, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded',
-			},
-			body: new URLSearchParams({
-				client_id: OAUTH_CONFIG.client_id,
-				client_secret: OAUTH_CONFIG.client_secret,
-				grant_type: 'authorization_code',
-				code: code,
-				redirect_uri: OAUTH_CONFIG.redirect_uri,
-				code_verifier: storedState.code_verifier,
-			}),
-		})
-		
-		if (!tokenResponse.ok) {
-			const errorText = await tokenResponse.text()
-			return c.json({ error: 'Token exchange failed', details: errorText }, 500)
-		}
-		
-		const tokens = await tokenResponse.json() as { access_token: string }
-		
-		// Create session and store access token
-		const sessionId = crypto.randomUUID()
-		accessTokens.set(sessionId, tokens.access_token)
-		setSessionId(c, sessionId)
-		
-		// Clean up state
-		oauthStates.delete(state)
-		
-		return c.redirect('/home')
-	} catch (error) {
-		return c.json({ error: 'OAuth callback failed', details: error instanceof Error ? error.message : 'Unknown error' }, 500)
-	}
-})
+function getEnv(c: Context<{ Bindings: Bindings }>): Env {
+  const secure = new URL(c.req.url).protocol === 'https:'
+  return {
+    config: c.env,
+    secure,
+  }
+}
 
-app.get('/api/movies', async (c) => {
-	const sessionId = getSessionId(c)
-	if (!sessionId) {
-		return c.json({ error: 'No session' }, 401)
-	}
-	
-	const accessToken = accessTokens.get(sessionId)
-	if (!accessToken) {
-		return c.json({ error: 'No access token' }, 401)
-	}
-	
-	try {
-		const response = await fetch(`${OAUTH_CONFIG.base_url}/api/movies/list`, {
-			headers: {
-				'Authorization': `Bearer ${accessToken}`
-			}
-		})
-		
-		if (!response.ok) {
-			const errorText = await response.text()
-			return c.json({ error: 'Failed to fetch movies', details: errorText }, 500)
-		}
-		
-		const movies = await response.json()
-		return c.json(movies)
-	} catch (error) {
-		return c.json({ error: 'Failed to call Cubby API', details: error instanceof Error ? error.message : 'Unknown error' }, 500)
-	}
-})
+function getOAuthConfig(env: Env): {
+  authorizationEndpoint: string
+  tokenEndpoint: string
+  clientId: string
+  redirectUri: string
+  scope: string
+} {
+  return {
+    authorizationEndpoint: env.config.STYTCH_AUTH_URL,
+    tokenEndpoint: env.config.STYTCH_TOKEN_URL,
+    clientId: env.config.STYTCH_CLIENT_ID,
+    redirectUri: env.config.REDIRECT_URI,
+    scope: env.config.REQUESTED_SCOPES,
+  }
+}
+
+type CookieOptions = {
+  httpOnly?: boolean
+  maxAge?: number
+  path?: string
+  sameSite?: 'Lax' | 'Strict' | 'None'
+  secure?: boolean
+}
+
+function createCookie(name: string, value: string, options: CookieOptions = {}): string {
+  const parts = [`${name}=${value}`]
+  parts.push(`Path=${options.path ?? '/'}`)
+  if (options.maxAge !== undefined) {
+    parts.push(`Max-Age=${options.maxAge}`)
+  }
+  if (options.httpOnly) {
+    parts.push('HttpOnly')
+  }
+  if (options.secure) {
+    parts.push('Secure')
+  }
+  parts.push(`SameSite=${options.sameSite ?? 'Lax'}`)
+  return parts.join('; ')
+}
+
+function getCookie(header: string | null | undefined, name: string): string | null {
+  if (!header) return null
+  const cookies = header.split(';')
+  for (const cookie of cookies) {
+    const [cookieName, ...rest] = cookie.trim().split('=')
+    if (cookieName === name) {
+      return rest.join('=') || ''
+    }
+  }
+  return null
+}
+
+function clearSessionCookie(c: Context<{ Bindings: Bindings }>, secure: boolean) {
+  const cleared = createCookie(SESSION_COOKIE_NAME, '', {
+    httpOnly: true,
+    maxAge: 0,
+    path: '/',
+    sameSite: 'Lax',
+    secure,
+  })
+  c.header('Set-Cookie', cleared, { append: true })
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return 'Token endpoint request timed out'
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return 'Unknown error'
+}
 
 export default app

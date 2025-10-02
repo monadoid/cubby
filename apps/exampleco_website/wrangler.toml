@@ -3,5 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2024-12-19"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+STYTCH_CLIENT_ID = ""
+STYTCH_AUTH_URL = "https://<your-auth-domain>/authorize"
+STYTCH_TOKEN_URL = "https://<your-auth-domain>/token"
+REDIRECT_URI = "https://exampleco.dev/callback"
+REQUESTED_SCOPES = "read:user"
+CUBBY_API_URL = "http://localhost:8787"
+SESSION_SECRET = ""
+
 [dev]
 port = 8670

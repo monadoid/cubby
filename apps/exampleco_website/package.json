@@ -16,6 +16,6 @@
   },
   "dependencies": {
     "hono": "^4.9.8",
-    "openid-client": "^6.8.0"
+    "oauth4webapi": "^3.8.2"
   }
 }
