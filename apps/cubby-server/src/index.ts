@@ -3,6 +3,7 @@ import {describeRoute, resolver, validator, openAPIRouteHandler} from 'hono-open
 import {z} from 'zod'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {fetchDeviceHealth} from './clients/tunnel'
+import {jwksAuth} from "./jwks_auth";
 
 type Env = {
     STYTCH_PROJECT_ID: string
@@ -178,7 +179,12 @@ app.post(
     }
 )
 
-app.get('/devices/:deviceId/health', async (c) => {
+app.get('/devices/:deviceId/health',
+    jwksAuth({
+        audience: 'api://cubby',
+        requiredScopes: ['read:user']
+    }),
+    async (c) => {
     const {deviceId} = c.req.param()
 
     try {

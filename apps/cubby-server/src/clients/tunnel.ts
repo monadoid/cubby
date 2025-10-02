@@ -20,8 +20,6 @@ export async function fetchDeviceHealth(deviceId: string, env: TunnelEnv, userId
   const target = buildTargetUrl(deviceId, env.TUNNEL_DOMAIN)
   const requestId = crypto.randomUUID()
 
-  console.log(`The service access client id is ${env.ACCESS_CLIENT_ID}`)
-  console.log(`The service access client secret is ${env.ACCESS_CLIENT_SECRET}`)
   const resp = await fetch(target, {
     method: 'GET',
     headers: {
