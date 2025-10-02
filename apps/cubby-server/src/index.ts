@@ -1,4 +1,5 @@
 import {Hono} from 'hono'
+import {HTTPException} from 'hono/http-exception'
 import {describeRoute, resolver, validator, openAPIRouteHandler} from 'hono-openapi'
 import {z} from 'zod'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
@@ -49,6 +50,16 @@ const deviceEnrollResponseSchema = z.object({
 })
 
 const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
+
+// Global error handler
+app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+        console.error('HTTP Exception:', err.status, err.message)
+        return err.getResponse()
+    }
+    console.error('Unhandled error:', err)
+    return c.text('Internal Server Error', 500)
+})
 
 app.post(
     '/sign-up',

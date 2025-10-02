@@ -1,20 +1,24 @@
 import type { MiddlewareHandler } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
+import { z } from 'zod'
 import type { Bindings, Variables } from './index'
+import { errors } from './errors'
 
 export type JWKSAuthOptions = {
     audience?: string | string[]
     requiredScopes?: string[]
 }
 
-export type AuthUser = {
-    userId: string
-    issuer: string
-    audiences: string[]
-    scopes: string[]
-    claims: JWTPayload
-}
+export const AuthUserSchema = z.object({
+    userId: z.string(),
+    issuer: z.string(),
+    audiences: z.array(z.string()),
+    scopes: z.array(z.string()),
+    claims: z.any()
+})
+
+export type AuthUser = z.infer<typeof AuthUserSchema>
 
 const cloudflareCacheTtl = 3600
 
@@ -26,7 +30,7 @@ export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: B
         const JWKS = createRemoteJWKSet(new URL(jwksURL))
         
         const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')
-        if (!token) return c.text('Missing bearer token', 401, { 'WWW-Authenticate': `Bearer error="invalid_token", error_description="missing"` })
+        if (!token) throw errors.auth.MISSING_TOKEN()
 
         //  prime cloudflare edge cache for the JWKS URL
         try { 
@@ -46,23 +50,27 @@ export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: B
 
             const scopes = extractScopes(payload)
             if (opts.requiredScopes?.length && !opts.requiredScopes.every(s => scopes.includes(s))) {
-                return c.text('Insufficient scope', 403, {
-                    'WWW-Authenticate': `Bearer error="insufficient_scope", scope="${opts.requiredScopes.join(' ')}"`,
-                })
+                throw errors.auth.INSUFFICIENT_SCOPE(opts.requiredScopes)
             }
 
-            const authUser: AuthUser = {
-                userId: payload.sub!,
-                issuer: payload.iss!,
+            const authUserData = {
+                userId: payload.sub,
+                issuer: payload.iss,
                 audiences: toArray(payload.aud),
                 scopes,
                 claims: payload,
             }
-            c.set('auth', authUser)
-            c.set('userId', payload.sub!)
+
+            const parseResult = AuthUserSchema.safeParse(authUserData)
+            if (!parseResult.success) {
+                throw errors.auth.INVALID_AUTH_DATA()
+            }
+
+            c.set('auth', parseResult.data)
+            c.set('userId', parseResult.data.userId)
             await next()
-        } catch {
-            return c.text('Invalid token', 401, { 'WWW-Authenticate': 'Bearer error="invalid_token"' })
+        } catch (error) {
+            throw errors.auth.INVALID_TOKEN()
         }
     })
 }
