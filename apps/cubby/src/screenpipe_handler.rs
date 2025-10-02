@@ -38,7 +38,6 @@ impl ScreenpipeService {
         let mut manager = <dyn ServiceManager>::native()?;
         manager.set_level(ServiceLevel::User)?;
 
-        // todo: Add a check for absolute path
         manager.install(ServiceInstallCtx {
             label: self.label.clone(),
             program: self.binary_path.clone(),

@@ -12,6 +12,9 @@ declare namespace Cloudflare {
 		CF_API_TOKEN: string;
 		CF_ACCOUNT_ID: string;
 		CF_ZONE_ID: string;
+		ACCESS_CLIENT_ID: string;
+		ACCESS_CLIENT_SECRET: string;
+		TUNNEL_DOMAIN: string;
 	}
 }
 interface CloudflareBindings extends Cloudflare.Env {}

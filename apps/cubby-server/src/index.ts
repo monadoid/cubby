@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { describeRoute, resolver, validator, openAPIRouteHandler } from 'hono-openapi'
 import { z } from 'zod'
-import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from "./clients/cloudflare";
+import { buildCnameForTunnel, buildIngressForHost, CloudflareClient } from './clients/cloudflare'
+import { fetchDeviceHealth } from './clients/tunnel'
 
 type Env = {
   STYTCH_PROJECT_ID: string
@@ -9,6 +10,9 @@ type Env = {
   CF_API_TOKEN: string
   CF_ACCOUNT_ID: string
   CF_ZONE_ID: string
+  ACCESS_CLIENT_ID: string
+  ACCESS_CLIENT_SECRET: string
+  TUNNEL_DOMAIN: string
 }
 
 const signUpRequestSchema = z.object({
@@ -173,6 +177,21 @@ app.post(
     }
   }
 )
+
+app.get('/devices/:deviceId/health', async (c) => {
+  const { deviceId } = c.req.param()
+
+  try {
+    return await fetchDeviceHealth(deviceId, {
+      ACCESS_CLIENT_ID: c.env.ACCESS_CLIENT_ID,
+      ACCESS_CLIENT_SECRET: c.env.ACCESS_CLIENT_SECRET,
+      TUNNEL_DOMAIN: c.env.TUNNEL_DOMAIN,
+    })
+  } catch (error) {
+    console.error('Device health proxy error:', error)
+    return c.json({ error: 'Failed to fetch device health' }, 502)
+  }
+})
 
 app.get(
   '/openapi',
