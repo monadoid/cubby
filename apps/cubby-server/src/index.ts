@@ -3,18 +3,16 @@ import {describeRoute, resolver, validator, openAPIRouteHandler} from 'hono-open
 import {z} from 'zod'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {fetchDeviceHealth} from './clients/tunnel'
-import {jwksAuth} from "./jwks_auth";
+import {jwksAuth, type AuthUser} from "./jwks_auth";
 
-type Env = {
-    STYTCH_PROJECT_ID: string
-    STYTCH_SECRET: string
-    CF_API_TOKEN: string
-    CF_ACCOUNT_ID: string
-    CF_ZONE_ID: string
-    ACCESS_CLIENT_ID: string
-    ACCESS_CLIENT_SECRET: string
-    TUNNEL_DOMAIN: string
+type Bindings = CloudflareBindings
+
+type Variables = {
+    auth: AuthUser
+    userId: string
 }
+
+export type { Bindings, Variables }
 
 const signUpRequestSchema = z.object({
     email: z.string(),
@@ -50,7 +48,7 @@ const deviceEnrollResponseSchema = z.object({
     tunnel_url: z.string()
 })
 
-const app = new Hono<{ Bindings: Env }>()
+const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
 
 app.post(
     '/sign-up',
@@ -77,7 +75,7 @@ app.post(
         const {email, password} = c.req.valid('json')
 
         try {
-            const stytchResponse = await fetch('https://test.stytch.com/v1/passwords', {
+            const stytchResponse = await fetch(`${c.env.STYTCH_BASE_URL}/v1/passwords`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
