@@ -18,6 +18,9 @@ cubby-uninstall:
 server-dev:
     cd apps/cubby-server && pnpm dev
 
+server-typecheck:
+    cd apps/cubby-server && pnpm type-check
+
 server-types:
     cd apps/cubby-server && pnpm cf-typegen
 

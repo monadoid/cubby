@@ -4,6 +4,8 @@ import {describeRoute, resolver, validator, openAPIRouteHandler} from 'hono-open
 import {z} from 'zod'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {fetchDeviceHealth} from './clients/tunnel'
+import {createDbClient} from './db/client'
+import {createUser} from './db/users_repo'
 import {jwksAuth, type AuthUser} from "./jwks_auth";
 
 type Bindings = CloudflareBindings
@@ -115,6 +117,12 @@ app.post(
             }
 
             const stytchData = successParseResult.data
+
+            const db = createDbClient(c.env.DATABASE_URL)
+            await createUser(db, {
+                authId: stytchData.user_id,
+                email,
+            })
 
             return c.json({
                 user_id: stytchData.user_id,

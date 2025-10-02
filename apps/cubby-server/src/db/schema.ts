@@ -1,5 +1,5 @@
 import {sql} from "drizzle-orm";
-import {index, pgTable, text, timestamp, uniqueIndex, uuid} from 'drizzle-orm/pg-core';
+import {index, pgTable, text, timestamp, uuid} from 'drizzle-orm/pg-core';
 import {customAlphabet, nanoid} from "nanoid";
 
 const deviceId = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 15);
