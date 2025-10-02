@@ -6,7 +6,6 @@ import type { Bindings, Variables } from './index'
 import { errors } from './errors'
 
 export type JWKSAuthOptions = {
-    audience?: string | string[]
     requiredScopes?: string[]
 }
 
@@ -22,11 +21,15 @@ export type AuthUser = z.infer<typeof AuthUserSchema>
 
 const cloudflareCacheTtl = 3600
 
-export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: Bindings, Variables: Variables }> => {
+
+    export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: Bindings, Variables: Variables }> => {
     return createMiddleware(async (c, next) => {
+
         const env = c.env
+        const audience = env.STYTCH_PROJECT_ID;
         const jwksURL = `${env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`
         const issuer = `stytch.com/${env.STYTCH_PROJECT_ID}`
+        console.log(`jwksURL: ${jwksURL}`)
         const JWKS = createRemoteJWKSet(new URL(jwksURL))
         
         const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')
@@ -36,16 +39,15 @@ export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: B
         try { 
             await fetch(jwksURL, { 
                 cf: { cacheEverything: true, cacheTtl: cloudflareCacheTtl },
-                headers: {
-                    'Authorization': `Basic ${btoa(`${env.STYTCH_PROJECT_ID}:${env.STYTCH_SECRET}`)}`
-                }
-            } as any) 
-        } catch {}
+            })
+        } catch (error){
+            console.error(`Failed to prime cloudflare edge cache for ${jwksURL}: ${error}`)
+        }
 
         try {
             const { payload } = await jwtVerify(token, JWKS, {
                 issuer: issuer,
-                audience: opts.audience,
+                audience: audience,
             })
 
             const scopes = extractScopes(payload)

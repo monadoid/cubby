@@ -190,7 +190,6 @@ app.post(
 
 app.get('/devices/:deviceId/health',
     jwksAuth({
-        audience: 'api://cubby',
         requiredScopes: ['read:user']
     }),
     async (c) => {
@@ -207,6 +206,26 @@ app.get('/devices/:deviceId/health',
         return c.json({error: 'Failed to fetch device health'}, 502)
     }
 })
+
+app.get(
+    '/whoami',
+    jwksAuth({
+        // requiredScopes: undefined  // add later in Step 4
+    }),
+    (c) => {
+        const auth = c.get('auth')
+        return c.json({
+            ok: true,
+            sub: auth.userId,
+            iss: auth.issuer,
+            aud: auth.audiences,
+            scopes: auth.scopes,
+            // for debugging only; remove later:
+            claims: auth.claims,
+        })
+    }
+)
+
 
 app.get(
     '/openapi',
