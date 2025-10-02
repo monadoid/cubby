@@ -44,36 +44,38 @@ const cloudflareCacheTtl = 3600
             console.error(`Failed to prime cloudflare edge cache for ${jwksURL}: ${error}`)
         }
 
+        let payload;
         try {
-            const { payload } = await jwtVerify(token, JWKS, {
+            const result = await jwtVerify(token, JWKS, {
                 issuer: issuer,
                 audience: audience,
             })
-
-            const scopes = extractScopes(payload)
-            if (opts.requiredScopes?.length && !opts.requiredScopes.every(s => scopes.includes(s))) {
-                throw errors.auth.INSUFFICIENT_SCOPE(opts.requiredScopes)
-            }
-
-            const authUserData = {
-                userId: payload.sub,
-                issuer: payload.iss,
-                audiences: toArray(payload.aud),
-                scopes,
-                claims: payload,
-            }
-
-            const parseResult = AuthUserSchema.safeParse(authUserData)
-            if (!parseResult.success) {
-                throw errors.auth.INVALID_AUTH_DATA()
-            }
-
-            c.set('auth', parseResult.data)
-            c.set('userId', parseResult.data.userId)
-            await next()
+            payload = result.payload;
         } catch (error) {
             throw errors.auth.INVALID_TOKEN()
         }
+
+        const scopes = extractScopes(payload)
+        if (opts.requiredScopes?.length && !opts.requiredScopes.every(s => scopes.includes(s))) {
+            throw errors.auth.INSUFFICIENT_SCOPE(opts.requiredScopes)
+        }
+
+        const authUserData = {
+            userId: payload.sub,
+            issuer: payload.iss,
+            audiences: toArray(payload.aud),
+            scopes,
+            claims: payload,
+        }
+
+        const parseResult = AuthUserSchema.safeParse(authUserData)
+        if (!parseResult.success) {
+            throw errors.auth.INVALID_AUTH_DATA()
+        }
+
+        c.set('auth', parseResult.data)
+        c.set('userId', parseResult.data.userId)
+        await next()
     })
 }
 
