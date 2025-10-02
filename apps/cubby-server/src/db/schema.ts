@@ -8,7 +8,7 @@ export const generateDeviceId = () => deviceId();
 export const users = pgTable("users_table", {
     id: uuid().defaultRandom().primaryKey(),
 
-    authId: text("auth_id").notNull().unique(),
+    authId: text().notNull().unique(),
 
     email: text().notNull().unique(),
 

@@ -1,6 +1,7 @@
 import {Hono} from 'hono'
 import {HTTPException} from 'hono/http-exception'
-import {describeRoute, resolver, validator, openAPIRouteHandler} from 'hono-openapi'
+import {describeRoute, resolver, openAPIRouteHandler} from 'hono-openapi'
+import {zValidator} from '@hono/zod-validator'
 import {z} from 'zod'
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -8,7 +9,7 @@ import type { ZodSchema } from "zod";
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {fetchDeviceHealth} from './clients/tunnel'
 import {createDbClient} from './db/client'
-import {createDevice, createDeviceSchema} from './db/devices_repo'
+import {createDevice} from './db/devices_repo'
 import {createUser, createUserSchema} from './db/users_repo'
 import {jwksAuth, type AuthUser} from "./jwks_auth";
 
@@ -41,7 +42,7 @@ export function strictJSONResponse<
     return c.json(validatedResponse.data, statusCode);
 }
 
-const signUpRequestSchema = createUserSchema.extend({
+const signUpRequestSchema = createUserSchema.pick({ email: true }).extend({
     password: z.string()
 })
 
@@ -53,9 +54,12 @@ const signUpResponseSchema = z.object({
 
 const stytchSuccessResponseSchema = z.object({
     user_id: z.string(),
-    session_token: z.string().optional(),
-    session_jwt: z.string().optional(),
-})
+    session_token: z.string(),
+    session_jwt: z.string(),
+}).transform((data) => ({
+    auth_id: data.user_id,
+    ...data
+}));
 
 const stytchErrorResponseSchema = z.object({
     error_message: z.string(),
@@ -63,10 +67,7 @@ const stytchErrorResponseSchema = z.object({
 })
 
 // Device enrollment schemas
-const deviceEnrollRequestSchema = z.object({
-    device_id: createDeviceSchema.shape.id,
-    user_id: createDeviceSchema.shape.userId,
-})
+const deviceEnrollRequestSchema = z.object({})
 
 const deviceEnrollResponseSchema = z.object({
     device_id: z.string(),
@@ -115,10 +116,11 @@ app.post(
         },
         tags: ['Authentication'],
     }),
-    validator('json', signUpRequestSchema),
+    zValidator('json', signUpRequestSchema),
     async (c) => {
         const {email, password} = c.req.valid('json')
 
+        const newUserId = crypto.randomUUID();
         try {
             const stytchResponse = await fetch(`${c.env.STYTCH_BASE_URL}/v1/passwords`, {
                 method: 'POST',
@@ -126,7 +128,13 @@ app.post(
                     'Content-Type': 'application/json',
                     'Authorization': `Basic ${btoa(`${c.env.STYTCH_PROJECT_ID}:${c.env.STYTCH_SECRET}`)}`
                 },
-                body: JSON.stringify({email, password, session_duration_minutes: 60})
+                body: JSON.stringify({
+                    email,
+                    password,
+                    session_duration_minutes: 60,
+                    trusted_metadata: { user_id: newUserId },
+                    session_custom_claims: { user_id: newUserId },
+                })
             })
 
             const rawData = await stytchResponse.json()
@@ -148,18 +156,19 @@ app.post(
                 throw new Error('Invalid response from authentication service')
             }
 
-            const stytchData = successParseResult.data
+            const {auth_id, session_token, session_jwt} = successParseResult.data
 
             const db = createDbClient(c.env.DATABASE_URL)
             await createUser(db, {
-                authId: stytchData.user_id,
+                id: newUserId,
+                authId: auth_id,
                 email,
             })
 
             return strictJSONResponse(c, signUpResponseSchema, {
-                user_id: stytchData.user_id,
-                session_token: stytchData.session_token || '',
-                session_jwt: stytchData.session_jwt || ''
+                user_id: newUserId,
+                session_token,
+                session_jwt
             }, 201)
         } catch (error) {
             console.error('Sign-up error:', error)
@@ -188,11 +197,23 @@ app.post(
         },
         tags: ['Devices'],
     }),
-    validator('json', deviceEnrollRequestSchema),
+    jwksAuth({}),
+    zValidator('json', deviceEnrollRequestSchema),
     async (c) => {
-        const {device_id, user_id} = c.req.valid('json')
+        const _ = c.req.valid('json')
 
         try {
+            const userId = c.get('userId')
+            console.log('The "userId" from the auth gaurd is:', userId)
+
+            const db = createDbClient(c.env.DATABASE_URL)
+
+            const device = await createDevice(db, {
+                userId
+            })
+
+            const device_id = device.id
+
             // Initialize Cloudflare client
             const cf = new CloudflareClient({
                 apiToken: c.env.CF_API_TOKEN,
@@ -215,12 +236,6 @@ app.post(
 
             // 4) Ensure we have a token (create may not return it)
             const tunnel_token = createdOrExisting.token ?? (await cf.getTunnelToken(tunnel_id))
-
-            const db = createDbClient(c.env.DATABASE_URL)
-            await createDevice(db, {
-                id: device_id,
-                userId: user_id,
-            })
 
             return strictJSONResponse(c, deviceEnrollResponseSchema, {
                 device_id,

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -12,11 +12,6 @@ pub struct SignUpResponse {
     pub user_id: String,
     pub session_token: String,
     pub session_jwt: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DeviceEnrollRequest {
-    pub device_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +45,7 @@ impl CubbyApiClient {
             .context("Failed to send sign-up request")?;
 
         if !response.status().is_success() {
-            return bail!(
+            bail!(
                 "Sign-up request failed with status: {}",
                 response.status()
             );
@@ -63,18 +58,19 @@ impl CubbyApiClient {
         Ok(sign_up_response)
     }
 
-    pub fn enroll_device(&self, request: DeviceEnrollRequest) -> Result<DeviceEnrollResponse> {
+    pub fn enroll_device(&self, session_jwt: &str) -> Result<DeviceEnrollResponse> {
         let url = format!("{}/devices/enroll", self.base_url);
 
         let response = self
             .client
             .post(&url)
-            .json(&request)
+            .bearer_auth(session_jwt)
+            .json(&serde_json::json!({}))
             .send()
             .context("Failed to send device enrollment request")?;
 
         if !response.status().is_success() {
-            return bail!(
+             bail!(
                 "Device enrollment request failed with status: {}",
                 response.status()
             );

@@ -10,7 +10,7 @@ export type JWKSAuthOptions = {
 }
 
 export const AuthUserSchema = z.object({
-    userId: z.string(),
+    userId: z.uuid(),
     issuer: z.string(),
     audiences: z.array(z.string()),
     scopes: z.array(z.string()),
@@ -60,15 +60,20 @@ const cloudflareCacheTtl = 3600
             throw errors.auth.INSUFFICIENT_SCOPE(opts.requiredScopes)
         }
 
-        const authUserData = {
-            userId: payload.sub,
+        const getAppUserId = (p: JWTPayload, claimName = 'user_id'): string | undefined => {
+            const v = (p as any)[claimName]
+            return typeof v === 'string' && v.length > 0 ? v : undefined
+        }
+        const dbUserId = getAppUserId(payload, 'user_id')
+        if (!dbUserId) throw errors.auth.INVALID_AUTH_DATA()
+
+        const parseResult = AuthUserSchema.safeParse({
+            userId: dbUserId,
             issuer: payload.iss,
             audiences: toArray(payload.aud),
             scopes,
             claims: payload,
-        }
-
-        const parseResult = AuthUserSchema.safeParse(authUserData)
+        })
         if (!parseResult.success) {
             throw errors.auth.INVALID_AUTH_DATA()
         }

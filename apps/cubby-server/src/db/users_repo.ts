@@ -9,6 +9,7 @@ const baseUserInsertSchema = createInsertSchema(users, {
 });
 
 export const createUserSchema = baseUserInsertSchema.pick({
+    id: true,
     authId: true,
     email: true,
 });
@@ -19,7 +20,7 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export async function createUser(db: DbClient, input: CreateUserInput) {
     const [user] = await db
         .insert(users)
-        .values({ authId: input.authId, email: input.email })
+        .values({ id: input.id, authId: input.authId, email: input.email })
         .returning();
     return user;
 }
