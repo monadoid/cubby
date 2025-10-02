@@ -2,10 +2,14 @@ import {Hono} from 'hono'
 import {HTTPException} from 'hono/http-exception'
 import {describeRoute, resolver, validator, openAPIRouteHandler} from 'hono-openapi'
 import {z} from 'zod'
+import type { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
+import type { ZodSchema } from "zod";
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {fetchDeviceHealth} from './clients/tunnel'
 import {createDbClient} from './db/client'
-import {createUser} from './db/users_repo'
+import {createDevice, createDeviceSchema} from './db/devices_repo'
+import {createUser, createUserSchema} from './db/users_repo'
 import {jwksAuth, type AuthUser} from "./jwks_auth";
 
 type Bindings = CloudflareBindings
@@ -17,8 +21,27 @@ type Variables = {
 
 export type { Bindings, Variables }
 
-const signUpRequestSchema = z.object({
-    email: z.string(),
+export function strictJSONResponse<
+    C extends Context,
+    S extends ZodSchema,
+    D extends Parameters<Context["json"]>[0] & z.infer<S>,
+    U extends ContentfulStatusCode
+>(c: C, schema: S, data: D, statusCode?: U) {
+    const validatedResponse = schema.safeParse(data);
+
+    if (!validatedResponse.success) {
+        return c.json(
+            {
+                message: "Strict response validation failed",
+            },
+            500
+        );
+    }
+
+    return c.json(validatedResponse.data, statusCode);
+}
+
+const signUpRequestSchema = createUserSchema.extend({
     password: z.string()
 })
 
@@ -41,14 +64,23 @@ const stytchErrorResponseSchema = z.object({
 
 // Device enrollment schemas
 const deviceEnrollRequestSchema = z.object({
-    device_id: z.string().min(1),
+    device_id: createDeviceSchema.shape.id,
+    user_id: createDeviceSchema.shape.userId,
 })
 
 const deviceEnrollResponseSchema = z.object({
     device_id: z.string(),
     hostname: z.string(),
     tunnel_token: z.string(),
-    tunnel_url: z.string()
+})
+
+const whoamiResponseSchema = z.object({
+    ok: z.boolean(),
+    sub: z.string(),
+    iss: z.string(),
+    aud: z.array(z.string()),
+    scopes: z.array(z.string()),
+    claims: z.any(),
 })
 
 const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
@@ -124,7 +156,7 @@ app.post(
                 email,
             })
 
-            return c.json({
+            return strictJSONResponse(c, signUpResponseSchema, {
                 user_id: stytchData.user_id,
                 session_token: stytchData.session_token || '',
                 session_jwt: stytchData.session_jwt || ''
@@ -158,7 +190,7 @@ app.post(
     }),
     validator('json', deviceEnrollRequestSchema),
     async (c) => {
-        const {device_id} = c.req.valid('json')
+        const {device_id, user_id} = c.req.valid('json')
 
         try {
             // Initialize Cloudflare client
@@ -184,7 +216,13 @@ app.post(
             // 4) Ensure we have a token (create may not return it)
             const tunnel_token = createdOrExisting.token ?? (await cf.getTunnelToken(tunnel_id))
 
-            return c.json({
+            const db = createDbClient(c.env.DATABASE_URL)
+            await createDevice(db, {
+                id: device_id,
+                userId: user_id,
+            })
+
+            return strictJSONResponse(c, deviceEnrollResponseSchema, {
                 device_id,
                 hostname,
                 tunnel_token
@@ -222,7 +260,7 @@ app.get(
     }),
     (c) => {
         const auth = c.get('auth')
-        return c.json({
+        return strictJSONResponse(c, whoamiResponseSchema, {
             ok: true,
             sub: auth.userId,
             iss: auth.issuer,
