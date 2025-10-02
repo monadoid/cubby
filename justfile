@@ -15,10 +15,13 @@ cubby-start:
 cubby-uninstall:
     cd apps/cubby && cargo run -- uninstall
 
-dev-server:
+server-dev:
     cd apps/cubby-server && pnpm dev
 
-dev-example:
+server-types:
+    cd apps/cubby-server && pnpm cf-typegen
+
+example-dev:
     cd apps/exampleco_website && pnpm dev
 
 # Install dependencies
