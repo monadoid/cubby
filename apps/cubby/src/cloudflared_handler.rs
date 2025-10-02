@@ -1,18 +1,21 @@
-use crate::embedded_assets::{ensure_embedded_bin, EmbeddedBin};
-use anyhow::{anyhow, Context, Result};
+use std::ffi::OsString;
+use anyhow::{anyhow, bail, Result};
 use cliclack::confirm;
 use duct::cmd;
 use std::path::{Path, PathBuf};
 
 /// Manages install / uninstall flow for the `cloudflared` system service.
-pub struct CloudflaredService;
+pub struct CloudflaredService {
+    binary_path: PathBuf,
+    args: Vec<OsString>,
+}
 
 impl CloudflaredService {
-    pub fn new() -> Self {
-        Self
-    }
-    fn cloudflared_path(&self) -> Result<PathBuf> {
-        ensure_embedded_bin(EmbeddedBin::Cloudflared)
+    pub fn new_with_binary(binary_path: PathBuf) -> Result<Self> {
+        Ok(Self {
+            binary_path,
+            args: Vec::new(),
+        })
     }
 
     #[cfg(target_os = "macos")]
@@ -44,7 +47,7 @@ impl CloudflaredService {
 
     /// Uninstall the existing `cloudflared` service.
     pub fn uninstall(&self) -> Result<()> {
-        let bin = self.cloudflared_path()?;
+        let bin = self.binary_path.clone();
         cmd(bin, ["service", "uninstall"])
             .stderr_to_stdout()
             .run()?;
@@ -54,7 +57,7 @@ impl CloudflaredService {
     }
 
     pub fn install(&self, token: &str) -> Result<()> {
-        let bin = self.cloudflared_path()?;
+        let bin = self.binary_path.clone();
         let res = cmd(bin, ["service", "install", token])
             .stderr_to_stdout()
             .run()?;
@@ -79,9 +82,9 @@ impl CloudflaredService {
                 println!(
                     "Exiting as user does not want to overwrite existing cloudflared service."
                 );
-                return Err(anyhow!(
+                return bail!(
                     "User chose not to overwrite existing cloudflared service."
-                ));
+                );
             }
 
             // If uninstall fails, abort early.

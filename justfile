@@ -12,6 +12,9 @@ test:
 cubby-start:
     cd apps/cubby && cargo run -- start
 
+cubby-uninstall:
+    cd apps/cubby && cargo run -- uninstall
+
 dev-server:
     cd apps/cubby-server && pnpm dev
 

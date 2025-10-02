@@ -1,16 +1,17 @@
 mod cloudflared_handler;
 mod cubby_api_client;
-mod embedded_assets;
 mod screenpipe_handler;
 mod signals;
+mod deps_manager;
 
-use crate::cloudflared_handler::CloudflaredService;
 use crate::cubby_api_client::{CubbyApiClient, DeviceEnrollRequest};
 use crate::screenpipe_handler::ScreenpipeService;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::thread;
 use std::time::Duration;
+use crate::cloudflared_handler::CloudflaredService;
+use crate::deps_manager::{Dep, ToolManager};
 
 const HOSTNAME_ALPHABET: [char; 37] = [
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
@@ -36,8 +37,14 @@ enum Commands {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let cloudflared_service = CloudflaredService::new();
-    let screenpipe_service = ScreenpipeService::new()?;
+    let tm = ToolManager::pinned_defaults();
+    let screenpipe_path = tm.ensure(Dep::Screenpipe)?;
+    let cloudflared_path = tm.ensure(Dep::Cloudflared)?;
+
+
+    let screenpipe = ScreenpipeService::new_with_binary(screenpipe_path)?;
+    let cloudflared = CloudflaredService::new_with_binary(cloudflared_path)?;
+
 
     match cli.command {
         Commands::Start => {
@@ -57,19 +64,20 @@ fn main() -> Result<()> {
             println!("Device enrolled successfully!");
             println!("Hostname: {}", enroll_response.hostname);
 
-            cloudflared_service.run_install_flow(&enroll_response.tunnel_token)?;
-            screenpipe_service.install()?;
-            screenpipe_service.start_and_wait_healthy()?;
+            cloudflared.run_install_flow(&enroll_response.tunnel_token)?;
+            screenpipe.install()?;
+            screenpipe.start_and_wait_healthy()?;
 
             println!("✅ Services are up. Press Ctrl-C to stop...");
             while running.load(std::sync::atomic::Ordering::SeqCst) {
                 thread::sleep(Duration::from_millis(100));
             }
             println!("🛑 Signal received. Stopping services...");
-            screenpipe_service.stop_and_uninstall()?;
+            screenpipe.stop_and_uninstall()?;
         }
         Commands::Uninstall => {
-            cloudflared_service.uninstall()?;
+            cloudflared.uninstall()?;
+            screenpipe.stop_and_uninstall()?;
         }
     }
 

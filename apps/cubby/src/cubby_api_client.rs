@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -50,10 +50,10 @@ impl CubbyApiClient {
             .context("Failed to send sign-up request")?;
 
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
+            return bail!(
                 "Sign-up request failed with status: {}",
                 response.status()
-            ));
+            );
         }
 
         let sign_up_response: SignUpResponse = response
@@ -74,10 +74,10 @@ impl CubbyApiClient {
             .context("Failed to send device enrollment request")?;
 
         if !response.status().is_success() {
-            return Err(anyhow!(
+            return bail!(
                 "Device enrollment request failed with status: {}",
                 response.status()
-            ));
+            );
         }
 
         let response_text = response.text().context("Failed to get response text")?;

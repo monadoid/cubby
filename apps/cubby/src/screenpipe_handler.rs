@@ -1,4 +1,3 @@
-use crate::embedded_assets::{ensure_embedded_bin, EmbeddedBin};
 use anyhow::Result;
 use reqwest::StatusCode;
 use service_manager::{
@@ -6,7 +5,7 @@ use service_manager::{
     ServiceUninstallCtx,
 };
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,16 +22,11 @@ pub struct ScreenpipeService {
 }
 
 impl ScreenpipeService {
-    /// `program` should be an absolute path to the embedded screenpipe binary.
-    pub fn new() -> Result<Self> {
-        // If you need args, set here (e.g., "--port", "3030")
-        let args: Vec<OsString> = Vec::new();
-        let binary_path = ensure_embedded_bin(EmbeddedBin::Screenpipe)?;
-
+    pub fn new_with_binary(binary_path: PathBuf) -> Result<Self> {
         Ok(Self {
             label: SERVICE_LABEL_STR.parse()?,
             binary_path,
-            args,
+            args: Vec::new(), // or inject if you need to parametrize
             autostart: true,
             health_url: HEALTH_URL.to_string(),
             health_timeout: Duration::from_secs(30),
