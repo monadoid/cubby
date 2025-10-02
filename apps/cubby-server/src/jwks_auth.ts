@@ -25,8 +25,8 @@ const cloudflareCacheTtl = 3600
 export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: Bindings, Variables: Variables }> => {
     return createMiddleware(async (c, next) => {
         const env = c.env
-        const jwksURL = `${env.STYTCH_BASE_URL}/v1/sessions/jwks/${env.STYTCH_PROJECT_ID}`
-        const issuer = `${env.STYTCH_BASE_URL}/`
+        const jwksURL = `${env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`
+        const issuer = `stytch.com/${env.STYTCH_PROJECT_ID}`
         const JWKS = createRemoteJWKSet(new URL(jwksURL))
         
         const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')
