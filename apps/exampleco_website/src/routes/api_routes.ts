@@ -87,11 +87,15 @@ app.post(
         // This allows word-level matching while preventing syntax errors
         const sanitizedQuery = q.replace(/[?*+"'-]/g, ' ').trim()
         searchUrl.searchParams.set('q', sanitizedQuery)
+        console.log(`[exampleco_website] Using text search with query: "${sanitizedQuery}"`)
+      } else {
+        // When q is empty, explicitly omit it (screenpipe returns recent activity chronologically)
+        // Note: Not setting q parameter at all, as per OpenAPI spec where it's nullable
+        console.log(`[exampleco_website] No search query - will return recent activity`)
       }
-      // When q is empty/omitted, screenpipe returns recent activity chronologically
       searchUrl.searchParams.set('limit', limit.toString())
       searchUrl.searchParams.set('content_type', content_type)
-      searchUrl.searchParams.set('include_frames', 'true') // Include screenshots
+      // Note: include_frames causes screenpipe to crash/hang, omitting for now
       
       console.log(`Proxying search request to: ${searchUrl.toString()}`)
 
@@ -102,9 +106,12 @@ app.post(
         },
       })
 
+      console.log(`[exampleco_website] Response status: ${response.status}`)
+      
       const body = await response.text()
       
       if (!response.ok) {
+        console.error(`[exampleco_website] Error response body: ${body}`)
         return c.text(`❌ Error (${response.status}): ${body}`)
       }
 

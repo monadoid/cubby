@@ -31,13 +31,12 @@ export function renderHomePage(cubbyApiUrl: string): string {
   <div class="cta">
     <a class="button" href="/connect">Connect Cubby</a>
     <button type="button" class="secondary" id="call-cubby">Call Cubby (/whoami)</button>
-    <button type="button" class="secondary" id="call-health">Check Device Health</button>
   </div>
   
   <div class="section">
     <h2>Test Device Search</h2>
     <p>Search your Screenpipe device using the proxied API endpoint.</p>
-    <form hx-post="/api/search" hx-target="#search-result" hx-indicator="#search-indicator">
+    <form hx-post="/api/search" hx-target="#search-result" hx-swap="textContent" hx-indicator="#search-indicator">
       <div class="form-group">
         <label for="device-id">Select Device</label>
         <select 
@@ -69,11 +68,6 @@ export function renderHomePage(cubbyApiUrl: string): string {
   </div>
 
   <div class="section">
-    <h2>Device Health</h2>
-    <pre id="health-result">Click "Check Device Health" to check screenpipe status.</pre>
-  </div>
-
-  <div class="section">
     <h2>Whoami Result</h2>
     <pre id="result">Click "Call Cubby" to fetch the protected endpoint.</pre>
   </div>
@@ -81,9 +75,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
   <script type="module">
     const cubbyApiUrl = ${JSON.stringify(cubbyApiUrl)};
     const result = document.getElementById('result');
-    const healthResult = document.getElementById('health-result');
     const callButton = document.getElementById('call-cubby');
-    const healthButton = document.getElementById('call-health');
     const whoamiUrl = new URL('/whoami', cubbyApiUrl).toString();
 
     // Configure HTMX to add Authorization header
@@ -91,41 +83,6 @@ export function renderHomePage(cubbyApiUrl: string): string {
       const token = sessionStorage.getItem('cubby_access_token');
       if (token) {
         event.detail.headers['Authorization'] = 'Bearer ' + token;
-      }
-    });
-
-    // Health check button handler
-    healthButton?.addEventListener('click', async () => {
-      const token = sessionStorage.getItem('cubby_access_token');
-      const deviceSelect = document.getElementById('device-id');
-      
-      if (!token) {
-        healthResult.textContent = '⚠️ No access token found. Connect Cubby first.';
-        return;
-      }
-
-      const deviceId = deviceSelect?.value;
-      if (!deviceId) {
-        healthResult.textContent = '⚠️ Please select a device first.';
-        return;
-      }
-
-      try {
-        const healthUrl = new URL(\`/devices/\${deviceId}/health\`, cubbyApiUrl).toString();
-        const response = await fetch(healthUrl, {
-          headers: { Authorization: 'Bearer ' + token },
-        });
-
-        const body = await response.json().catch(() => ({ error: 'Failed to parse response body' }));
-        if (!response.ok) {
-          healthResult.textContent = JSON.stringify({ status: response.status, body }, null, 2);
-          return;
-        }
-
-        healthResult.textContent = JSON.stringify(body, null, 2);
-      } catch (error) {
-        console.error('Error checking health', error);
-        healthResult.textContent = JSON.stringify({ error: String(error) }, null, 2);
       }
     });
 
