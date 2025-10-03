@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import type { Context } from 'hono'
 import {
   AuthorizationSession,
   buildAuthorizationUrl,
@@ -11,7 +10,6 @@ import {
   validateCallbackParameters,
 } from './lib/oauth'
 import { clearSessionCookie, readSessionCookie, writeSessionCookie } from './lib/session'
-import { env } from 'hono/adapter'
 
 type Bindings = Env
 type Variables = {
@@ -95,7 +93,8 @@ app.get('/connect', async (c) => {
     issuedAt: Date.now(),
   }
 
-  await writeSessionCookie(c, session, c.env.SESSION_SECRET, c.env.SECURE_COOKIES === "true")
+  const secureCookies = c.env.SECURE_COOKIES === 'true'
+  await writeSessionCookie(c, session, c.env.SESSION_SECRET, secureCookies)
 
   const authorizationUrl = buildAuthorizationUrl(oauthConfig, state, codeChallenge)
   return c.redirect(authorizationUrl.toString(), 302)
@@ -104,11 +103,12 @@ app.get('/connect', async (c) => {
 app.get('/callback', async (c) => {
   const oauthConfig = getOAuthConfig(c.env)
   const context = createOAuthContext(oauthConfig)
+  const secureCookies = c.env.SECURE_COOKIES === 'true'
 
   const session = await readSessionCookie(c, c.env.SESSION_SECRET)
 
   if (!session) {
-    clearSessionCookie(c, c.env.SECURE_COOKIES == "false")
+    clearSessionCookie(c, secureCookies)
     return c.text('Invalid or expired OAuth session. Start over from /connect', 400)
   }
 
@@ -117,7 +117,7 @@ app.get('/callback', async (c) => {
     callbackParameters = validateCallbackParameters(context, new URL(c.req.url), session.state)
   } catch (error) {
     console.error('Invalid callback parameters', error)
-    clearSessionCookie(c, c.env.SECURE_COOKIES === "true")
+    clearSessionCookie(c, secureCookies)
     return c.text('Invalid callback parameters', 400)
   }
 
@@ -129,7 +129,7 @@ app.get('/callback', async (c) => {
       session.codeVerifier,
     )
 
-    clearSessionCookie(c, c.env.SECURE_COOKIES === "true")
+    clearSessionCookie(c, secureCookies)
 
     const accessToken = JSON.stringify(connection.accessToken)
     const html = `<!doctype html>
@@ -149,7 +149,7 @@ app.get('/callback', async (c) => {
     return c.html(html)
   } catch (error) {
     console.error('Token exchange failed', error)
-    clearSessionCookie(c, c.env.SECURE_COOKIES === "true")
+    clearSessionCookie(c, secureCookies)
     const message = getErrorMessage(error)
     return c.text(`Token exchange failed: ${message}`, 502)
   }
