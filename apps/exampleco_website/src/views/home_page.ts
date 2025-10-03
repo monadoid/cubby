@@ -3,7 +3,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ExampleCo OAuth Demo</title>
+  <title>ExampleCo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
@@ -28,12 +28,11 @@ export function renderHomePage(cubbyApiUrl: string): string {
   </style>
 </head>
 <body>
-  <h1>Connected App OAuth + PKCE Demo</h1>
+  <h1>ExampleCo</h1>
   <p>This page demonstrates ExampleCo acting as an OAuth client against Stytch to obtain a Cubby access token.</p>
   
   <div class="cta">
     <a class="button" href="/connect">Connect Cubby</a>
-    <button type="button" class="secondary" id="call-cubby">Call Cubby (/whoami)</button>
   </div>
   
   <div class="section">
@@ -72,48 +71,12 @@ export function renderHomePage(cubbyApiUrl: string): string {
     </div>
   </div>
 
-  <div class="section">
-    <h2>Whoami Result</h2>
-    <pre id="result">Click "Call Cubby" to fetch the protected endpoint.</pre>
-  </div>
-
   <script type="module">
-    const cubbyApiUrl = ${JSON.stringify(cubbyApiUrl)};
-    const result = document.getElementById('result');
-    const callButton = document.getElementById('call-cubby');
-    const whoamiUrl = new URL('/whoami', cubbyApiUrl).toString();
-
     // Configure HTMX to add Authorization header
     document.body.addEventListener('htmx:configRequest', (event) => {
       const token = sessionStorage.getItem('cubby_access_token');
       if (token) {
         event.detail.headers['Authorization'] = 'Bearer ' + token;
-      }
-    });
-
-    // Whoami button handler
-    callButton?.addEventListener('click', async () => {
-      const token = sessionStorage.getItem('cubby_access_token');
-      if (!token) {
-        result.textContent = '⚠️ No access token found. Connect Cubby first.';
-        return;
-      }
-
-      try {
-        const response = await fetch(whoamiUrl, {
-          headers: { Authorization: 'Bearer ' + token },
-        });
-
-        const body = await response.json().catch(() => ({ error: 'Failed to parse response body' }));
-        if (!response.ok) {
-          result.textContent = JSON.stringify({ status: response.status, body }, null, 2);
-          return;
-        }
-
-        result.textContent = JSON.stringify(body, null, 2);
-      } catch (error) {
-        console.error('Error calling Cubby', error);
-        result.textContent = JSON.stringify({ error: String(error) }, null, 2);
       }
     });
   </script>
