@@ -462,10 +462,12 @@ app.all('/devices/:deviceId/*',
         }
 
         try {
-            const targetUrl = `https://${deviceId}.${c.env.TUNNEL_DOMAIN}${path}`
+            // Build target URL with query parameters preserved
+            const url = new URL(c.req.url)
+            const targetUrl = `https://${deviceId}.${c.env.TUNNEL_DOMAIN}${path}${url.search}`
             const requestId = crypto.randomUUID()
             
-            console.log(`Proxying ${method} request to device ${deviceId}${path} (request ID: ${requestId})`)
+            console.log(`Proxying ${method} request to device ${deviceId}${path}${url.search} (request ID: ${requestId})`)
             
             return proxy(targetUrl, {
                 headers: {

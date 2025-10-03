@@ -4,7 +4,9 @@ import { z } from 'zod'
 import type { Bindings, Variables } from '../index'
 import { renderDevicesFragment } from '../views/devices_fragment'
 
-// Schemas
+// Schemas matching screenpipe OpenAPI spec
+const contentTypeSchema = z.enum(['all', 'ocr', 'audio', 'ui', 'audio+ui', 'ocr+ui', 'audio+ocr']).optional()
+
 const searchRequestSchema = z.object({
   deviceId: z.string().min(1, 'Device ID is required'),
   q: z.string().min(1, 'Search query is required'),
@@ -16,6 +18,7 @@ const searchRequestSchema = z.object({
       const num = Number(val)
       return isNaN(num) ? 10 : num
     }),
+  content_type: contentTypeSchema.default('all'),
 })
 
 type SearchRequest = z.infer<typeof searchRequestSchema>
@@ -71,16 +74,23 @@ app.post(
       return c.text('⚠️ Missing Authorization header', 401)
     }
 
-    const { deviceId, q, limit } = c.req.valid('form')
+    const { deviceId, q, limit, content_type } = c.req.valid('form')
 
     try {
-      // Build search URL with query parameters
+      // Build search URL with query parameters matching screenpipe API
       const searchUrl = new URL(`/devices/${deviceId}/search`, c.env.CUBBY_API_URL)
-      searchUrl.searchParams.set('q', q)
-      if (limit) {
-        searchUrl.searchParams.set('limit', limit.toString())
+      
+      // Set query parameters
+      if (q && q.trim() !== '') {
+        // Remove FTS5 special characters that cause syntax errors
+        // FTS5 uses: ? * + - " for special syntax, we strip them to avoid errors
+        // This allows word-level matching while preventing syntax errors
+        const sanitizedQuery = q.replace(/[?*+"'-]/g, ' ').trim()
+        searchUrl.searchParams.set('q', sanitizedQuery)
       }
-
+      searchUrl.searchParams.set('limit', limit.toString())
+      searchUrl.searchParams.set('content_type', content_type)
+      
       console.log(`Proxying search request to: ${searchUrl.toString()}`)
 
       const response = await fetch(searchUrl.toString(), {
