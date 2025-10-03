@@ -9,7 +9,7 @@ import {z} from 'zod/v4'
 import stytch from 'stytch'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {createDbClient} from './db/client'
-import {createDevice, getDevicesByUserId} from './db/devices_repo'
+import {createDevice, getDeviceForUser, getDevicesByUserId} from './db/devices_repo'
 import {createUser, createUserSchema} from './db/users_repo'
 import {oauth, type AuthUser} from "./middleware/oauth";
 import {session} from "./middleware/session";
@@ -452,6 +452,15 @@ app.all('/devices/:deviceId/*',
             return c.json({error: 'Endpoint not allowed'}, 403)
         }
         
+        const userId = c.get('userId')
+        const db = createDbClient(c.env.DATABASE_URL)
+        const device = await getDeviceForUser(db, deviceId, userId)
+
+        if (!device) {
+            console.warn(`Denied access to device ${deviceId} for user ${userId}`)
+            return c.json({error: 'Device not found'}, 404)
+        }
+
         try {
             const targetUrl = `https://${deviceId}.${c.env.TUNNEL_DOMAIN}${path}`
             const requestId = crypto.randomUUID()

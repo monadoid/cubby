@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createInsertSchema } from 'drizzle-zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import type { DbClient } from './client';
 import { devices } from './schema';
@@ -28,4 +28,16 @@ export async function getDevicesByUserId(db: DbClient, userId: string) {
         .select()
         .from(devices)
         .where(eq(devices.userId, userId));
+}
+
+export async function getDeviceForUser(db: DbClient, deviceId: string, userId: string) {
+    const [device] = await db
+        .select()
+        .from(devices)
+        .where(
+            and(eq(devices.id, deviceId), eq(devices.userId, userId))
+        )
+        .limit(1);
+
+    return device;
 }
