@@ -1,94 +1,73 @@
-import { AuthorizationSession } from './oauth'
-
-const encoder = new TextEncoder()
+import type { Context } from 'hono'
+import { deleteCookie, getSignedCookie, setSignedCookie } from 'hono/cookie'
+import { z } from 'zod'
+import type { AuthorizationSession } from './oauth'
 
 export const SESSION_COOKIE_NAME = 'cubby_oauth_session'
 export const SESSION_TTL_SECONDS = 600
 
-export async function encodeSession(session: AuthorizationSession, secret: string): Promise<string> {
-  const payload = JSON.stringify(session)
-  const data = base64UrlEncode(payload)
-  const signature = await sign(data, secret)
-  return `${data}.${signature}`
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  maxAge: SESSION_TTL_SECONDS,
+  path: '/',
+  sameSite: 'Lax' as const,
 }
 
-export async function decodeSession(value: string | null | undefined, secret: string): Promise<AuthorizationSession | null> {
-  if (!value) return null
+const sessionSchema = z.object({
+  state: z.string().min(1),
+  codeVerifier: z.string().min(1),
+  issuedAt: z.number(),
+})
 
-  const [data, signature] = value.split('.')
-  if (!data || !signature) {
-    return null
-  }
+type SessionPayload = z.infer<typeof sessionSchema>
 
-  const expectedSignature = await sign(data, secret)
-  if (!constantTimeEqual(signature, expectedSignature)) {
+export async function writeSessionCookie(
+  c: Context,
+  session: AuthorizationSession,
+  secret: string,
+  secure: boolean,
+): Promise<void> {
+  await setSignedCookie(c, SESSION_COOKIE_NAME, JSON.stringify(session), secret, {
+    ...COOKIE_OPTIONS,
+    secure,
+  })
+}
+
+export async function readSessionCookie(
+  c: Context,
+  secret: string,
+): Promise<AuthorizationSession | null> {
+  const raw = await getSignedCookie(c, secret, SESSION_COOKIE_NAME)
+  if (typeof raw !== 'string') {
     return null
   }
 
   try {
-    const payload = base64UrlDecodeToString(data)
-    const parsed = JSON.parse(payload) as AuthorizationSession
-    if (!parsed?.state || !parsed?.codeVerifier || typeof parsed.issuedAt !== 'number') {
+    const candidate = JSON.parse(raw)
+    const parsed = sessionSchema.safeParse(candidate)
+    if (!parsed.success) {
       return null
     }
 
-    const age = Date.now() - parsed.issuedAt
-    if (age > SESSION_TTL_SECONDS * 1000) {
+    const session = parsed.data
+    if (isExpired(session)) {
       return null
     }
 
-    return parsed
+    return session
   } catch {
     return null
   }
 }
 
-function base64UrlEncode(input: ArrayBuffer | string): string {
-  let bytes: Uint8Array
-  if (typeof input === 'string') {
-    bytes = encoder.encode(input)
-  } else {
-    bytes = new Uint8Array(input)
-  }
-
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-
-  const base64 = btoa(binary)
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+export function clearSessionCookie(c: Context, secure: boolean): void {
+  deleteCookie(c, SESSION_COOKIE_NAME, {
+    path: '/',
+    secure,
+  })
 }
 
-function base64UrlDecodeToString(input: string): string {
-  const padded = padBase64(input.replace(/-/g, '+').replace(/_/g, '/'))
-  const binary = atob(padded)
-  let result = ''
-  for (let i = 0; i < binary.length; i++) {
-    result += String.fromCharCode(binary.charCodeAt(i))
-  }
-  return result
-}
-
-function padBase64(input: string): string {
-  const remainder = input.length % 4
-  if (remainder === 0) return input
-  if (remainder === 2) return `${input}==`
-  if (remainder === 3) return `${input}=`
-  return `${input}===`
-}
-
-async function sign(input: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(input))
-  return base64UrlEncode(signature)
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
-  return result === 0
+function isExpired(session: SessionPayload): boolean {
+  const ageMs = Date.now() - session.issuedAt
+  return ageMs > SESSION_TTL_SECONDS * 1000
 }

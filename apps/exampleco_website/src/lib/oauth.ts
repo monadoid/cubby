@@ -6,6 +6,7 @@ export type OAuthConfig = {
   clientId: string
   redirectUri: string
   scope: string
+  issuer: string
 }
 
 export type OAuthContext = {
@@ -36,10 +37,14 @@ const publicClientAuth: oauth.ClientAuth = (_as, client, body) => {
 export function createOAuthContext(config: OAuthConfig): OAuthContext {
   const tokenUrl = new URL(config.tokenEndpoint)
   const authorizationUrl = new URL(config.authorizationEndpoint)
+  const issuer = config.issuer.trim()
+  if (!issuer) {
+    throw new Error('OAuth issuer is required')
+  }
 
   return {
     as: {
-      issuer: tokenUrl.origin,
+      issuer,
       authorization_endpoint: authorizationUrl.toString(),
       token_endpoint: tokenUrl.toString(),
     },

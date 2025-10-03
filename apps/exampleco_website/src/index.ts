@@ -10,35 +10,25 @@ import {
   generateRandomState,
   validateCallbackParameters,
 } from './lib/oauth'
-import { SESSION_COOKIE_NAME, SESSION_TTL_SECONDS, decodeSession, encodeSession } from './lib/session'
+import { clearSessionCookie, readSessionCookie, writeSessionCookie } from './lib/session'
+import { env } from 'hono/adapter'
 
-type Bindings = {
-  STYTCH_CLIENT_ID: string
-  STYTCH_AUTH_URL: string
-  STYTCH_TOKEN_URL: string
-  REDIRECT_URI: string
-  REQUESTED_SCOPES: string
-  CUBBY_API_URL: string
-  SESSION_SECRET: string
-}
-
-type Env = {
-  config: Bindings
+type Bindings = Env
+type Variables = {
   secure: boolean
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
+export type { Bindings, Variables }
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 app.get('/', (c) => {
-  const env = getEnv(c)
-
   return c.html(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>ExampleCo OAuth Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-qCLVqL0KleChX2NDSSSXqoQZnIcXtNCmieYwgd0CQpZgdKzac8AjtKqwrQmuFmXy" crossorigin="anonymous"></script>
   <style>
     body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 640px; padding: 0 1rem; }
     h1 { font-size: 1.75rem; margin-bottom: 1rem; }
@@ -58,7 +48,7 @@ app.get('/', (c) => {
   </div>
   <pre id="result">Click "Call Cubby" to fetch the protected endpoint.</pre>
   <script type="module">
-    const cubbyApiUrl = ${JSON.stringify(env.config.CUBBY_API_URL)};
+    const cubbyApiUrl = ${JSON.stringify(c.env.CUBBY_API_URL)};
     const result = document.getElementById('result');
     const callButton = document.getElementById('call-cubby');
     const whoamiUrl = new URL('/whoami', cubbyApiUrl).toString();
@@ -93,9 +83,7 @@ app.get('/', (c) => {
 })
 
 app.get('/connect', async (c) => {
-  const env = getEnv(c)
-  const oauthConfig = getOAuthConfig(env)
-  const context = createOAuthContext(oauthConfig)
+  const oauthConfig = getOAuthConfig(c.env)
 
   const codeVerifier = generateRandomCodeVerifier()
   const codeChallenge = await calculatePKCECodeChallenge(codeVerifier)
@@ -107,30 +95,20 @@ app.get('/connect', async (c) => {
     issuedAt: Date.now(),
   }
 
-  const cookieValue = await encodeSession(session, env.config.SESSION_SECRET)
-  const cookie = createCookie(SESSION_COOKIE_NAME, cookieValue, {
-    httpOnly: true,
-    maxAge: SESSION_TTL_SECONDS,
-    path: '/',
-    sameSite: 'Lax',
-    secure: env.secure,
-  })
-  c.header('Set-Cookie', cookie, { append: true })
+  await writeSessionCookie(c, session, c.env.SESSION_SECRET, c.env.SECURE_COOKIES === "true")
 
   const authorizationUrl = buildAuthorizationUrl(oauthConfig, state, codeChallenge)
   return c.redirect(authorizationUrl.toString(), 302)
 })
 
 app.get('/callback', async (c) => {
-  const env = getEnv(c)
-  const oauthConfig = getOAuthConfig(env)
+  const oauthConfig = getOAuthConfig(c.env)
   const context = createOAuthContext(oauthConfig)
 
-  const cookieHeader = c.req.header('Cookie')
-  const sessionCookie = getCookie(cookieHeader, SESSION_COOKIE_NAME)
-  const session = await decodeSession(sessionCookie, env.config.SESSION_SECRET)
+  const session = await readSessionCookie(c, c.env.SESSION_SECRET)
 
   if (!session) {
+    clearSessionCookie(c, c.env.SECURE_COOKIES == "false")
     return c.text('Invalid or expired OAuth session. Start over from /connect', 400)
   }
 
@@ -139,7 +117,7 @@ app.get('/callback', async (c) => {
     callbackParameters = validateCallbackParameters(context, new URL(c.req.url), session.state)
   } catch (error) {
     console.error('Invalid callback parameters', error)
-    clearSessionCookie(c, env.secure)
+    clearSessionCookie(c, c.env.SECURE_COOKIES === "true")
     return c.text('Invalid callback parameters', 400)
   }
 
@@ -151,7 +129,7 @@ app.get('/callback', async (c) => {
       session.codeVerifier,
     )
 
-    clearSessionCookie(c, env.secure)
+    clearSessionCookie(c, c.env.SECURE_COOKIES === "true")
 
     const accessToken = JSON.stringify(connection.accessToken)
     const html = `<!doctype html>
@@ -171,19 +149,11 @@ app.get('/callback', async (c) => {
     return c.html(html)
   } catch (error) {
     console.error('Token exchange failed', error)
-    clearSessionCookie(c, env.secure)
+    clearSessionCookie(c, c.env.SECURE_COOKIES === "true")
     const message = getErrorMessage(error)
     return c.text(`Token exchange failed: ${message}`, 502)
   }
 })
-
-function getEnv(c: Context<{ Bindings: Bindings }>): Env {
-  const secure = new URL(c.req.url).protocol === 'https:'
-  return {
-    config: c.env,
-    secure,
-  }
-}
 
 function getOAuthConfig(env: Env): {
   authorizationEndpoint: string
@@ -191,61 +161,16 @@ function getOAuthConfig(env: Env): {
   clientId: string
   redirectUri: string
   scope: string
+  issuer: string
 } {
   return {
-    authorizationEndpoint: env.config.STYTCH_AUTH_URL,
-    tokenEndpoint: env.config.STYTCH_TOKEN_URL,
-    clientId: env.config.STYTCH_CLIENT_ID,
-    redirectUri: env.config.REDIRECT_URI,
-    scope: env.config.REQUESTED_SCOPES,
+    authorizationEndpoint: env.STYTCH_AUTH_URL,
+    tokenEndpoint: env.STYTCH_TOKEN_URL,
+    clientId: env.STYTCH_CLIENT_ID,
+    redirectUri: env.REDIRECT_URI,
+    scope: env.REQUESTED_SCOPES,
+    issuer: env.STYTCH_ISSUER,
   }
-}
-
-type CookieOptions = {
-  httpOnly?: boolean
-  maxAge?: number
-  path?: string
-  sameSite?: 'Lax' | 'Strict' | 'None'
-  secure?: boolean
-}
-
-function createCookie(name: string, value: string, options: CookieOptions = {}): string {
-  const parts = [`${name}=${value}`]
-  parts.push(`Path=${options.path ?? '/'}`)
-  if (options.maxAge !== undefined) {
-    parts.push(`Max-Age=${options.maxAge}`)
-  }
-  if (options.httpOnly) {
-    parts.push('HttpOnly')
-  }
-  if (options.secure) {
-    parts.push('Secure')
-  }
-  parts.push(`SameSite=${options.sameSite ?? 'Lax'}`)
-  return parts.join('; ')
-}
-
-function getCookie(header: string | null | undefined, name: string): string | null {
-  if (!header) return null
-  const cookies = header.split(';')
-  for (const cookie of cookies) {
-    const [cookieName, ...rest] = cookie.trim().split('=')
-    if (cookieName === name) {
-      return rest.join('=') || ''
-    }
-  }
-  return null
-}
-
-function clearSessionCookie(c: Context<{ Bindings: Bindings }>, secure: boolean) {
-  const cleared = createCookie(SESSION_COOKIE_NAME, '', {
-    httpOnly: true,
-    maxAge: 0,
-    path: '/',
-    sameSite: 'Lax',
-    secure,
-  })
-  c.header('Set-Cookie', cleared, { append: true })
 }
 
 function getErrorMessage(error: unknown): string {
