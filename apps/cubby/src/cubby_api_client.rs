@@ -52,8 +52,10 @@ impl CubbyApiClient {
         let status = response.status();
         if !status.is_success() {
             // Get the response body as text first
-            let body_text = response.text().unwrap_or_else(|_| "<failed to read body>".to_string());
-            
+            let body_text = response
+                .text()
+                .unwrap_or_else(|_| "<failed to read body>".to_string());
+
             // Try to parse as JSON error response
             let error_msg = serde_json::from_str::<ApiErrorResponse>(&body_text)
                 .map(|err| err.error)
@@ -61,7 +63,7 @@ impl CubbyApiClient {
                     // If not valid JSON, show the raw body
                     format!("HTTP {}: {}", status, body_text)
                 });
-            
+
             bail!("{}", error_msg);
         }
 
@@ -86,8 +88,10 @@ impl CubbyApiClient {
         let status = response.status();
         if !status.is_success() {
             // Get the response body as text first
-            let body_text = response.text().unwrap_or_else(|_| "<failed to read body>".to_string());
-            
+            let body_text = response
+                .text()
+                .unwrap_or_else(|_| "<failed to read body>".to_string());
+
             // Try to parse as JSON error response
             let error_msg = serde_json::from_str::<ApiErrorResponse>(&body_text)
                 .map(|err| err.error)
@@ -95,7 +99,7 @@ impl CubbyApiClient {
                     // If not valid JSON, show the raw body
                     format!("HTTP {}: {}", status, body_text)
                 });
-            
+
             bail!("{}", error_msg);
         }
 

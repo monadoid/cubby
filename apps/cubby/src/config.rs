@@ -50,4 +50,3 @@ mod tests {
         assert!(!config.api_base_url.is_empty());
     }
 }
-
