@@ -3,7 +3,7 @@ import {BaseOAuthParams} from '../routes/oauth_routes'
 
 /**
  * Renders an interactive HTML consent page where users can approve/deny scopes.
- * The page displays grantable scopes as checkboxes and submits to /authorize/submit.
+ * The page displays grantable scopes as checkboxes and submits to /oauth/authorize/submit.
  * OAuth state fields are preserved as hidden form inputs.
  */
 export function renderOAuthConsentPage(
@@ -63,11 +63,11 @@ export function renderOAuthConsentPage(
 <body>
   <h1>Authorize Connected App</h1>
   ${appHeader}
-  <div class="card">
-    <div style="margin-bottom:.5rem; font-weight:600;">This application is requesting access to:</div>
-    <div>${scopesList}</div>
-  </div>
-  <form method="post" action="/authorize/submit">
+  <form method="post" action="/oauth/authorize/submit">
+    <div class="card">
+      <div style="margin-bottom:.5rem; font-weight:600;">This application is requesting access to:</div>
+      <div>${scopesList}</div>
+    </div>
     ${hiddenInputs}
     <div class="actions">
       <button class="primary" type="submit" name="consent_granted" value="true">Allow</button>

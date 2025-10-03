@@ -79,6 +79,94 @@ app.onError((err, c) => {
 // OAuth routes
 app.route('/oauth', oauthRoutes)
 
+app.get('/sign-up', async (c) => {
+    const redirectTo = c.req.query('redirect_to')
+    
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sign Up - Cubby</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 400px; padding: 0 1rem; }
+    h1 { font-size: 1.75rem; margin-bottom: 1rem; }
+    form { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem; }
+    input { padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 1rem; }
+    input:focus { outline: none; border-color: #2563eb; ring: 2px solid #3b82f6; }
+    button { padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 0.375rem; font-size: 1rem; font-weight: 500; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error { color: #dc2626; font-size: 0.875rem; margin-top: -0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Sign Up</h1>
+  <p>Create your account to continue.</p>
+  <form id="signup-form">
+    <input type="email" name="email" placeholder="Email" required autocomplete="email" />
+    <input type="password" name="password" placeholder="Password" minlength="8" required autocomplete="new-password" />
+    <div id="error-message" class="error" style="display: none;"></div>
+    <button type="submit">Create Account</button>
+  </form>
+  <script>
+    const form = document.getElementById('signup-form');
+    const errorMessage = document.getElementById('error-message');
+    const redirectTo = ${JSON.stringify(redirectTo || null)};
+    const submitButton = form.querySelector('button[type="submit"]');
+    
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMessage.style.display = 'none';
+      submitButton.disabled = true;
+      submitButton.textContent = 'Creating account...';
+      
+      const formData = new FormData(form);
+      
+      try {
+        const response = await fetch('/sign-up', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.get('email'),
+            password: formData.get('password'),
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          errorMessage.textContent = data.error || 'Sign up failed. Please try again.';
+          errorMessage.style.display = 'block';
+          submitButton.disabled = false;
+          submitButton.textContent = 'Create Account';
+          return;
+        }
+        
+        // Store session JWT in cookie (Stytch session)
+        document.cookie = \`stytch_session_jwt=\${data.session_jwt}; Path=/; SameSite=Lax; Secure\`;
+        
+        // Redirect to OAuth flow or home
+        if (redirectTo) {
+          window.location.href = redirectTo;
+        } else {
+          window.location.href = '/';
+        }
+      } catch (error) {
+        console.error('Sign up error:', error);
+        errorMessage.textContent = 'An error occurred during sign up. Please try again.';
+        errorMessage.style.display = 'block';
+        submitButton.disabled = false;
+        submitButton.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>`
+    
+    return c.html(html)
+})
+
 app.post(
     '/sign-up',
     describeRoute({

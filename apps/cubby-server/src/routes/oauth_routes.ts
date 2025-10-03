@@ -1,7 +1,9 @@
-import { Hono} from 'hono'
+import { Hono, type MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
+import { getCookie } from 'hono/cookie'
 import { z } from 'zod/v4'
 import stytch from 'stytch'
+import { Consumer } from '@hono/stytch-auth'
 import type { Bindings, Variables } from '../index'
 import type {
     IDPOAuthAuthorizeRequest,
@@ -29,12 +31,34 @@ const submitSchema = baseOAuthSchema.extend({
         .optional()
         .default('true')
         .transform((val) => val !== 'false'),
+}).extend({
+    // Make scopes optional for submit - user might deny all scopes
+    scopes: z.array(z.string()).default([])
 })
 
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
-app.get('/authorize', async (c) => {
+// Middleware to require authentication with redirect to sign-up
+function requireAuthWithRedirect(): MiddlewareHandler {
+    return async (c, next) => {
+        const authMiddleware = Consumer.authenticateSessionLocal()
+        
+        try {
+            await authMiddleware(c, async () => {
+                await next()
+            })
+        } catch (error) {
+            // Authentication failed - redirect to sign-up with return URL
+            const currentUrl = new URL(c.req.url)
+            const redirectTo = `${currentUrl.pathname}${currentUrl.search}`
+            const signUpUrl = `/sign-up?redirect_to=${encodeURIComponent(redirectTo)}`
+            return c.redirect(signUpUrl, 302)
+        }
+    }
+}
+
+app.get('/authorize', requireAuthWithRedirect(), async (c) => {
     const scopes = c.req.queries('scopes')
     if (!scopes) {
         throw new HTTPException(400, { message: 'scopes parameter is required' })
@@ -56,6 +80,12 @@ app.get('/authorize', async (c) => {
         throw new HTTPException(400, { message: z.prettifyError(parsed.error) })
     }
 
+    // Get authenticated session JWT from cookie
+    const sessionJWT = getCookie(c, 'stytch_session_jwt')
+    if (!sessionJWT) {
+        throw new HTTPException(401, { message: 'Session JWT not found' })
+    }
+
     const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
@@ -65,7 +95,8 @@ app.get('/authorize', async (c) => {
         client_id: parsed.data.client_id,
         redirect_uri: parsed.data.redirect_uri,
         response_type: 'code',
-        scopes: parsed.data.scopes
+        scopes: parsed.data.scopes,
+        session_jwt: sessionJWT,
     }
     let startResp: IDPOAuthAuthorizeStartResponse
     try {
@@ -80,6 +111,7 @@ app.get('/authorize', async (c) => {
         const authReq: IDPOAuthAuthorizeRequest = {
             ...parsed.data,
             consent_granted: true,
+            session_jwt: sessionJWT,
         }
 
         try {
@@ -97,11 +129,28 @@ app.get('/authorize', async (c) => {
     return c.html(html)
 })
 
-app.post('/authorize/submit', async (c) => {
+app.post('/authorize/submit', requireAuthWithRedirect(), async (c) => {
     const body = await c.req.parseBody()
-    const parsed = submitSchema.safeParse(body)
+    
+    // Normalize scopes to always be an array
+    const normalizedBody = {
+        ...body,
+        scopes: Array.isArray(body.scopes) 
+            ? body.scopes 
+            : body.scopes 
+                ? [body.scopes] 
+                : []
+    }
+    
+    const parsed = submitSchema.safeParse(normalizedBody)
     if (!parsed.success) {
         throw new HTTPException(400, { message: z.prettifyError(parsed.error) })
+    }
+
+    // Get authenticated session JWT from cookie
+    const sessionJWT = getCookie(c, 'stytch_session_jwt')
+    if (!sessionJWT) {
+        throw new HTTPException(401, { message: 'Session JWT not found' })
     }
 
     const client = new stytch.Client({
@@ -111,6 +160,7 @@ app.post('/authorize/submit', async (c) => {
 
     const authReq: IDPOAuthAuthorizeRequest = {
         ...parsed.data,
+        session_jwt: sessionJWT,
     }
 
     try {

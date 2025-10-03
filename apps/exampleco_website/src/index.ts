@@ -159,6 +159,7 @@ function getOAuthConfig(env: Env): {
   authorizationEndpoint: string
   tokenEndpoint: string
   clientId: string
+  clientSecret: string
   redirectUri: string
   scopes: string[]
   issuer: string
@@ -167,6 +168,7 @@ function getOAuthConfig(env: Env): {
     authorizationEndpoint: env.STYTCH_AUTH_URL,
     tokenEndpoint: env.STYTCH_TOKEN_URL,
     clientId: env.STYTCH_CLIENT_ID,
+    clientSecret: env.STYTCH_CLIENT_SECRET,
     redirectUri: env.REDIRECT_URI,
     scopes: env.REQUESTED_SCOPES.split(',').map((s) => s.trim()),
     issuer: env.STYTCH_ISSUER,

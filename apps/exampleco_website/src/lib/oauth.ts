@@ -4,6 +4,7 @@ export type OAuthConfig = {
   authorizationEndpoint: string
   tokenEndpoint: string
   clientId: string
+  clientSecret: string
   redirectUri: string
   scopes: string[]
   issuer: string
@@ -28,12 +29,6 @@ export type Connection = {
   receivedAt: number
 }
 
-const publicClientAuth: oauth.ClientAuth = (_as, client, body) => {
-  if (!body.has('client_id')) {
-    body.set('client_id', client.client_id)
-  }
-}
-
 export function createOAuthContext(config: OAuthConfig): OAuthContext {
   const tokenUrl = new URL(config.tokenEndpoint)
   const authorizationUrl = new URL(config.authorizationEndpoint)
@@ -50,8 +45,10 @@ export function createOAuthContext(config: OAuthConfig): OAuthContext {
     },
     client: {
       client_id: config.clientId,
+      client_secret: config.clientSecret,
     },
-    clientAuth: publicClientAuth,
+    // Use ClientSecretBasic for confidential client authentication
+    clientAuth: oauth.ClientSecretBasic(config.clientSecret),
   }
 }
 

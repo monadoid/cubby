@@ -2,6 +2,7 @@
 
 interface Env {
 	STYTCH_CLIENT_ID: string;
+	STYTCH_CLIENT_SECRET: string;
 	STYTCH_AUTH_URL: string;
 	STYTCH_TOKEN_URL: string;
 	STYTCH_ISSUER: string;
