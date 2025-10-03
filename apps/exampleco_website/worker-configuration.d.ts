@@ -11,4 +11,5 @@ interface Env {
 	CUBBY_API_URL: string;
 	SESSION_SECRET: string;
 	SECURE_COOKIES: string;
+	OPENAI_API_KEY: string;
 }

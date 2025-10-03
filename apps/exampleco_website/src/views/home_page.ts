@@ -13,7 +13,10 @@ export function renderHomePage(cubbyApiUrl: string): string {
     button, a.button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: #2563eb; color: #fff; border: none; border-radius: 0.375rem; font-size: 1rem; cursor: pointer; text-decoration: none; }
     button.secondary { background: #4b5563; }
     button:disabled { opacity: 0.65; cursor: not-allowed; }
-    pre { background: #0f172a; color: #f8fafc; padding: 1rem; border-radius: 0.375rem; min-height: 7rem; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+    pre { background: #0f172a; color: #f8fafc; padding: 1rem; border-radius: 0.375rem; min-height: 7rem; max-height: 500px; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
+    .summary-container { background: white; padding: 1rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; }
+    .summary-container h3 { margin: 0 0 0.5rem 0; font-size: 1.125rem; color: #111827; }
+    .summary-text { padding: 1rem; background: #f3f4f6; border-radius: 0.375rem; color: #374151; line-height: 1.6; }
     .cta { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0; }
     .form-group { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
     label { font-weight: 500; font-size: 0.875rem; }
@@ -36,7 +39,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
   <div class="section">
     <h2>Test Device Search</h2>
     <p>Search your Screenpipe device using the proxied API endpoint.</p>
-    <form hx-post="/api/search" hx-target="#search-result" hx-swap="textContent" hx-indicator="#search-indicator">
+    <form hx-post="/api/search" hx-target="#search-result" hx-swap="innerHTML" hx-indicator="#search-indicator">
       <div class="form-group">
         <label for="device-id">Select Device</label>
         <select 
@@ -64,7 +67,9 @@ export function renderHomePage(cubbyApiUrl: string): string {
         <span id="search-indicator" class="htmx-indicator">⏳</span>
       </button>
     </form>
-    <pre id="search-result">Search results will appear here...</pre>
+    <div id="search-result" style="background: #f9fafb; padding: 1rem; border-radius: 0.5rem; min-height: 7rem;">
+      <p style="color: #6b7280;">Search results will appear here...</p>
+    </div>
   </div>
 
   <div class="section">
