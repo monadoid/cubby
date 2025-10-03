@@ -11,8 +11,8 @@ import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clie
 import {createDbClient} from './db/client'
 import {createDevice, getDevicesByUserId} from './db/devices_repo'
 import {createUser, createUserSchema} from './db/users_repo'
-import {jwksAuth, type AuthUser} from "./jwks_auth";
-import {getCookie} from 'hono/cookie'
+import {oauth, type AuthUser} from "./middleware/oauth";
+import {session} from "./middleware/session";
 import oauthRoutes from './routes/oauth_routes'
 import authViews from './routes/auth_views'
 import {strictJSONResponse} from "./helpers";
@@ -24,46 +24,6 @@ type Variables = {
     auth: AuthUser
     userId: string
     session?: any
-}
-
-// Middleware that accepts Stytch session JWT from either Authorization header or cookie
-function stytchSessionAuth() {
-    return async (c: any, next: any) => {
-        // Try to get JWT from Authorization header first (for API clients)
-        const authHeader = c.req.header('authorization')
-        let sessionJwt: string | undefined
-        
-        if (authHeader?.startsWith('Bearer ')) {
-            sessionJwt = authHeader.substring(7)
-        } else {
-            // Fall back to cookie (for browser clients)
-            sessionJwt = getCookie(c, 'stytch_session_jwt')
-        }
-        
-        if (!sessionJwt) {
-            throw new HTTPException(401, { message: 'Missing session JWT' })
-        }
-        
-        // Validate the session JWT with Stytch
-        const client = new stytch.Client({
-            project_id: c.env.STYTCH_PROJECT_ID,
-            secret: c.env.STYTCH_PROJECT_SECRET,
-        })
-        
-        try {
-            const response = await client.sessions.authenticateJwt({
-                session_jwt: sessionJwt,
-            })
-            
-            // Store session info in context
-            c.set('session', response.session)
-            
-            await next()
-        } catch (error: any) {
-            console.error('Session JWT validation failed:', error)
-            throw new HTTPException(401, { message: 'Invalid or expired session' })
-        }
-    }
 }
 
 export type { Bindings, Variables }
@@ -370,21 +330,14 @@ app.post(
         },
         tags: ['Devices'],
     }),
-    stytchSessionAuth(),
+    session(),
     zValidator('json', deviceEnrollRequestSchema),
     async (c) => {
         const _ = c.req.valid('json')
 
         try {
-            // Get user_id from session custom claims
-            const session = c.get('session')
-            const userId = session?.custom_claims?.user_id as string | undefined
-            
-            if (!userId) {
-                console.error('No user_id in session custom claims')
-                return c.json({error: 'Invalid session: missing user_id'}, 401)
-            }
-            
+            // Get user_id from context (set by sessionAuth middleware)
+            const userId = c.get('userId')
             console.log('The "userId" from the session is:', userId)
 
             const db = createDbClient(c.env.DATABASE_URL)
@@ -456,7 +409,7 @@ app.get(
         },
         tags: ['Devices'],
     }),
-    jwksAuth({
+    oauth({
         // TODO: Add proper scope when designing scope system (e.g., 'read:devices' or 'read:user')
         // requiredScopes: ['read:user']
     }),
@@ -479,7 +432,7 @@ app.get(
 
 // Generic proxy to device endpoints with allowlist-based security
 app.all('/devices/:deviceId/*',
-    jwksAuth({
+    oauth({
         // TODO: Add proper scope when designing scope system (e.g., 'read:devices' or 'access:device')
         // requiredScopes: ['read:user']
     }),
@@ -521,7 +474,7 @@ app.all('/devices/:deviceId/*',
 
 app.get(
     '/whoami',
-    jwksAuth({
+    oauth({
         // requiredScopes: undefined  // add later in Step 4
     }),
     (c) => {

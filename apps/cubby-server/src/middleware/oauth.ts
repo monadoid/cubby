@@ -2,10 +2,34 @@ import type { MiddlewareHandler } from 'hono'
 import { createMiddleware } from 'hono/factory'
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { z } from 'zod'
-import type { Bindings, Variables } from './index'
-import { errors } from './errors'
+import type { Bindings, Variables } from '../index'
+import { errors } from '../errors'
 
-export type JWKSAuthOptions = {
+/**
+ * OAuth Authentication Middleware
+ * 
+ * Validates OAuth access tokens from Connected Apps (third-party applications).
+ * 
+ * Token Details:
+ * - Issuer: {PROJECT_DOMAIN} (e.g., https://your-app.stytch.com)
+ * - Accepts from: Authorization header (Bearer token) only
+ * - Validation: JWKS validation using jose library
+ * 
+ * Sets in context:
+ * - c.set('auth', AuthUser) - Full auth object with userId, scopes, etc.
+ * - c.set('userId', string) - Extracted user_id for convenience
+ * 
+ * @param opts.requiredScopes - Optional array of scopes required for this endpoint
+ * 
+ * @example
+ * app.get('/devices', oauth({ requiredScopes: ['read:devices'] }), async (c) => {
+ *   const auth = c.get('auth')
+ *   const userId = c.get('userId')
+ *   // ... use auth data
+ * })
+ */
+
+export type OAuthOptions = {
     requiredScopes?: string[]
 }
 
@@ -21,9 +45,9 @@ export type AuthUser = z.infer<typeof AuthUserSchema>
 
 const cloudflareCacheTtl = 3600
 
-export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: Bindings, Variables: Variables }> => {
+export const oauth = (opts: OAuthOptions = {}): MiddlewareHandler<{ Bindings: Bindings, Variables: Variables }> => {
     return createMiddleware(async (c, next) => {
-        // Extract token
+        // Extract token from Authorization header
         const token = c.req.header('Authorization')?.replace(/^Bearer\s+/i, '')
         if (!token) throw errors.auth.MISSING_TOKEN()
 
@@ -38,7 +62,7 @@ export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: B
         }
 
         // Validate JWT using jose with custom domain issuer
-        // IDP OAuth tokens from Connected Apps use the custom domain as issuer
+        // OAuth IDP tokens from Connected Apps use the PROJECT_DOMAIN as issuer
         const JWKS = createRemoteJWKSet(new URL(jwksURL))
         
         let payload
@@ -53,7 +77,7 @@ export const jwksAuth = (opts: JWKSAuthOptions): MiddlewareHandler<{ Bindings: B
             throw errors.auth.INVALID_TOKEN()
         }
 
-        // Extract user_id from custom claims
+        // Extract user_id from custom claims in the JWT payload
         const userId = (payload as any).user_id
         if (!userId || typeof userId !== 'string') {
             console.error('No user_id in JWT payload:', payload)
