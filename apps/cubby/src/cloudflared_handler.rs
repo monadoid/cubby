@@ -1,7 +1,7 @@
-use std::ffi::OsString;
 use anyhow::{anyhow, bail, Result};
 use cliclack::confirm;
 use duct::cmd;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Manages install / uninstall flow for the `cloudflared` system service.
@@ -82,9 +82,7 @@ impl CloudflaredService {
                 println!(
                     "Exiting as user does not want to overwrite existing cloudflared service."
                 );
-                return bail!(
-                    "User chose not to overwrite existing cloudflared service."
-                );
+                return bail!("User chose not to overwrite existing cloudflared service.");
             }
 
             // If uninstall fails, abort early.

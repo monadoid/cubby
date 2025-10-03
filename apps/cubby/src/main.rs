@@ -1,17 +1,17 @@
 mod cloudflared_handler;
 mod cubby_api_client;
+mod deps_manager;
 mod screenpipe_handler;
 mod signals;
-mod deps_manager;
 
+use crate::cloudflared_handler::CloudflaredService;
 use crate::cubby_api_client::{CubbyApiClient, SignUpRequest};
+use crate::deps_manager::{Dep, ToolManager};
 use crate::screenpipe_handler::ScreenpipeService;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use cliclack::{input, password};
 use std::{thread, time::Duration};
-use crate::cloudflared_handler::CloudflaredService;
-use crate::deps_manager::{Dep, ToolManager};
 
 /// A tiny wrapper around cloudflared service lifecycle.
 #[derive(Parser, Debug)]

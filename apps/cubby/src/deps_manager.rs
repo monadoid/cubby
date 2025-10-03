@@ -2,13 +2,12 @@ use anyhow::{anyhow, bail, Result};
 use directories::ProjectDirs;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
-    env,
-    fs,
-    io::{Read},
+    env, fs,
+    io::Read,
     path::{Path, PathBuf},
 };
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Dep {
@@ -150,16 +149,23 @@ impl ToolManager {
 // ----- internals below -----
 
 #[derive(Clone, Copy, Debug)]
-enum Os { Mac, Linux, Windows }
+enum Os {
+    Mac,
+    Linux,
+    Windows,
+}
 
 #[derive(Clone, Copy, Debug)]
-enum Arch { X86_64, Aarch64 }
+enum Arch {
+    X86_64,
+    Aarch64,
+}
 
 #[derive(Clone, Copy, Debug)]
 enum Archive {
-    Plain,               // a single binary file
-    Tgz(&'static str),   // tar.gz; inner binary to extract
-    Zip(&'static str),   // zip; inner binary to extract
+    Plain,             // a single binary file
+    Tgz(&'static str), // tar.gz; inner binary to extract
+    Zip(&'static str), // zip; inner binary to extract
 }
 
 #[derive(Deserialize)]
@@ -182,16 +188,25 @@ struct Meta {
     sha256: Option<String>,
 }
 
-fn resolve_url(dep: Dep, ver: &VersionSpec, os: Os, arch: Arch) -> Result<(String, String, Archive)> {
+fn resolve_url(
+    dep: Dep,
+    ver: &VersionSpec,
+    os: Os,
+    arch: Arch,
+) -> Result<(String, String, Archive)> {
     match dep {
         Dep::Cloudflared => {
             // Cloudflared uses stable, versionless asset names → /latest/download works.
             let (filename, archive) = match (os, arch) {
-                (Os::Mac, Arch::Aarch64)   => ("cloudflared-darwin-arm64.tgz", Archive::Tgz("cloudflared")),
-                (Os::Mac, Arch::X86_64)    => ("cloudflared-darwin-amd64.tgz", Archive::Tgz("cloudflared")),
-                (Os::Linux, Arch::X86_64)  => ("cloudflared-linux-amd64",     Archive::Plain),
-                (Os::Linux, Arch::Aarch64) => ("cloudflared-linux-arm64",     Archive::Plain),
-                (Os::Windows, Arch::X86_64)=> ("cloudflared-windows-amd64.exe", Archive::Plain),
+                (Os::Mac, Arch::Aarch64) => {
+                    ("cloudflared-darwin-arm64.tgz", Archive::Tgz("cloudflared"))
+                }
+                (Os::Mac, Arch::X86_64) => {
+                    ("cloudflared-darwin-amd64.tgz", Archive::Tgz("cloudflared"))
+                }
+                (Os::Linux, Arch::X86_64) => ("cloudflared-linux-amd64", Archive::Plain),
+                (Os::Linux, Arch::Aarch64) => ("cloudflared-linux-arm64", Archive::Plain),
+                (Os::Windows, Arch::X86_64) => ("cloudflared-windows-amd64.exe", Archive::Plain),
                 _ => bail!("unsupported platform for cloudflared"),
             };
             match ver {
@@ -221,13 +236,27 @@ fn resolve_url(dep: Dep, ver: &VersionSpec, os: Os, arch: Arch) -> Result<(Strin
             };
             let ver_no_v = rel.tag_name.trim_start_matches('v');
             let (needle, archive) = match (os, arch) {
-                (Os::Mac,    Arch::Aarch64) => (format!("screenpipe-{}-aarch64-apple-darwin.tar.gz", ver_no_v),        Archive::Tgz("screenpipe")),
-                (Os::Mac,    Arch::X86_64)  => (format!("screenpipe-{}-x86_64-apple-darwin.tar.gz", ver_no_v),         Archive::Tgz("screenpipe")),
-                (Os::Linux,  Arch::X86_64)  => (format!("screenpipe-{}-x86_64-unknown-linux-gnu.tar.gz", ver_no_v),    Archive::Tgz("screenpipe")),
-                (Os::Windows,Arch::X86_64)  => (format!("screenpipe-{}-x86_64-pc-windows-msvc.zip", ver_no_v),         Archive::Zip("screenpipe.exe")),
+                (Os::Mac, Arch::Aarch64) => (
+                    format!("screenpipe-{}-aarch64-apple-darwin.tar.gz", ver_no_v),
+                    Archive::Tgz("screenpipe"),
+                ),
+                (Os::Mac, Arch::X86_64) => (
+                    format!("screenpipe-{}-x86_64-apple-darwin.tar.gz", ver_no_v),
+                    Archive::Tgz("screenpipe"),
+                ),
+                (Os::Linux, Arch::X86_64) => (
+                    format!("screenpipe-{}-x86_64-unknown-linux-gnu.tar.gz", ver_no_v),
+                    Archive::Tgz("screenpipe"),
+                ),
+                (Os::Windows, Arch::X86_64) => (
+                    format!("screenpipe-{}-x86_64-pc-windows-msvc.zip", ver_no_v),
+                    Archive::Zip("screenpipe.exe"),
+                ),
                 _ => bail!("unsupported platform for screenpipe (tag {})", rel.tag_name),
             };
-            let asset = rel.assets.into_iter()
+            let asset = rel
+                .assets
+                .into_iter()
                 .find(|a| a.name == needle)
                 .ok_or_else(|| anyhow!("no asset named {} in release {}", needle, rel.tag_name))?;
             Ok((rel.tag_name, asset.browser_download_url, archive))
@@ -236,17 +265,25 @@ fn resolve_url(dep: Dep, ver: &VersionSpec, os: Os, arch: Arch) -> Result<(Strin
 }
 
 fn github_latest(owner: &str, repo: &str) -> Result<Release> {
-    github_get_release(&format!("https://api.github.com/repos/{}/{}/releases/latest", owner, repo))
+    github_get_release(&format!(
+        "https://api.github.com/repos/{}/{}/releases/latest",
+        owner, repo
+    ))
 }
 fn github_by_tag(owner: &str, repo: &str, tag: &str) -> Result<Release> {
-    github_get_release(&format!("https://api.github.com/repos/{}/{}/releases/tags/{}", owner, repo, tag))
+    github_get_release(&format!(
+        "https://api.github.com/repos/{}/{}/releases/tags/{}",
+        owner, repo, tag
+    ))
 }
 
 fn github_get_release(url: &str) -> Result<Release> {
     let client = reqwest::blocking::Client::builder()
         .user_agent("cubby/0.1 (+https://tabsandtabs)")
         .build()?;
-    let mut req = client.get(url).header("Accept", "application/vnd.github+json");
+    let mut req = client
+        .get(url)
+        .header("Accept", "application/vnd.github+json");
     if let Ok(tok) = env::var("GITHUB_TOKEN") {
         req = req.header("Authorization", format!("Bearer {}", tok));
     }
@@ -304,7 +341,9 @@ fn sha256_file(path: &Path) -> Result<String> {
     let mut buf = [0u8; 64 * 1024];
     loop {
         let n = f.read(&mut buf)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         h.update(&buf[..n]);
     }
     Ok(hex::encode(h.finalize()))
@@ -314,13 +353,13 @@ fn sha256_file(path: &Path) -> Result<String> {
 
 fn detect_platform() -> Result<(Os, Arch)> {
     let os = match std::env::consts::OS {
-        "macos"   => Os::Mac,
-        "linux"   => Os::Linux,
+        "macos" => Os::Mac,
+        "linux" => Os::Linux,
         "windows" => Os::Windows,
         other => bail!("unsupported OS: {}", other),
     };
     let arch = match std::env::consts::ARCH {
-        "x86_64"  => Arch::X86_64,
+        "x86_64" => Arch::X86_64,
         "aarch64" => Arch::Aarch64,
         other => bail!("unsupported ARCH: {}", other),
     };
