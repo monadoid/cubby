@@ -28,7 +28,8 @@ const cloudflareCacheTtl = 3600
         const env = c.env
         const audience = env.STYTCH_PROJECT_ID;
         const jwksURL = `${env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`
-        const issuer = `stytch.com/${env.STYTCH_PROJECT_ID}`
+        // OAuth IDP tokens use the custom domain as issuer, not stytch.com/project-id
+        const issuer = env.STYTCH_PROJECT_DOMAIN
         console.log(`jwksURL: ${jwksURL}`)
         const JWKS = createRemoteJWKSet(new URL(jwksURL))
         
@@ -51,7 +52,9 @@ const cloudflareCacheTtl = 3600
                 audience: audience,
             })
             payload = result.payload;
+            console.log('JWT payload:', JSON.stringify(payload, null, 2))
         } catch (error) {
+            console.error('JWT verification failed:', error)
             throw errors.auth.INVALID_TOKEN()
         }
 
@@ -65,7 +68,11 @@ const cloudflareCacheTtl = 3600
             return typeof v === 'string' && v.length > 0 ? v : undefined
         }
         const dbUserId = getAppUserId(payload, 'user_id')
-        if (!dbUserId) throw errors.auth.INVALID_AUTH_DATA()
+        console.log('Extracted user_id:', dbUserId)
+        if (!dbUserId) {
+            console.error('No user_id found in token. Payload:', payload)
+            throw errors.auth.INVALID_AUTH_DATA()
+        }
 
         const parseResult = AuthUserSchema.safeParse({
             userId: dbUserId,

@@ -1,5 +1,6 @@
 import {Hono} from 'hono'
 import {HTTPException} from 'hono/http-exception'
+import {cors} from 'hono/cors'
 import {describeRoute, resolver, openAPIRouteHandler} from 'hono-openapi'
 import {zValidator} from '@hono/zod-validator'
 import {z} from 'zod/v4'
@@ -65,6 +66,14 @@ const whoamiResponseSchema = z.object({
 
 
 const app = new Hono<{ Bindings: Bindings, Variables: Variables }>()
+
+// CORS middleware - allow any origin for token-protected API
+// Security is enforced by Bearer token validation, not origin restrictions
+app.use('/*', cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+}))
 
 // Global error handler
 app.onError((err, c) => {
