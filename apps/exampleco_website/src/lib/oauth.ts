@@ -5,7 +5,7 @@ export type OAuthConfig = {
   tokenEndpoint: string
   clientId: string
   redirectUri: string
-  scope: string
+  scopes: string[]
   issuer: string
 }
 
@@ -60,7 +60,7 @@ export function buildAuthorizationUrl(config: OAuthConfig, state: string, codeCh
   url.searchParams.set('client_id', config.clientId)
   url.searchParams.set('redirect_uri', config.redirectUri)
   url.searchParams.set('response_type', 'code')
-  url.searchParams.set('scope', config.scope)
+  config.scopes.forEach((scope) => url.searchParams.append('scopes', scope))
   url.searchParams.set('code_challenge', codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
   url.searchParams.set('state', state)
