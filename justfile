@@ -48,6 +48,10 @@ clean:
     pnpm -w run clean || true
     rm -rf apps/*/dist apps/*/node_modules/.cache
 
+# Check screenpipe database status
+check-db:
+    ./check_screenpipe_db.sh
+
 # Show available commands
 help:
     @just --list

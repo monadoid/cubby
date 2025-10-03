@@ -9,7 +9,7 @@ const contentTypeSchema = z.enum(['all', 'ocr', 'audio', 'ui', 'audio+ui', 'ocr+
 
 const searchRequestSchema = z.object({
   deviceId: z.string().min(1, 'Device ID is required'),
-  q: z.string().min(1, 'Search query is required'),
+  q: z.string().optional().default(''), // Optional - when empty, returns recent activity
   limit: z
     .string()
     .optional()
@@ -88,8 +88,10 @@ app.post(
         const sanitizedQuery = q.replace(/[?*+"'-]/g, ' ').trim()
         searchUrl.searchParams.set('q', sanitizedQuery)
       }
+      // When q is empty/omitted, screenpipe returns recent activity chronologically
       searchUrl.searchParams.set('limit', limit.toString())
       searchUrl.searchParams.set('content_type', content_type)
+      searchUrl.searchParams.set('include_frames', 'true') // Include screenshots
       
       console.log(`Proxying search request to: ${searchUrl.toString()}`)
 
