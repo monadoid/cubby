@@ -2,7 +2,13 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "cubby-server",
   "main": "src/index.ts",
-  "compatibility_date": "2025-09-24"
+  "compatibility_date": "2025-09-24",
+  "routes": [
+    {
+      "pattern": "api.cubby.sh/*",
+      "custom_domain": true
+    }
+  ]
   // "compatibility_flags": [
   //   "nodejs_compat"
   // ],
