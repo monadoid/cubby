@@ -7,7 +7,7 @@ declare namespace Cloudflare {
 	}
 	interface Env {
 		STYTCH_PROJECT_ID: string;
-		STYTCH_SECRET: string;
+		STYTCH_PROJECT_SECRET: string;
 		STYTCH_PROJECT_DOMAIN: string;
 		CF_API_TOKEN: string;
 		CF_ACCOUNT_ID: string;
