@@ -51,11 +51,17 @@ impl CubbyApiClient {
 
         let status = response.status();
         if !status.is_success() {
-            // Try to parse error response to get the actual error message
-            let error_msg = match response.json::<ApiErrorResponse>() {
-                Ok(error_response) => error_response.error,
-                Err(_) => format!("Sign-up failed with status: {}", status),
-            };
+            // Get the response body as text first
+            let body_text = response.text().unwrap_or_else(|_| "<failed to read body>".to_string());
+            
+            // Try to parse as JSON error response
+            let error_msg = serde_json::from_str::<ApiErrorResponse>(&body_text)
+                .map(|err| err.error)
+                .unwrap_or_else(|_| {
+                    // If not valid JSON, show the raw body
+                    format!("HTTP {}: {}", status, body_text)
+                });
+            
             bail!("{}", error_msg);
         }
 
@@ -79,11 +85,17 @@ impl CubbyApiClient {
 
         let status = response.status();
         if !status.is_success() {
-            // Try to parse error response to get the actual error message
-            let error_msg = match response.json::<ApiErrorResponse>() {
-                Ok(error_response) => error_response.error,
-                Err(_) => format!("Device enrollment failed with status: {}", status),
-            };
+            // Get the response body as text first
+            let body_text = response.text().unwrap_or_else(|_| "<failed to read body>".to_string());
+            
+            // Try to parse as JSON error response
+            let error_msg = serde_json::from_str::<ApiErrorResponse>(&body_text)
+                .map(|err| err.error)
+                .unwrap_or_else(|_| {
+                    // If not valid JSON, show the raw body
+                    format!("HTTP {}: {}", status, body_text)
+                });
+            
             bail!("{}", error_msg);
         }
 

@@ -1,10 +1,12 @@
 mod cloudflared_handler;
+mod config;
 mod cubby_api_client;
 mod deps_manager;
 mod screenpipe_handler;
 mod signals;
 
 use crate::cloudflared_handler::CloudflaredService;
+use crate::config::Config;
 use crate::cubby_api_client::{CubbyApiClient, SignUpRequest};
 use crate::deps_manager::{Dep, ToolManager};
 use crate::screenpipe_handler::ScreenpipeService;
@@ -62,7 +64,9 @@ fn start_command() -> Result<()> {
         .interact()
         .context("Failed to read password input")?;
 
-    let client = CubbyApiClient::new("http://localhost:8787".to_string());
+    let config = Config::from_build_profile();
+    let client = CubbyApiClient::new(config.api_base_url);
+    println!("📝 Creating account for {}...", email);
     let sign_up_response = client
         .sign_up(SignUpRequest {
             email: email.clone(),

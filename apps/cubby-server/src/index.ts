@@ -192,10 +192,14 @@ app.post(
             }
         } catch (error: any) {
             console.error('Sign-up error:', error)
+            console.error('Error keys:', Object.keys(error || {}))
+            console.error('Error message:', error?.error_message)
+            console.error('Error type:', error?.error_type)
+            console.error('Full error object:', JSON.stringify(error, null, 2))
             
             // Extract Stytch error details
             const statusCode = error?.status_code || 500
-            const errorMsg = error?.error_message || 'Failed to create account'
+            const errorMsg = error?.error_message || error?.message || 'Failed to create account'
             
             if (contentType.includes('application/x-www-form-urlencoded')) {
                 return c.html(`<div class="error">${errorMsg}</div>`)
@@ -519,10 +523,6 @@ app.get(
         },
     })
 )
-
-app.get('/', (c) => {
-    return c.text('Cubby API - Visit /openapi for OpenAPI documentation')
-})
 
 
 export default app
