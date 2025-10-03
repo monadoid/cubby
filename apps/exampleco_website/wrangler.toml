@@ -1,8 +1,0 @@
-name = "exampleco_website"
-main = "src/index.ts"
-compatibility_date = "2024-12-19"
-compatibility_flags = ["nodejs_compat"]
-
-
-[dev]
-port = 8670
