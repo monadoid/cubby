@@ -1,23 +1,69 @@
 import {Hono} from 'hono'
 import {HTTPException} from 'hono/http-exception'
 import {cors} from 'hono/cors'
+import {proxy} from 'hono/proxy'
+import {setCookie} from 'hono/cookie'
 import {describeRoute, resolver, openAPIRouteHandler} from 'hono-openapi'
 import {zValidator} from '@hono/zod-validator'
 import {z} from 'zod/v4'
+import stytch from 'stytch'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
-import {fetchDeviceHealth} from './clients/tunnel'
 import {createDbClient} from './db/client'
-import {createDevice} from './db/devices_repo'
+import {createDevice, getDevicesByUserId} from './db/devices_repo'
 import {createUser, createUserSchema} from './db/users_repo'
 import {jwksAuth, type AuthUser} from "./jwks_auth";
+import {getCookie} from 'hono/cookie'
 import oauthRoutes from './routes/oauth_routes'
+import authViews from './routes/auth_views'
 import {strictJSONResponse} from "./helpers";
+import {isPathAllowed} from './proxy_config'
 
 type Bindings = CloudflareBindings
 
 type Variables = {
     auth: AuthUser
     userId: string
+    session?: any
+}
+
+// Middleware that accepts Stytch session JWT from either Authorization header or cookie
+function stytchSessionAuth() {
+    return async (c: any, next: any) => {
+        // Try to get JWT from Authorization header first (for API clients)
+        const authHeader = c.req.header('authorization')
+        let sessionJwt: string | undefined
+        
+        if (authHeader?.startsWith('Bearer ')) {
+            sessionJwt = authHeader.substring(7)
+        } else {
+            // Fall back to cookie (for browser clients)
+            sessionJwt = getCookie(c, 'stytch_session_jwt')
+        }
+        
+        if (!sessionJwt) {
+            throw new HTTPException(401, { message: 'Missing session JWT' })
+        }
+        
+        // Validate the session JWT with Stytch
+        const client = new stytch.Client({
+            project_id: c.env.STYTCH_PROJECT_ID,
+            secret: c.env.STYTCH_PROJECT_SECRET,
+        })
+        
+        try {
+            const response = await client.sessions.authenticateJwt({
+                session_jwt: sessionJwt,
+            })
+            
+            // Store session info in context
+            c.set('session', response.session)
+            
+            await next()
+        } catch (error: any) {
+            console.error('Session JWT validation failed:', error)
+            throw new HTTPException(401, { message: 'Invalid or expired session' })
+        }
+    }
 }
 
 export type { Bindings, Variables }
@@ -85,96 +131,9 @@ app.onError((err, c) => {
     return c.text('Internal Server Error', 500)
 })
 
-// OAuth routes
+// Routes
 app.route('/oauth', oauthRoutes)
-
-app.get('/sign-up', async (c) => {
-    const redirectTo = c.req.query('redirect_to')
-    
-    const html = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Sign Up - Cubby</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 400px; padding: 0 1rem; }
-    h1 { font-size: 1.75rem; margin-bottom: 1rem; }
-    form { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.5rem; }
-    input { padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 1rem; }
-    input:focus { outline: none; border-color: #2563eb; ring: 2px solid #3b82f6; }
-    button { padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 0.375rem; font-size: 1rem; font-weight: 500; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .error { color: #dc2626; font-size: 0.875rem; margin-top: -0.5rem; }
-  </style>
-</head>
-<body>
-  <h1>Sign Up</h1>
-  <p>Create your account to continue.</p>
-  <form id="signup-form">
-    <input type="email" name="email" placeholder="Email" required autocomplete="email" />
-    <input type="password" name="password" placeholder="Password" minlength="8" required autocomplete="new-password" />
-    <div id="error-message" class="error" style="display: none;"></div>
-    <button type="submit">Create Account</button>
-  </form>
-  <script>
-    const form = document.getElementById('signup-form');
-    const errorMessage = document.getElementById('error-message');
-    const redirectTo = ${JSON.stringify(redirectTo || null)};
-    const submitButton = form.querySelector('button[type="submit"]');
-    
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errorMessage.style.display = 'none';
-      submitButton.disabled = true;
-      submitButton.textContent = 'Creating account...';
-      
-      const formData = new FormData(form);
-      
-      try {
-        const response = await fetch('/sign-up', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formData.get('email'),
-            password: formData.get('password'),
-          }),
-        });
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-          errorMessage.textContent = data.error || 'Sign up failed. Please try again.';
-          errorMessage.style.display = 'block';
-          submitButton.disabled = false;
-          submitButton.textContent = 'Create Account';
-          return;
-        }
-        
-        // Store session JWT in cookie (Stytch session)
-        document.cookie = \`stytch_session_jwt=\${data.session_jwt}; Path=/; SameSite=Lax; Secure\`;
-        
-        // Redirect to OAuth flow or home
-        if (redirectTo) {
-          window.location.href = redirectTo;
-        } else {
-          window.location.href = '/';
-        }
-      } catch (error) {
-        console.error('Sign up error:', error);
-        errorMessage.textContent = 'An error occurred during sign up. Please try again.';
-        errorMessage.style.display = 'block';
-        submitButton.disabled = false;
-        submitButton.textContent = 'Create Account';
-      }
-    });
-  </script>
-</body>
-</html>`
-    
-    return c.html(html)
-})
+app.route('/', authViews)
 
 app.post(
     '/sign-up',
@@ -196,63 +155,194 @@ app.post(
         },
         tags: ['Authentication'],
     }),
-    zValidator('json', signUpRequestSchema),
     async (c) => {
-        const {email, password} = c.req.valid('json')
+        // Handle both form data (htmx) and JSON (API)
+        const contentType = c.req.header('content-type') || ''
+        let email: string
+        let password: string
+        let redirectTo: string | undefined
 
-        const newUserId = crypto.randomUUID();
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = await c.req.parseBody()
+            email = formData.email as string
+            password = formData.password as string
+            redirectTo = formData.redirect_to as string | undefined
+        } else {
+            const validated = signUpRequestSchema.safeParse(await c.req.json())
+            if (!validated.success) {
+                return c.json({error: 'Invalid request data'}, 400)
+            }
+            email = validated.data.email
+            password = validated.data.password
+        }
+
+        if (!email || !password) {
+            const errorMsg = 'Email and password are required'
+            if (contentType.includes('application/x-www-form-urlencoded')) {
+                return c.html(`<div class="error">${errorMsg}</div>`)
+            }
+            return c.json({error: errorMsg}, 400)
+        }
+
+        const newUserId = crypto.randomUUID()
+        
         try {
-            const stytchResponse = await fetch(`${c.env.STYTCH_BASE_URL}/v1/passwords`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${btoa(`${c.env.STYTCH_PROJECT_ID}:${c.env.STYTCH_PROJECT_SECRET}`)}`
-                },
-                body: JSON.stringify({
-                    email,
-                    password,
-                    session_duration_minutes: 60,
-                    trusted_metadata: { user_id: newUserId },
-                    session_custom_claims: { user_id: newUserId },
-                })
+            const client = new stytch.Client({
+                project_id: c.env.STYTCH_PROJECT_ID,
+                secret: c.env.STYTCH_PROJECT_SECRET,
             })
 
-            const rawData = await stytchResponse.json()
-
-            if (!stytchResponse.ok) {
-                const errorParseResult = stytchErrorResponseSchema.safeParse(rawData)
-                if (errorParseResult.success) {
-                    console.error('Stytch API error:', errorParseResult.data)
-                    return c.json({error: errorParseResult.data.error_message}, 400)
-                }
-                console.error('Failed to parse Stytch error response:', rawData)
-                return c.json({error: 'Authentication service error'}, 400)
-            }
-
-            console.log(rawData)
-            const successParseResult = stytchSuccessResponseSchema.safeParse(rawData)
-            if (!successParseResult.success) {
-                console.error('Failed to parse Stytch success response:', successParseResult.error, 'Raw data:', rawData)
-                throw new Error('Invalid response from authentication service')
-            }
-
-            const {auth_id, session_token, session_jwt} = successParseResult.data
+            const response = await client.passwords.create({
+                email,
+                password,
+                session_duration_minutes: 60,
+                trusted_metadata: { user_id: newUserId },
+                session_custom_claims: { user_id: newUserId },
+            })
 
             const db = createDbClient(c.env.DATABASE_URL)
             await createUser(db, {
                 id: newUserId,
-                authId: auth_id,
+                authId: response.user_id,
                 email,
             })
 
-            return strictJSONResponse(c, signUpResponseSchema, {
-                user_id: newUserId,
-                session_token,
-                session_jwt
-            }, 201)
-        } catch (error) {
+            // Set session cookie
+            setCookie(c, 'stytch_session_jwt', response.session_jwt, {
+                path: '/',
+                secure: true,
+                httpOnly: true,
+                sameSite: 'Lax',
+                maxAge: 60 * 60, // 1 hour
+            })
+
+            // Return appropriate response based on request type
+            if (contentType.includes('application/x-www-form-urlencoded')) {
+                // htmx request - trigger redirect
+                const redirect = redirectTo || '/'
+                c.header('HX-Redirect', redirect)
+                return c.html('')
+            } else {
+                // JSON API request
+                return strictJSONResponse(c, signUpResponseSchema, {
+                    user_id: newUserId,
+                    session_token: response.session_token,
+                    session_jwt: response.session_jwt
+                }, 201)
+            }
+        } catch (error: any) {
             console.error('Sign-up error:', error)
-            return c.json({error: 'Internal server error'}, 500)
+            
+            // Extract Stytch error details
+            const statusCode = error?.status_code || 500
+            const errorMsg = error?.error_message || 'Failed to create account'
+            
+            if (contentType.includes('application/x-www-form-urlencoded')) {
+                return c.html(`<div class="error">${errorMsg}</div>`)
+            }
+            return c.json({error: errorMsg}, statusCode)
+        }
+    }
+)
+
+app.post(
+    '/login',
+    describeRoute({
+        description: 'Authenticate a user',
+        responses: {
+            200: {
+                description: 'User authenticated successfully',
+                content: {
+                    'application/json': {schema: resolver(signUpResponseSchema)}, // Same schema as sign-up
+                },
+            },
+            400: {
+                description: 'Bad request - invalid credentials',
+            },
+            401: {
+                description: 'Unauthorized - incorrect email or password',
+            },
+            500: {
+                description: 'Internal server error',
+            },
+        },
+        tags: ['Authentication'],
+    }),
+    async (c) => {
+        // Handle both form data (htmx) and JSON (API)
+        const contentType = c.req.header('content-type') || ''
+        let email: string
+        let password: string
+        let redirectTo: string | undefined
+
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = await c.req.parseBody()
+            email = formData.email as string
+            password = formData.password as string
+            redirectTo = formData.redirect_to as string | undefined
+        } else {
+            const validated = signUpRequestSchema.safeParse(await c.req.json())
+            if (!validated.success) {
+                return c.json({error: 'Invalid request data'}, 400)
+            }
+            email = validated.data.email
+            password = validated.data.password
+        }
+
+        if (!email || !password) {
+            const errorMsg = 'Email and password are required'
+            if (contentType.includes('application/x-www-form-urlencoded')) {
+                return c.html(`<div class="error">${errorMsg}</div>`)
+            }
+            return c.json({error: errorMsg}, 400)
+        }
+
+        try {
+            const client = new stytch.Client({
+                project_id: c.env.STYTCH_PROJECT_ID,
+                secret: c.env.STYTCH_PROJECT_SECRET,
+            })
+
+            const response = await client.passwords.authenticate({
+                email,
+                password,
+                session_duration_minutes: 60,
+            })
+
+            // Set session cookie
+            setCookie(c, 'stytch_session_jwt', response.session_jwt, {
+                path: '/',
+                secure: true,
+                httpOnly: true,
+                sameSite: 'Lax',
+                maxAge: 60 * 60, // 1 hour
+            })
+
+            // Return appropriate response based on request type
+            if (contentType.includes('application/x-www-form-urlencoded')) {
+                // htmx request - trigger redirect
+                const redirect = redirectTo || '/'
+                c.header('HX-Redirect', redirect)
+                return c.html('')
+            } else {
+                // JSON API request
+                return c.json({
+                    user_id: response.user_id,
+                    session_token: response.session_token,
+                    session_jwt: response.session_jwt
+                }, 200)
+            }
+        } catch (error: any) {
+            console.error('Login error:', error)
+            
+            // Extract Stytch error details
+            const statusCode = error?.status_code || 401
+            const errorMsg = error?.error_message || 'Invalid email or password'
+            
+            if (contentType.includes('application/x-www-form-urlencoded')) {
+                return c.html(`<div class="error">${errorMsg}</div>`)
+            }
+            return c.json({error: errorMsg}, statusCode)
         }
     }
 )
@@ -271,20 +361,31 @@ app.post(
             400: {
                 description: 'Bad request - invalid device information',
             },
+            401: {
+                description: 'Unauthorized - invalid or missing session',
+            },
             500: {
                 description: 'Internal server error',
             },
         },
         tags: ['Devices'],
     }),
-    jwksAuth({}),
+    stytchSessionAuth(),
     zValidator('json', deviceEnrollRequestSchema),
     async (c) => {
         const _ = c.req.valid('json')
 
         try {
-            const userId = c.get('userId')
-            console.log('The "userId" from the auth gaurd is:', userId)
+            // Get user_id from session custom claims
+            const session = c.get('session')
+            const userId = session?.custom_claims?.user_id as string | undefined
+            
+            if (!userId) {
+                console.error('No user_id in session custom claims')
+                return c.json({error: 'Invalid session: missing user_id'}, 401)
+            }
+            
+            console.log('The "userId" from the session is:', userId)
 
             const db = createDbClient(c.env.DATABASE_URL)
 
@@ -329,25 +430,94 @@ app.post(
     }
 )
 
-
-app.get('/devices/:deviceId/health',
+app.get(
+    '/devices',
+    describeRoute({
+        description: 'List all devices for the authenticated user',
+        responses: {
+            200: {
+                description: 'List of user devices',
+                content: {
+                    'application/json': {
+                        schema: resolver(z.object({
+                            devices: z.array(z.object({
+                                id: z.string(),
+                                userId: z.string().uuid(),
+                                createdAt: z.string(),
+                                updatedAt: z.string(),
+                            }))
+                        }))
+                    },
+                },
+            },
+            500: {
+                description: 'Internal server error',
+            },
+        },
+        tags: ['Devices'],
+    }),
     jwksAuth({
-        requiredScopes: ['read:user']
+        // TODO: Add proper scope when designing scope system (e.g., 'read:devices' or 'read:user')
+        // requiredScopes: ['read:user']
     }),
     async (c) => {
-    const {deviceId} = c.req.param()
-
-    try {
-        return await fetchDeviceHealth(deviceId, {
-            ACCESS_CLIENT_ID: c.env.ACCESS_CLIENT_ID,
-            ACCESS_CLIENT_SECRET: c.env.ACCESS_CLIENT_SECRET,
-            TUNNEL_DOMAIN: c.env.TUNNEL_DOMAIN,
-        })
-    } catch (error) {
-        console.error('Device health proxy error:', error)
-        return c.json({error: 'Failed to fetch device health'}, 502)
+        try {
+            const userId = c.get('userId')
+            const db = createDbClient(c.env.DATABASE_URL)
+            
+            const userDevices = await getDevicesByUserId(db, userId)
+            
+            return c.json({
+                devices: userDevices
+            })
+        } catch (error) {
+            console.error('Error fetching devices:', error)
+            return c.json({error: 'Failed to fetch devices'}, 500)
+        }
     }
-})
+)
+
+// Generic proxy to device endpoints with allowlist-based security
+app.all('/devices/:deviceId/*',
+    jwksAuth({
+        // TODO: Add proper scope when designing scope system (e.g., 'read:devices' or 'access:device')
+        // requiredScopes: ['read:user']
+    }),
+    async (c) => {
+        const {deviceId} = c.req.param()
+        const path = c.req.path.replace(`/devices/${deviceId}`, '')
+        const method = c.req.method
+        
+        // Validate device ID format (alphanumeric and hyphens only)
+        if (!/^[a-zA-Z0-9-]+$/.test(deviceId)) {
+            return c.json({error: 'Invalid device ID format'}, 400)
+        }
+        
+        // Check if the requested path and method are in the allowlist
+        if (!isPathAllowed(path, method)) {
+            console.warn(`Blocked request to disallowed endpoint: ${method} ${path}`)
+            return c.json({error: 'Endpoint not allowed'}, 403)
+        }
+        
+        try {
+            const targetUrl = `https://${deviceId}.${c.env.TUNNEL_DOMAIN}${path}`
+            const requestId = crypto.randomUUID()
+            
+            console.log(`Proxying ${method} request to device ${deviceId}${path} (request ID: ${requestId})`)
+            
+            return proxy(targetUrl, {
+                headers: {
+                    'CF-Access-Client-Id': c.env.ACCESS_CLIENT_ID,
+                    'CF-Access-Client-Secret': c.env.ACCESS_CLIENT_SECRET,
+                    'X-Cubby-Request-Id': requestId,
+                },
+            })
+        } catch (error) {
+            console.error('Device proxy error:', error)
+            return c.json({error: 'Failed to proxy request to device'}, 502)
+        }
+    }
+)
 
 app.get(
     '/whoami',

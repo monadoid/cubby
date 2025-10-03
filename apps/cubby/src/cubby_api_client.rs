@@ -15,6 +15,11 @@ pub struct SignUpResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct ApiErrorResponse {
+    error: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DeviceEnrollResponse {
     pub device_id: String,
     pub hostname: String,
@@ -44,11 +49,14 @@ impl CubbyApiClient {
             .send()
             .context("Failed to send sign-up request")?;
 
-        if !response.status().is_success() {
-            bail!(
-                "Sign-up request failed with status: {}",
-                response.status()
-            );
+        let status = response.status();
+        if !status.is_success() {
+            // Try to parse error response to get the actual error message
+            let error_msg = match response.json::<ApiErrorResponse>() {
+                Ok(error_response) => error_response.error,
+                Err(_) => format!("Sign-up failed with status: {}", status),
+            };
+            bail!("{}", error_msg);
         }
 
         let sign_up_response: SignUpResponse = response
@@ -69,17 +77,18 @@ impl CubbyApiClient {
             .send()
             .context("Failed to send device enrollment request")?;
 
-        if !response.status().is_success() {
-             bail!(
-                "Device enrollment request failed with status: {}",
-                response.status()
-            );
+        let status = response.status();
+        if !status.is_success() {
+            // Try to parse error response to get the actual error message
+            let error_msg = match response.json::<ApiErrorResponse>() {
+                Ok(error_response) => error_response.error,
+                Err(_) => format!("Device enrollment failed with status: {}", status),
+            };
+            bail!("{}", error_msg);
         }
 
-        let response_text = response.text().context("Failed to get response text")?;
-        println!("Raw API response: {}", response_text);
-
-        let enroll_response: DeviceEnrollResponse = serde_json::from_str(&response_text)
+        let enroll_response: DeviceEnrollResponse = response
+            .json()
             .context("Failed to parse device enrollment response")?;
 
         Ok(enroll_response)

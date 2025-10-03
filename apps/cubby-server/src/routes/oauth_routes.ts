@@ -49,11 +49,11 @@ function requireAuthWithRedirect(): MiddlewareHandler {
                 await next()
             })
         } catch (error) {
-            // Authentication failed - redirect to sign-up with return URL
+            // Authentication failed - redirect to login with return URL
             const currentUrl = new URL(c.req.url)
             const redirectTo = `${currentUrl.pathname}${currentUrl.search}`
-            const signUpUrl = `/sign-up?redirect_to=${encodeURIComponent(redirectTo)}`
-            return c.redirect(signUpUrl, 302)
+            const loginUrl = `/login?redirect_to=${encodeURIComponent(redirectTo)}`
+            return c.redirect(loginUrl, 302)
         }
     }
 }
