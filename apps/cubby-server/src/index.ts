@@ -2,10 +2,7 @@ import {Hono} from 'hono'
 import {HTTPException} from 'hono/http-exception'
 import {describeRoute, resolver, openAPIRouteHandler} from 'hono-openapi'
 import {zValidator} from '@hono/zod-validator'
-import {z} from 'zod'
-import type { Context } from "hono";
-import type { ContentfulStatusCode } from "hono/utils/http-status";
-import type { ZodSchema } from "zod";
+import {z} from 'zod/v4'
 import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
 import {fetchDeviceHealth} from './clients/tunnel'
 import {createDbClient} from './db/client'
@@ -13,6 +10,7 @@ import {createDevice} from './db/devices_repo'
 import {createUser, createUserSchema} from './db/users_repo'
 import {jwksAuth, type AuthUser} from "./jwks_auth";
 import oauthRoutes from './routes/oauth_routes'
+import {strictJSONResponse} from "./helpers";
 
 type Bindings = CloudflareBindings
 
@@ -22,26 +20,6 @@ type Variables = {
 }
 
 export type { Bindings, Variables }
-
-export function strictJSONResponse<
-    C extends Context,
-    S extends ZodSchema,
-    D extends Parameters<Context["json"]>[0] & z.infer<S>,
-    U extends ContentfulStatusCode
->(c: C, schema: S, data: D, statusCode?: U) {
-    const validatedResponse = schema.safeParse(data);
-
-    if (!validatedResponse.success) {
-        return c.json(
-            {
-                message: "Strict response validation failed",
-            },
-            500
-        );
-    }
-
-    return c.json(validatedResponse.data, statusCode);
-}
 
 const signUpRequestSchema = createUserSchema.pick({ email: true }).extend({
     password: z.string()

@@ -1,6 +1,6 @@
 import { Hono} from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { z } from 'zod'
+import { z } from 'zod/v4'
 import stytch from 'stytch'
 import type { Bindings, Variables } from '../index'
 import type {
@@ -10,21 +10,14 @@ import type {
 } from 'stytch'
 import { renderOAuthConsentPage } from '../views/oauth_consent_page'
 
-
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
-
 export const baseOAuthSchema = z.object({
     client_id: z.string().min(1, 'client_id is required'),
     redirect_uri: z.url('redirect_uri must be a valid URL'),
     response_type: z.literal('code').default('code'),
-    scopes: z.preprocess(
-        (val) => Array.isArray(val) ? val : val ? [val] : undefined,
-        z.array(z.string()).min(1, 'At least one scope is required')
-    ),
+    scopes: z.array(z.string()).min(1, 'At least one scope is required'),
     state: z.string().optional(),
     nonce: z.string().optional(),
     code_challenge: z.string().optional(),
-    code_challenge_method: z.enum(['S256', 'plain']).optional(),
     prompt: z.string().optional(),
 })
 
@@ -38,20 +31,27 @@ const submitSchema = baseOAuthSchema.extend({
         .transform((val) => val !== 'false'),
 })
 
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
 app.get('/authorize', async (c) => {
-    const urlParams = new URL(c.req.url).searchParams
-    // Build an object that handles multiple scopes values
-    const paramsObj: any = {}
-    for (const [key, value] of urlParams.entries()) {
-        if (key === 'scopes') {
-            if (!paramsObj.scopes) paramsObj.scopes = []
-            paramsObj.scopes.push(value)
-        } else {
-            paramsObj[key] = value
-        }
+    const scopes = c.req.queries('scopes')
+    if (!scopes) {
+        throw new HTTPException(400, { message: 'scopes parameter is required' })
     }
-    
-    const parsed = baseOAuthSchema.safeParse(paramsObj)
+
+    const params = {
+        client_id: c.req.query('client_id'),
+        redirect_uri: c.req.query('redirect_uri'),
+        response_type: c.req.query('response_type'),
+        scopes,
+        state: c.req.query('state'),
+        nonce: c.req.query('nonce'),
+        code_challenge: c.req.query('code_challenge'),
+        prompt: c.req.query('prompt'),
+    }
+
+    const parsed = baseOAuthSchema.safeParse(params)
     if (!parsed.success) {
         throw new HTTPException(400, { message: z.prettifyError(parsed.error) })
     }
