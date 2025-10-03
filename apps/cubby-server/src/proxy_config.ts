@@ -44,10 +44,6 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
   
   // Embeddings API
   { pattern: /^\/v1\/embeddings$/, methods: ['POST'], description: 'Generate embeddings' },
-  
-  // Raw SQL (for advanced queries - consider restricting this later if needed)
-  { pattern: /^\/raw_sql$/, methods: ['POST'], description: 'Execute raw SQL query' },
-  
   // Add content
   { pattern: /^\/add$/, methods: ['POST'], description: 'Add content to Screenpipe' },
 ]
@@ -73,4 +69,3 @@ export function isPathAllowed(path: string, method: string): boolean {
 export function getAllowedRoutes(): ReadonlyArray<AllowedRoute> {
   return ALLOWED_ROUTES
 }
-
