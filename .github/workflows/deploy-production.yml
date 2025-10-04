@@ -111,7 +111,6 @@ jobs:
           access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
           secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
           endpoint = ${{ secrets.R2_ENDPOINT }}
-          acl = public-read
           EOF
 
       - name: Upload binaries to R2
@@ -119,7 +118,7 @@ jobs:
           for dir in binaries/*; do
             if [ -d "$dir" ]; then
               binary_name=$(basename "$dir")
-              rclone copy "$dir/$binary_name" r2:cubby-releases/latest/ --verbose
+              rclone copy "$dir/$binary_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
             fi
           done
 
