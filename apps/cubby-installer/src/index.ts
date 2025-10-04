@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
-// @ts-ignore
-import installScript from './install.sh';
+import { installScript } from './install.sh.js';
 
 type Bindings = {
   RELEASES: R2Bucket;
@@ -46,4 +45,3 @@ app.get('/', (c) => {
 });
 
 export default app;
-
