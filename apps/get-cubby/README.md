@@ -16,6 +16,7 @@ curl -fsSL https://get.cubby.sh/cli | sh
    - Detects the user's OS and architecture
    - Downloads the appropriate binary from `/binaries/:filename`
    - Installs it to `/usr/local/bin` or `~/.local/bin`
+   - Automatically runs `cubby start`
 
 2. The `/binaries/:filename` endpoint serves binaries from Cloudflare R2 storage
 

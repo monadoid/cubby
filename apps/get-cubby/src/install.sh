@@ -88,6 +88,15 @@ fi
 echo ""
 echo "${GREEN}Installation complete!${NC}"
 echo ""
-echo "To get started, run:"
-echo "  ${GREEN}cubby start${NC}"
+echo "${GREEN}Starting Cubby...${NC}"
+echo ""
+
+# Run cubby start
+if [ "$INSTALL_DIR" = "$HOME/.local/bin" ] && ! command -v cubby >/dev/null 2>&1; then
+  # If installed to ~/.local/bin and not in PATH, run directly
+  "$INSTALL_DIR/$FINAL_NAME" start
+else
+  # Otherwise, run from PATH
+  cubby start
+fi
 

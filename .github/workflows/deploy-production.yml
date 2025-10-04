@@ -188,6 +188,7 @@ jobs:
 
   migrate-database:
     name: Run Database Migrations
+    needs: build-binaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
