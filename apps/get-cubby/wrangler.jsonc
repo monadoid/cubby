@@ -6,8 +6,7 @@
   "r2_buckets": [
     {
       "binding": "RELEASES",
-      "bucket_name": "cubby-releases",
-      "preview_bucket_name": "cubby-releases-preview"
+      "bucket_name": "cubby-releases"
     }
   ],
   // Configure bundling to include .sh files as text
