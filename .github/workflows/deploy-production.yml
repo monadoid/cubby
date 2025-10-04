@@ -289,6 +289,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Debug - Test Cloudflare API Access
+        run: |
+          echo "Testing API access to Cloudflare Workers API..."
+          RESPONSE=$(curl -s -w "\n\nHTTP_STATUS:%{http_code}" \
+            -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/workers/scripts" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json")
+          
+          echo "Full API Response:"
+          echo "$RESPONSE"
+          
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+          echo ""
+          echo "HTTP Status Code: $HTTP_STATUS"
+          
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ API test failed with status $HTTP_STATUS"
+            echo "This is the error that would prevent deployment."
+          else
+            echo "✅ API test successful"
+          fi
+
       - name: Deploy get-cubby to Cloudflare Workers
         working-directory: apps/get-cubby
         run: pnpm exec wrangler deploy

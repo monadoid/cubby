@@ -144,6 +144,153 @@ impl ToolManager {
         let cloudflared = self.ensure(Dep::Cloudflared)?;
         Ok((screenpipe, cloudflared))
     }
+
+    /// Download both binaries in parallel with a multi-progress display
+    pub fn ensure_both_parallel(&self) -> Result<(PathBuf, PathBuf)> {
+        use cliclack::{multi_progress, progress_bar};
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+        
+        let multi = multi_progress("Downloading dependencies...");
+        let pb_screenpipe = Arc::new(Mutex::new(multi.add(progress_bar(100))));
+        let pb_cloudflared = Arc::new(Mutex::new(multi.add(progress_bar(100))));
+        
+        pb_screenpipe.lock().unwrap().start("Downloading screenpipe...");
+        pb_cloudflared.lock().unwrap().start("Downloading cloudflared...");
+        
+        let result = thread::scope(|s| {
+            // Clone self for thread safety
+            let tm1 = self.clone();
+            let tm2 = self.clone();
+            let pb1 = pb_screenpipe.clone();
+            let pb2 = pb_cloudflared.clone();
+            
+            let handle_screenpipe = s.spawn(move || {
+                tm1.ensure_with_progress(Dep::Screenpipe, move |downloaded, total| {
+                    if total > 0 {
+                        let pct = (downloaded * 100 / total).min(100);
+                        if let Ok(pb) = pb1.lock() {
+                            pb.set_position(pct);
+                        }
+                    }
+                })
+            });
+            
+            let handle_cloudflared = s.spawn(move || {
+                tm2.ensure_with_progress(Dep::Cloudflared, move |downloaded, total| {
+                    if total > 0 {
+                        let pct = (downloaded * 100 / total).min(100);
+                        if let Ok(pb) = pb2.lock() {
+                            pb.set_position(pct);
+                        }
+                    }
+                })
+            });
+            
+            let screenpipe = handle_screenpipe.join().unwrap()?;
+            let cloudflared = handle_cloudflared.join().unwrap()?;
+            
+            Ok::<_, anyhow::Error>((screenpipe, cloudflared))
+        });
+        
+        let (screenpipe, cloudflared) = result?;
+        
+        pb_screenpipe.lock().unwrap().stop("Screenpipe ready");
+        pb_cloudflared.lock().unwrap().stop("Cloudflared ready");
+        multi.stop();
+        
+        Ok((screenpipe, cloudflared))
+    }
+
+    /// Ensure a single tool with progress callback; returns absolute path to the binary to execute.
+    fn ensure_with_progress<F>(&self, dep: Dep, on_progress: F) -> Result<PathBuf>
+    where
+        F: FnMut(u64, u64) + Send,
+    {
+        // Dev override: use a local dir if provided.
+        if self.dev_mode {
+            if let Ok(dir) = env::var("CUBBY_DEV_BIN_DIR") {
+                let (os, _arch) = detect_platform()?;
+                let p = PathBuf::from(dir).join(binary_filename(dep, os));
+                if p.exists() {
+                    return Ok(p.canonicalize().unwrap_or(p));
+                }
+            }
+            if env::var("CUBBY_SKIP_DOWNLOAD").ok().as_deref() == Some("1") {
+                bail!("CUBBY_SKIP_DOWNLOAD=1 set and no dev binary found");
+            }
+        }
+
+        let (os, arch) = detect_platform()?;
+        let proj = ProjectDirs::from("com", "tabsandtabs", "cubby")
+            .ok_or_else(|| anyhow!("cannot resolve ProjectDirs"))?;
+        let bindir = proj.data_dir().join("bin");
+        fs::create_dir_all(&bindir)?;
+
+        // Decide version policy for this dep.
+        let version = match dep {
+            Dep::Screenpipe => self.screenpipe.clone(),
+            Dep::Cloudflared => self.cloudflared.clone(),
+        };
+
+        // Resolve release tag + URL + archive layout.
+        let (tag, url, archive) = resolve_url(dep, &version, os, arch)?;
+
+        // Versioned folder so multiple versions can coexist.
+        let folder = bindir.join(format!(
+            "{}-{}-{}-{}",
+            dep_name(dep),
+            tag,
+            os_label(os),
+            arch_label(arch)
+        ));
+        let bin_name = binary_filename(dep, os);
+        let target = folder.join(&bin_name);
+
+        if !self.force && target.exists() {
+            return Ok(target);
+        }
+
+        // Download to a temp file and extract if needed.
+        fs::create_dir_all(&folder)?;
+        let tmp = target.with_extension("tmp");
+        let bytes = http_get_octets_with_progress(&url, on_progress)?;
+
+        match archive {
+            Archive::Plain => {
+                fs::write(&tmp, &bytes)?;
+            }
+            Archive::Tgz(inner) => {
+                extract_tgz_single(&bytes, &tmp, inner)?;
+            }
+            Archive::Zip(inner) => {
+                extract_zip_single(&bytes, &tmp, inner)?;
+            }
+        }
+
+        // chmod +x on Unix
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&tmp)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&tmp, perms)?;
+        }
+
+        // Atomic rename into place
+        fs::rename(&tmp, &target)?;
+
+        // Write a small metadata file (handy for debugging/upgrades).
+        let meta = Meta {
+            tag: tag.to_string(),
+            source: url.clone(),
+            downloaded_at_epoch_s: now_s(),
+            sha256: sha256_file(&target).ok(),
+        };
+        fs::write(folder.join(".meta.json"), serde_json::to_vec_pretty(&meta)?)?;
+
+        Ok(target)
+    }
 }
 
 // ----- internals below -----
@@ -291,6 +438,13 @@ fn github_get_release(url: &str) -> Result<Release> {
 }
 
 fn http_get_octets(url: &str) -> Result<Vec<u8>> {
+    http_get_octets_with_progress(url, |_, _| {})
+}
+
+fn http_get_octets_with_progress<F>(url: &str, mut on_progress: F) -> Result<Vec<u8>>
+where
+    F: FnMut(u64, u64), // (downloaded_bytes, total_bytes)
+{
     let client = reqwest::blocking::Client::builder()
         .user_agent("cubby/0.1 (+https://tabsandtabs)")
         .build()?;
@@ -299,8 +453,22 @@ fn http_get_octets(url: &str) -> Result<Vec<u8>> {
         req = req.header("Authorization", format!("Bearer {}", tok));
     }
     let mut resp = req.send()?.error_for_status()?;
-    let mut buf = Vec::with_capacity(resp.content_length().unwrap_or(0) as usize);
-    resp.copy_to(&mut buf)?;
+    let total = resp.content_length().unwrap_or(0);
+    
+    let mut buf = Vec::with_capacity(total as usize);
+    let mut chunk = [0u8; 8192];
+    let mut downloaded = 0u64;
+    
+    loop {
+        let n = resp.read(&mut chunk)?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        downloaded += n as u64;
+        on_progress(downloaded, total);
+    }
+    
     Ok(buf)
 }
 

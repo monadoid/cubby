@@ -26,19 +26,23 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Install (or reinstall) and start the cloudflared service
-    Start,
+    Start {
+        /// Force redownload of binaries even if they exist
+        #[arg(long)]
+        force: bool,
+    },
     /// Uninstall the cloudflared service (future: remove other services too)
     Uninstall,
 }
 
 fn main() -> Result<()> {
     match Cli::parse().command {
-        Commands::Start => start_command(),
+        Commands::Start { force } => start_command(force),
         Commands::Uninstall => uninstall_command(),
     }
 }
 
-fn start_command() -> Result<()> {
+fn start_command(force: bool) -> Result<()> {
     let running = signals::install_signal_flag();
 
     let email: String = input("What's your email?")
@@ -83,9 +87,9 @@ fn start_command() -> Result<()> {
     // so future runs can reuse existing sessions or trigger refresh flows instead of prompting
     // every time.
 
-    let tm = ToolManager::pinned_defaults();
-    let screenpipe_path = tm.ensure(Dep::Screenpipe)?;
-    let cloudflared_path = tm.ensure(Dep::Cloudflared)?;
+    let mut tm = ToolManager::pinned_defaults();
+    tm.force = force;
+    let (screenpipe_path, cloudflared_path) = tm.ensure_both_parallel()?;
 
     let screenpipe = ScreenpipeService::new_with_binary(screenpipe_path)?;
     let cloudflared = CloudflaredService::new_with_binary(cloudflared_path)?;
