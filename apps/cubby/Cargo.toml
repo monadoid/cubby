@@ -9,7 +9,6 @@ cliclack = "0.3.6"
 duct = "1.1.0"
 anyhow = "1.0.100"
 directories = "6.0.0"
-ctrlc = "3.5.0"
 service-manager = "0.8.0"
 reqwest = { version = "0.12.23", features = ["blocking", "json", "rustls-tls"], default-features = false }
 nanoid = "0.4.0"

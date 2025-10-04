@@ -3,7 +3,6 @@ mod config;
 mod cubby_api_client;
 mod deps_manager;
 mod screenpipe_handler;
-mod signals;
 
 use crate::cloudflared_handler::CloudflaredService;
 use crate::config::Config;
@@ -13,7 +12,6 @@ use crate::screenpipe_handler::ScreenpipeService;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use cliclack::{input, password};
-use std::{thread, time::Duration};
 
 /// A tiny wrapper around cloudflared service lifecycle.
 #[derive(Parser, Debug)]
@@ -43,8 +41,6 @@ fn main() -> Result<()> {
 }
 
 fn start_command(force: bool) -> Result<()> {
-    let running = signals::install_signal_flag();
-
     let email: String = input("What's your email?")
         .validate(|value: &String| -> std::result::Result<(), &'static str> {
             if value.trim().is_empty() {
@@ -108,12 +104,8 @@ fn start_command(force: bool) -> Result<()> {
     screenpipe.install()?;
     screenpipe.start_and_wait_healthy()?;
 
-    cliclack::log::info("✅ Services are up. Press Ctrl-C to stop...")?;
-    while running.load(std::sync::atomic::Ordering::SeqCst) {
-        thread::sleep(Duration::from_millis(100));
-    }
-    cliclack::log::info("🛑 Signal received. Stopping services...")?;
-    screenpipe.stop_and_uninstall()?;
+    cliclack::log::info("✅ Services are running in the background!")?;
+    cliclack::log::info(format!("   Run 'cubby uninstall' to stop and remove services."))?;
 
     Ok(())
 }
