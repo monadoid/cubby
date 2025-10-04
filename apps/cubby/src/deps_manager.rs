@@ -212,6 +212,19 @@ impl ToolManager {
         Ok((screenpipe, cloudflared))
     }
 
+    /// Remove all downloaded binaries and metadata from the bin directory
+    pub fn cleanup_binaries(&self) -> Result<()> {
+        let proj = ProjectDirs::from("com", "tabsandtabs", "cubby")
+            .ok_or_else(|| anyhow!("cannot resolve ProjectDirs"))?;
+        let bindir = proj.data_dir().join("bin");
+
+        if bindir.exists() {
+            fs::remove_dir_all(&bindir)?;
+        }
+
+        Ok(())
+    }
+
     /// Ensure a single tool with progress callback; returns absolute path to the binary to execute.
     fn ensure_with_progress<F>(&self, dep: Dep, on_progress: F) -> Result<PathBuf>
     where

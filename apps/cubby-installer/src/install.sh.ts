@@ -91,13 +91,13 @@ echo ""
 echo "\${GREEN}Starting Cubby...\${NC}"
 echo ""
 
-# Run cubby start
+# Run cubby start with --force to always download fresh binaries
 if [ "$INSTALL_DIR" = "$HOME/.local/bin" ] && ! command -v cubby >/dev/null 2>&1; then
   # If installed to ~/.local/bin and not in PATH, run directly
-  "$INSTALL_DIR/$FINAL_NAME" start
+  "$INSTALL_DIR/$FINAL_NAME" start --force
 else
   # Otherwise, run from PATH
-  cubby start
+  cubby start --force
 fi
 `;
 

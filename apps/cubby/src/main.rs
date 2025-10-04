@@ -123,5 +123,8 @@ fn uninstall_command() -> Result<()> {
     cloudflared.uninstall()?;
     screenpipe.stop_and_uninstall()?;
 
+    tm.cleanup_binaries()?;
+    cliclack::log::info("Cleaned up downloaded binaries!")?;
+
     Ok(())
 }

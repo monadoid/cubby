@@ -1,21 +1,9 @@
-```txt
-npm install
-npm run dev
-```
+# Cubby Server
 
-```txt
-npm run deploy
-```
+Cloudflare Worker that backs the Cubby API.
 
-[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
+- Local dev: `pnpm dev` (or `just server-dev` from the repo root)
+- Deploy: `pnpm deploy`
+- Database migrations live here; run `pnpm db:migrate`
 
-```txt
-npm run cf-typegen
-```
-
-Pass the `CloudflareBindings` as generics when instantiation `Hono`:
-
-```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
-```
+See the root `README.md` for architecture, auth, and deployment details.
