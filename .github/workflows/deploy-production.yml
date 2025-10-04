@@ -10,8 +10,28 @@ env:
   TOOLCHAIN_PROFILE: minimal
 
 jobs:
+  detect-changes:
+    name: Detect Changed Files
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Check for Rust changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'apps/cubby/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+
   rustfmt:
     name: Check Rust Style
+    needs: detect-changes
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -30,7 +50,8 @@ jobs:
 
   build-binaries:
     name: Build Release Binaries
-    needs: rustfmt
+    needs: [detect-changes, rustfmt]
+    if: needs.detect-changes.outputs.rust == 'true'
     strategy:
       matrix:
         include:
@@ -85,7 +106,8 @@ jobs:
 
   upload-to-r2:
     name: Upload Binaries to Cloudflare R2
-    needs: build-binaries
+    needs: [detect-changes, build-binaries]
+    if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -188,6 +210,7 @@ jobs:
   migrate-database:
     name: Run Database Migrations
     needs: build-binaries
+    if: ${{ !cancelled() && (needs.build-binaries.result == 'success' || needs.build-binaries.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -270,6 +293,7 @@ jobs:
 
   deploy-get-cubby:
     needs: upload-to-r2
+    if: ${{ !cancelled() && (needs.upload-to-r2.result == 'success' || needs.upload-to-r2.result == 'skipped') }}
     name: Deploy get-cubby distribution server
     runs-on: ubuntu-latest
     steps:
@@ -288,29 +312,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Debug - Test Cloudflare API Access
-        run: |
-          echo "Testing API access to Cloudflare Workers API..."
-          RESPONSE=$(curl -s -w "\n\nHTTP_STATUS:%{http_code}" \
-            -X GET \
-            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/workers/scripts" \
-            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
-            -H "Content-Type: application/json")
-          
-          echo "Full API Response:"
-          echo "$RESPONSE"
-          
-          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
-          echo ""
-          echo "HTTP Status Code: $HTTP_STATUS"
-          
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "❌ API test failed with status $HTTP_STATUS"
-            echo "This is the error that would prevent deployment."
-          else
-            echo "✅ API test successful"
-          fi
 
       - name: Deploy get-cubby to Cloudflare Workers
         working-directory: apps/get-cubby
