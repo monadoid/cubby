@@ -313,6 +313,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Debug - Check API Token Permissions
+        run: |
+          echo "Testing GET permissions (listing workers)..."
+          curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/workers/scripts" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" | jq -r '.success'
+          
+          echo ""
+          echo "Testing if token can access account settings..."
+          curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" | jq '.'
+          
+          echo ""
+          echo "Checking if account ID is correct..."
+          echo "Account ID from secret: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+
       - name: Deploy get-cubby to Cloudflare Workers
         working-directory: apps/get-cubby
         run: pnpm exec wrangler deploy
