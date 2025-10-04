@@ -105,7 +105,9 @@ fn start_command(force: bool) -> Result<()> {
     screenpipe.start_and_wait_healthy()?;
 
     cliclack::log::info("✅ Services are running in the background!")?;
-    cliclack::log::info(format!("   Run 'cubby uninstall' to stop and remove services."))?;
+    cliclack::log::info(format!(
+        "   Run 'cubby uninstall' to stop and remove services."
+    ))?;
 
     Ok(())
 }
