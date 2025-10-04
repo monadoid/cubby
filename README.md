@@ -26,6 +26,7 @@ Installs the Cubby CLI, walks the user through Stytch-powered signup, and launch
 - `just example-dev` – serves the ExampleCo Connected App demo
 - `just get-cubby-dev` – runs the installer Worker (CLI download endpoint)
 - `just fmt` – runs `cargo fmt` and `pnpm run format` (Prettier across workspace TypeScript)
+- `just fmt-check` – checks formatting for Rust and TypeScript without modifying files
 - `just lint` – runs `cargo clippy --workspace -- -D warnings` plus workspace lint scripts
 
 
@@ -60,4 +61,4 @@ pnpm-workspace.yaml
 
 ## Notes
 - Environment variables are managed per Worker via Wrangler `.env` files/Cloudflare dashboards; database URLs and Stytch keys live there rather than in GitHub repository secrets.
-- `just fmt` covers Rust via `cargo fmt` and TypeScript via Prettier; extend package-level scripts if new surface areas appear.
+- `just fmt` covers Rust via `cargo fmt` and TypeScript via Prettier; use `just fmt-check` in CI or pre-push hooks to ensure nothing needs reformatting.

@@ -45,6 +45,10 @@ fmt:
     cargo fmt
     pnpm -w run format
 
+fmt-check:
+    cargo fmt --all -- --check
+    pnpm -w run format:check
+
 # Clean build artifacts
 clean:
     cargo clean

@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "cf-typegen": "wrangler types",
-    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\" \"public/**/*.{ts,tsx,js,jsx}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\" \"public/**/*.{ts,tsx,js,jsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx}\" \"public/**/*.{ts,tsx,js,jsx}\""
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20251004.0",

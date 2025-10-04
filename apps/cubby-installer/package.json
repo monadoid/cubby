@@ -10,7 +10,8 @@
 		"test": "vitest",
 		"cf-typegen": "wrangler types",
 		"type-check": "tsc --noEmit",
-		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\""
+		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\"",
+		"format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx}\""
 	},
 	"dependencies": {
 		"hono": "^4.9.9"
