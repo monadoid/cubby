@@ -91,7 +91,34 @@ jobs:
   #         REDIS_URL: redis://localhost:${{job.services.redis.ports[6379]}}
   #         DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres_test
 
+  migrate-database:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run database migrations
+        working-directory: apps/cubby-server
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
   deploy-cubby-server:
+    needs: migrate-database
     name: Deploy cubby-server
     runs-on: ubuntu-latest
     steps:
@@ -119,6 +146,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-exampleco-website:
+    needs: migrate-database
     name: Deploy exampleco_website
     runs-on: ubuntu-latest
     steps:
