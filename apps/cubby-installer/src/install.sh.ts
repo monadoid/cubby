@@ -63,26 +63,19 @@ fi
 # Make binary executable
 chmod +x "$TMP_FILE"
 
-# Install to /usr/local/bin (or ~/.local/bin if no sudo access)
-INSTALL_DIR="/usr/local/bin"
-if [ -w "$INSTALL_DIR" ]; then
-  mv "$TMP_FILE" "$INSTALL_DIR/$FINAL_NAME"
-  echo "\${GREEN}✅ Installed to $INSTALL_DIR/$FINAL_NAME\${NC}"
-else
-  # Try with sudo
-  if command -v sudo >/dev/null 2>&1; then
-    sudo mv "$TMP_FILE" "$INSTALL_DIR/$FINAL_NAME"
-    echo "\${GREEN}✅ Installed to $INSTALL_DIR/$FINAL_NAME\${NC}"
-  else
-    # Fallback to user's local bin
-    INSTALL_DIR="$HOME/.local/bin"
-    mkdir -p "$INSTALL_DIR"
-    mv "$TMP_FILE" "$INSTALL_DIR/$FINAL_NAME"
-    echo "\${GREEN}✅ Installed to $INSTALL_DIR/$FINAL_NAME\${NC}"
-    echo "\${YELLOW}⚠️  Make sure $INSTALL_DIR is in your PATH\${NC}"
-    echo "Add this to your ~/.bashrc or ~/.zshrc:"
-    echo "  export PATH=\\"\\\$HOME/.local/bin:\\\$PATH\\""
-  fi
+# Install to user's local bin (no sudo required)
+INSTALL_DIR="$HOME/.local/bin"
+mkdir -p "$INSTALL_DIR"
+mv "$TMP_FILE" "$INSTALL_DIR/$FINAL_NAME"
+
+echo "\${GREEN}✅ Installed to $INSTALL_DIR/$FINAL_NAME\${NC}"
+
+# Check if ~/.local/bin is in PATH
+if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
+  echo "\${YELLOW}⚠️  $INSTALL_DIR is not in your PATH\${NC}"
+  echo "Add this to your ~/.bashrc or ~/.zshrc:"
+  echo "  export PATH=\\"\\\$HOME/.local/bin:\\\$PATH\\""
+  echo ""
 fi
 
 echo ""
@@ -92,11 +85,5 @@ echo "\${GREEN}Starting Cubby...\${NC}"
 echo ""
 
 # Run cubby start with --force to always download fresh binaries
-if [ "$INSTALL_DIR" = "$HOME/.local/bin" ] && ! command -v cubby >/dev/null 2>&1; then
-  # If installed to ~/.local/bin and not in PATH, run directly
-  "$INSTALL_DIR/$FINAL_NAME" start --force
-else
-  # Otherwise, run from PATH
-  cubby start --force
-fi
+"$INSTALL_DIR/$FINAL_NAME" start --force
 `;
