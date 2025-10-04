@@ -305,6 +305,9 @@ jobs:
         with:
           version: 10.15.1
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Deploy get-cubby with Wrangler Action
         uses: cloudflare/wrangler-action@v3
         with:
