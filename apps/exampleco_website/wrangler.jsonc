@@ -11,6 +11,7 @@
   },
   "dev": {
     "port": 8670
-  }
+  },
+  "keep_vars": true
 }
 
