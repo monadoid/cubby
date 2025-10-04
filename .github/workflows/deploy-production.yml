@@ -300,6 +300,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
       - name: Deploy get-cubby with Wrangler Action
         uses: cloudflare/wrangler-action@v3
         with:
