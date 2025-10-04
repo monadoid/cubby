@@ -8,6 +8,14 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-10-04",
 	"account_id": "e5d7de33638486de6a01f401783d4446",
+	"workers_dev": false,
+	"preview_urls": false,
+	"routes": [
+		{
+			"pattern": "get.cubby.sh",
+			"custom_domain": true
+		}
+	],
 	"observability": {
 		"enabled": true
 	},
