@@ -28,6 +28,101 @@ jobs:
           command: fmt
           args: --all -- --check
 
+  build-binaries:
+    name: Build Release Binaries
+    needs: rustfmt
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: cubby-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            name: cubby-linux-aarch64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: cubby-darwin-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: cubby-darwin-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Build release binary
+        working-directory: apps/cubby
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Rename binary
+        run: |
+          cp apps/cubby/target/${{ matrix.target }}/release/cubby ${{ matrix.name }}
+
+      - name: Upload binary as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  upload-to-r2:
+    name: Upload Binaries to Cloudflare R2
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+
+      - name: List downloaded binaries
+        run: |
+          ls -lR binaries/
+
+      - name: Install Rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Configure Rclone for R2
+        run: |
+          mkdir -p ~/.config/rclone
+          cat > ~/.config/rclone/rclone.conf << EOF
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          endpoint = ${{ secrets.R2_ENDPOINT }}
+          acl = public-read
+          EOF
+
+      - name: Upload binaries to R2
+        run: |
+          for dir in binaries/*; do
+            if [ -d "$dir" ]; then
+              binary_name=$(basename "$dir")
+              rclone copy "$dir/$binary_name" r2:cubby-releases/latest/ --verbose
+            fi
+          done
+
   # clippy:
   #   name: Run Clippy
   #   runs-on: ubuntu-latest
@@ -168,6 +263,34 @@ jobs:
 
       - name: Deploy exampleco_website to Cloudflare Workers
         working-directory: apps/exampleco_website
+        run: pnpm exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-get-cubby:
+    needs: upload-to-r2
+    name: Deploy get-cubby distribution server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy get-cubby to Cloudflare Workers
+        working-directory: apps/get-cubby
         run: pnpm exec wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -8,3 +8,7 @@ playground = "run --example playground"
 # (can be removed once link.exe is fixed)
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld"
+
+# Cross-compilation for Linux ARM64
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"

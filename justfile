@@ -27,6 +27,9 @@ server-types:
 example-dev:
     cd apps/exampleco_website && pnpm dev
 
+get-cubby-dev:
+    cd apps/get-cubby && pnpm dev
+
 # Install dependencies
 install:
     pnpm install
