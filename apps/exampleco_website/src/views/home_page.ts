@@ -23,8 +23,10 @@ export function renderHomePage(cubbyApiUrl: string): string {
     label { font-weight: 500; font-size: 0.875rem; }
     input, select { padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 1rem; }
     input:focus, select:focus { outline: none; border-color: #2563eb; }
+    .htmx-request button { opacity: 0.7; cursor: wait; }
+    .htmx-request .htmx-default { display: none; }
+    .htmx-indicator { display: none; }
     .htmx-request .htmx-indicator { display: inline; }
-    .htmx-indicator { display: none; margin-left: 0.5rem; }
     .section { margin-bottom: 2rem; padding: 1rem; background: #f9fafb; border-radius: 0.5rem; }
     .hidden { display: none; }
     .alert { padding: 1rem; border-radius: 0.375rem; margin-bottom: 1rem; }
@@ -43,6 +45,10 @@ export function renderHomePage(cubbyApiUrl: string): string {
     <span class="status-badge status-disconnected">Not Connected</span>
   </div>
   
+  <div class="alert alert-info">
+    <strong>Privacy-first:</strong> Your data stays on your device. Cubby.sh is only a secure proxy—your data passes through in-transit and is never stored on our servers. ExampleCo doesn't store any data either.
+  </div>
+  
   <div id="connect-section" class="cta">
     <a class="button" href="/connect">Connect Cubby</a>
   </div>
@@ -54,7 +60,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
     </div>
     <p>Search your Screenpipe device using the proxied API endpoint.</p>
     
-    <form hx-post="/api/search" hx-target="#search-result" hx-swap="innerHTML" hx-indicator="#search-indicator">
+    <form hx-post="/api/search" hx-target="#search-result" hx-swap="innerHTML">
       <div class="form-group">
         <label for="device-id">Select Device</label>
         <select 
@@ -74,8 +80,8 @@ export function renderHomePage(cubbyApiUrl: string): string {
         <input type="number" id="limit" name="limit" value="10" min="1" max="100" />
       </div>
       <button type="submit">
-        Search Device
-        <span id="search-indicator" class="htmx-indicator">⏳</span>
+        <span class="htmx-indicator">Searching...</span>
+        <span class="htmx-default">Search Device</span>
       </button>
     </form>
     <div id="search-result" style="background: #f9fafb; padding: 1rem; border-radius: 0.5rem; min-height: 7rem; margin-top: 1rem;">
