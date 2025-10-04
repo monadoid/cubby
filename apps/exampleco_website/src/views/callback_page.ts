@@ -6,8 +6,10 @@ export function renderCallbackPage(accessToken: string): string {
   <title>Completing OAuth</title>
 </head>
 <body>
+  <p>Completing authentication...</p>
   <script>
-    sessionStorage.setItem('cubby_access_token', ${JSON.stringify(accessToken)});
+    console.log('[OAuth Callback] Storing access token and redirecting...');
+    localStorage.setItem('cubby_access_token', ${JSON.stringify(accessToken)});
     window.location.href = '/';
   </script>
 </body>

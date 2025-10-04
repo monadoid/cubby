@@ -53,26 +53,33 @@ function escapeHtml(text: string): string {
 app.get('/devices-fragment', async (c) => {
   const authHeader = c.req.header('Authorization')
   if (!authHeader) {
-    return c.html('<option value="">⚠️ Not authenticated - Connect Cubby first</option>')
+    console.error('[devices-fragment] No Authorization header provided')
+    return c.text('Missing Authorization header', 401)
   }
   
   try {
     const devicesUrl = new URL('/devices', c.env.CUBBY_API_URL)
+    console.log(`[devices-fragment] Fetching devices from: ${devicesUrl.toString()}`)
+    
     const response = await fetch(devicesUrl.toString(), {
       headers: { Authorization: authHeader },
     })
     
+    console.log(`[devices-fragment] Response status: ${response.status}`)
+    
     if (!response.ok) {
       const error = await response.text()
-      console.error('Failed to load devices:', error)
-      return c.html('<option value="">⚠️ Failed to load devices</option>')
+      console.error('[devices-fragment] Failed to load devices:', error)
+      return c.text(`Failed to load devices: ${error}`, 502)
     }
     
     const data = await response.json() as { devices: any[] }
+    console.log(`[devices-fragment] Loaded ${data.devices?.length || 0} devices`)
+    
     return c.html(renderDevicesFragment(data.devices || []))
   } catch (error) {
-    console.error('Error loading devices:', error)
-    return c.html('<option value="">❌ Error loading devices</option>')
+    console.error('[devices-fragment] Error loading devices:', error)
+    return c.text(`Error loading devices: ${getErrorMessage(error)}`, 500)
   }
 })
 

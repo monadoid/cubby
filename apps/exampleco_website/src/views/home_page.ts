@@ -13,6 +13,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
     button, a.button { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.75rem 1.5rem; background: #2563eb; color: #fff; border: none; border-radius: 0.375rem; font-size: 1rem; cursor: pointer; text-decoration: none; }
     button.secondary { background: #4b5563; }
     button:disabled { opacity: 0.65; cursor: not-allowed; }
+    button.danger { background: #dc2626; }
     pre { background: #0f172a; color: #f8fafc; padding: 1rem; border-radius: 0.375rem; min-height: 7rem; max-height: 500px; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
     .summary-container { background: white; padding: 1rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; }
     .summary-container h3 { margin: 0 0 0.5rem 0; font-size: 1.125rem; color: #111827; }
@@ -25,32 +26,43 @@ export function renderHomePage(cubbyApiUrl: string): string {
     .htmx-request .htmx-indicator { display: inline; }
     .htmx-indicator { display: none; margin-left: 0.5rem; }
     .section { margin-bottom: 2rem; padding: 1rem; background: #f9fafb; border-radius: 0.5rem; }
+    .hidden { display: none; }
+    .alert { padding: 1rem; border-radius: 0.375rem; margin-bottom: 1rem; }
+    .alert-info { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; }
+    .status-connected { background: #d1fae5; color: #065f46; }
+    .status-disconnected { background: #fee2e2; color: #991b1b; }
   </style>
 </head>
 <body>
   <h1>ExampleCo</h1>
   <p>This page demonstrates ExampleCo acting as an OAuth client against Stytch to obtain a Cubby access token.</p>
   
-  <div class="cta">
+  <div id="connection-status" class="cta">
+    <span class="status-badge status-disconnected">Not Connected</span>
+  </div>
+  
+  <div id="connect-section" class="cta">
     <a class="button" href="/connect">Connect Cubby</a>
   </div>
   
-  <div class="section">
-    <h2>Test Device Search</h2>
+  <div id="search-section" class="section hidden">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+      <h2 style="margin: 0;">Test Device Search</h2>
+      <button type="button" class="secondary" onclick="disconnectCubby()">Disconnect</button>
+    </div>
     <p>Search your Screenpipe device using the proxied API endpoint.</p>
+    
     <form hx-post="/api/search" hx-target="#search-result" hx-swap="innerHTML" hx-indicator="#search-indicator">
       <div class="form-group">
         <label for="device-id">Select Device</label>
         <select 
           id="device-id" 
           name="deviceId" 
-          required 
-          hx-get="/api/devices-fragment" 
-          hx-trigger="load" 
-          hx-target="this" 
-          hx-swap="innerHTML"
+          required
         >
-          <option value="">Loading devices...</option>
+          <option value="">Select a device...</option>
         </select>
       </div>
       <div class="form-group">
@@ -66,7 +78,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
         <span id="search-indicator" class="htmx-indicator">⏳</span>
       </button>
     </form>
-    <div id="search-result" style="background: #f9fafb; padding: 1rem; border-radius: 0.5rem; min-height: 7rem;">
+    <div id="search-result" style="background: #f9fafb; padding: 1rem; border-radius: 0.5rem; min-height: 7rem; margin-top: 1rem;">
       <p style="color: #6b7280;">Search results will appear here...</p>
     </div>
   </div>
@@ -74,11 +86,95 @@ export function renderHomePage(cubbyApiUrl: string): string {
   <script type="module">
     // Configure HTMX to add Authorization header
     document.body.addEventListener('htmx:configRequest', (event) => {
-      const token = sessionStorage.getItem('cubby_access_token');
+      const token = localStorage.getItem('cubby_access_token');
       if (token) {
         event.detail.headers['Authorization'] = 'Bearer ' + token;
       }
     });
+
+    // Handle HTMX errors
+    document.body.addEventListener('htmx:responseError', (event) => {
+      console.error('[HTMX Error]', event.detail);
+      const targetId = event.detail.target?.id;
+      
+      if (targetId === 'device-id') {
+        // Device loading failed
+        const select = document.getElementById('device-id');
+        if (select) {
+          select.innerHTML = '<option value="">❌ Failed to load devices - check console</option>';
+        }
+      }
+    });
+
+    // Function to disconnect
+    window.disconnectCubby = function() {
+      localStorage.removeItem('cubby_access_token');
+      window.location.reload();
+    };
+
+    // Function to load devices
+    async function loadDevices() {
+      const select = document.getElementById('device-id');
+      if (!select) return;
+      
+      select.innerHTML = '<option value="">Loading devices...</option>';
+      
+      try {
+        const token = localStorage.getItem('cubby_access_token');
+        const response = await fetch('/api/devices-fragment', {
+          headers: {
+            'Authorization': 'Bearer ' + token
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(\`HTTP \${response.status}: \${await response.text()}\`);
+        }
+        
+        const html = await response.text();
+        select.innerHTML = html;
+        
+        // Check if we got an error message
+        if (html.includes('❌') || html.includes('⚠️')) {
+          console.error('[Device Load] Error in response:', html);
+        }
+      } catch (error) {
+        console.error('[Device Load] Failed to load devices:', error);
+        select.innerHTML = '<option value="">❌ Failed to load devices</option>';
+        
+        // Show alert
+        const alert = document.createElement('div');
+        alert.className = 'alert alert-error';
+        alert.textContent = 'Failed to load devices: ' + error.message;
+        select.parentElement.insertBefore(alert, select);
+      }
+    }
+
+    // Check auth status on page load
+    function checkAuthStatus() {
+      const token = localStorage.getItem('cubby_access_token');
+      const connectSection = document.getElementById('connect-section');
+      const searchSection = document.getElementById('search-section');
+      const statusBadge = document.getElementById('connection-status');
+      
+      if (token) {
+        // Authenticated - show search section, hide connect
+        connectSection.classList.add('hidden');
+        searchSection.classList.remove('hidden');
+        statusBadge.innerHTML = '<span class="status-badge status-connected">Connected</span>';
+        
+        // Load devices
+        loadDevices();
+      } else {
+        // Not authenticated - show connect, hide search
+        connectSection.classList.remove('hidden');
+        searchSection.classList.add('hidden');
+        statusBadge.innerHTML = '<span class="status-badge status-disconnected">Not Connected</span>';
+      }
+    }
+
+    // Run on page load
+    checkAuthStatus();
   </script>
 </body>
 </html>`
