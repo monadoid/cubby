@@ -9,6 +9,9 @@
     "gen": {
       "outputs": ["src/**", "types/**"]
     },
+    "format": {
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "persistent": true

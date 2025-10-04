@@ -183,6 +183,5 @@ export function renderHomePage(cubbyApiUrl: string): string {
     checkAuthStatus();
   </script>
 </body>
-</html>`
+</html>`;
 }
-

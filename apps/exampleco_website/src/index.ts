@@ -1,22 +1,22 @@
-import { Hono } from 'hono'
-import oauthRoutes from './routes/oauth_routes'
-import apiRoutes from './routes/api_routes'
-import { renderHomePage } from './views/home_page'
+import { Hono } from "hono";
+import oauthRoutes from "./routes/oauth_routes";
+import apiRoutes from "./routes/api_routes";
+import { renderHomePage } from "./views/home_page";
 
-type Bindings = Env
+type Bindings = Env;
 type Variables = {
-  secure: boolean
-}
+  secure: boolean;
+};
 
-export type { Bindings, Variables }
+export type { Bindings, Variables };
 
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-app.get('/', (c) => {
-  return c.html(renderHomePage(c.env.CUBBY_API_URL))
-})
+app.get("/", (c) => {
+  return c.html(renderHomePage(c.env.CUBBY_API_URL));
+});
 
-app.route('/', oauthRoutes)
-app.route('/api', apiRoutes)
+app.route("/", oauthRoutes);
+app.route("/api", apiRoutes);
 
-export default app
+export default app;

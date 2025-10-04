@@ -1,7 +1,7 @@
-import { Hono } from 'hono'
-import type { Bindings, Variables } from '../index'
+import { Hono } from "hono";
+import type { Bindings, Variables } from "../index";
 
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 const SHARED_STYLES = `
   body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 400px; padding: 0 1rem; }
@@ -16,10 +16,10 @@ const SHARED_STYLES = `
   .link { color: #2563eb; text-decoration: none; font-size: 0.875rem; margin-top: 1rem; display: inline-block; }
   .link:hover { text-decoration: underline; }
   .htmx-request button { opacity: 0.5; cursor: wait; }
-`
+`;
 
-app.get('/login', (c) => {
-  const redirectTo = c.req.query('redirect_to')
+app.get("/login", (c) => {
+  const redirectTo = c.req.query("redirect_to");
 
   const html = `<!doctype html>
 <html lang="en">
@@ -39,7 +39,7 @@ app.get('/login', (c) => {
     hx-swap="innerHTML"
     hx-indicator="#login-btn"
   >
-    ${redirectTo ? `<input type="hidden" name="redirect_to" value="${redirectTo}" />` : ''}
+    ${redirectTo ? `<input type="hidden" name="redirect_to" value="${redirectTo}" />` : ""}
     <input type="email" name="email" placeholder="Email" required autocomplete="email" />
     <input type="password" name="password" placeholder="Password" minlength="8" required autocomplete="current-password" />
     <div id="error-container"></div>
@@ -48,7 +48,7 @@ app.get('/login', (c) => {
       <span class="htmx-default">Login</span>
     </button>
   </form>
-  <a href="/sign-up${redirectTo ? `?redirect_to=${encodeURIComponent(redirectTo)}` : ''}" class="link">
+  <a href="/sign-up${redirectTo ? `?redirect_to=${encodeURIComponent(redirectTo)}` : ""}" class="link">
     Don't have an account? Sign up
   </a>
   <style>
@@ -57,13 +57,13 @@ app.get('/login', (c) => {
     .htmx-request .htmx-indicator { display: inline; }
   </style>
 </body>
-</html>`
+</html>`;
 
-  return c.html(html)
-})
+  return c.html(html);
+});
 
-app.get('/sign-up', (c) => {
-  const redirectTo = c.req.query('redirect_to')
+app.get("/sign-up", (c) => {
+  const redirectTo = c.req.query("redirect_to");
 
   const html = `<!doctype html>
 <html lang="en">
@@ -83,7 +83,7 @@ app.get('/sign-up', (c) => {
     hx-swap="innerHTML"
     hx-indicator="#signup-btn"
   >
-    ${redirectTo ? `<input type="hidden" name="redirect_to" value="${redirectTo}" />` : ''}
+    ${redirectTo ? `<input type="hidden" name="redirect_to" value="${redirectTo}" />` : ""}
     <input type="email" name="email" placeholder="Email" required autocomplete="email" />
     <input type="password" name="password" placeholder="Password" minlength="8" required autocomplete="new-password" />
     <div id="error-container"></div>
@@ -92,7 +92,7 @@ app.get('/sign-up', (c) => {
       <span class="htmx-default">Create Account</span>
     </button>
   </form>
-  <a href="/login${redirectTo ? `?redirect_to=${encodeURIComponent(redirectTo)}` : ''}" class="link">
+  <a href="/login${redirectTo ? `?redirect_to=${encodeURIComponent(redirectTo)}` : ""}" class="link">
     Already have an account? Login
   </a>
   <style>
@@ -101,10 +101,9 @@ app.get('/sign-up', (c) => {
     .htmx-request .htmx-indicator { display: inline; }
   </style>
 </body>
-</html>`
+</html>`;
 
-  return c.html(html)
-})
+  return c.html(html);
+});
 
-export default app
-
+export default app;

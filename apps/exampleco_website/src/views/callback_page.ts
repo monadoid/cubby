@@ -13,6 +13,5 @@ export function renderCallbackPage(accessToken: string): string {
     window.location.href = '/';
   </script>
 </body>
-</html>`
+</html>`;
 }
-

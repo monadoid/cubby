@@ -28,7 +28,7 @@ example-dev:
     cd apps/exampleco_website && pnpm dev
 
 get-cubby-dev:
-    cd apps/get-cubby && pnpm dev
+    cd apps/cubby-installer && pnpm dev
 
 # Install dependencies
 install:
@@ -43,7 +43,7 @@ lint:
 # Format code
 fmt:
     cargo fmt
-    pnpm -w run format || true
+    pnpm -w run format
 
 # Clean build artifacts
 clean:
