@@ -70,7 +70,9 @@ fn start_command(force: bool) -> Result<()> {
 
     let config = Config::from_build_profile();
     let client = CubbyApiClient::new(config.api_base_url);
-    println!("📝 Creating account for {}...", email);
+    #[cfg(debug_assertions)]
+    println!("Created account for {email}...");
+
     let sign_up_response = client
         .sign_up(SignUpRequest {
             email: email.clone(),
@@ -99,19 +101,18 @@ fn start_command(force: bool) -> Result<()> {
         .enroll_device(&session_jwt)
         .context("Failed to enroll device")?;
 
-    println!("Device enrolled successfully!");
-    println!("Device ID: {}", enroll_response.device_id);
-    println!("Hostname: {}", enroll_response.hostname);
+    cliclack::log::info("Device enrolled successfully!")?;
+    cliclack::log::info(format!("Hostname: {}", enroll_response.hostname))?;
 
     cloudflared.run_install_flow(&enroll_response.tunnel_token)?;
     screenpipe.install()?;
     screenpipe.start_and_wait_healthy()?;
 
-    println!("✅ Services are up. Press Ctrl-C to stop...");
+    cliclack::log::info("✅ Services are up. Press Ctrl-C to stop...")?;
     while running.load(std::sync::atomic::Ordering::SeqCst) {
         thread::sleep(Duration::from_millis(100));
     }
-    println!("🛑 Signal received. Stopping services...");
+    cliclack::log::info("🛑 Signal received. Stopping services...")?;
     screenpipe.stop_and_uninstall()?;
 
     Ok(())

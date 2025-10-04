@@ -150,21 +150,31 @@ impl ToolManager {
         use cliclack::{multi_progress, progress_bar};
         use std::sync::{Arc, Mutex};
         use std::thread;
-        
+
         let multi = multi_progress("Downloading dependencies...");
-        let pb_screenpipe = Arc::new(Mutex::new(multi.add(progress_bar(100))));
-        let pb_cloudflared = Arc::new(Mutex::new(multi.add(progress_bar(100))));
-        
-        pb_screenpipe.lock().unwrap().start("Downloading screenpipe...");
-        pb_cloudflared.lock().unwrap().start("Downloading cloudflared...");
-        
+        let pb_screenpipe = Arc::new(Mutex::new(
+            multi.add(progress_bar(100).with_template("{bar} ({pos}/{len})")),
+        ));
+        let pb_cloudflared = Arc::new(Mutex::new(
+            multi.add(progress_bar(100).with_template("{bar} ({pos}/{len})")),
+        ));
+
+        pb_screenpipe
+            .lock()
+            .unwrap()
+            .start("Downloading screenpipe...");
+        pb_cloudflared
+            .lock()
+            .unwrap()
+            .start("Downloading cloudflared...");
+
         let result = thread::scope(|s| {
             // Clone self for thread safety
             let tm1 = self.clone();
             let tm2 = self.clone();
             let pb1 = pb_screenpipe.clone();
             let pb2 = pb_cloudflared.clone();
-            
+
             let handle_screenpipe = s.spawn(move || {
                 tm1.ensure_with_progress(Dep::Screenpipe, move |downloaded, total| {
                     if total > 0 {
@@ -175,7 +185,7 @@ impl ToolManager {
                     }
                 })
             });
-            
+
             let handle_cloudflared = s.spawn(move || {
                 tm2.ensure_with_progress(Dep::Cloudflared, move |downloaded, total| {
                     if total > 0 {
@@ -186,19 +196,19 @@ impl ToolManager {
                     }
                 })
             });
-            
+
             let screenpipe = handle_screenpipe.join().unwrap()?;
             let cloudflared = handle_cloudflared.join().unwrap()?;
-            
+
             Ok::<_, anyhow::Error>((screenpipe, cloudflared))
         });
-        
+
         let (screenpipe, cloudflared) = result?;
-        
+
         pb_screenpipe.lock().unwrap().stop("Screenpipe ready");
         pb_cloudflared.lock().unwrap().stop("Cloudflared ready");
         multi.stop();
-        
+
         Ok((screenpipe, cloudflared))
     }
 
@@ -454,11 +464,11 @@ where
     }
     let mut resp = req.send()?.error_for_status()?;
     let total = resp.content_length().unwrap_or(0);
-    
+
     let mut buf = Vec::with_capacity(total as usize);
     let mut chunk = [0u8; 8192];
     let mut downloaded = 0u64;
-    
+
     loop {
         let n = resp.read(&mut chunk)?;
         if n == 0 {
@@ -468,7 +478,7 @@ where
         downloaded += n as u64;
         on_progress(downloaded, total);
     }
-    
+
     Ok(buf)
 }
 
