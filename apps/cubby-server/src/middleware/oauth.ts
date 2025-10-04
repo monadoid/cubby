@@ -8,25 +8,14 @@ import { errors } from '../errors'
 /**
  * OAuth Authentication Middleware
  * 
- * Validates OAuth access tokens from Connected Apps (third-party applications).
+ * For third-party Connected Apps (OAuth clients). Both token types include user_id claim.
  * 
- * Token Details:
- * - Issuer: {PROJECT_DOMAIN} (e.g., https://your-app.stytch.com)
- * - Accepts from: Authorization header (Bearer token) only
- * - Validation: JWKS validation using jose library
- * 
- * Sets in context:
- * - c.set('auth', AuthUser) - Full auth object with userId, scopes, etc.
- * - c.set('userId', string) - Extracted user_id for convenience
+ * Token Differences vs Session:
+ * - Issuer: PROJECT_DOMAIN (e.g., https://login.cubby.sh) vs stytch.com/{PROJECT_ID}
+ * - Source: Authorization header only vs header OR cookie
+ * - Includes OAuth scopes (e.g., 'openid', 'read:devices')
  * 
  * @param opts.requiredScopes - Optional array of scopes required for this endpoint
- * 
- * @example
- * app.get('/devices', oauth({ requiredScopes: ['read:devices'] }), async (c) => {
- *   const auth = c.get('auth')
- *   const userId = c.get('userId')
- *   // ... use auth data
- * })
  */
 
 export type OAuthOptions = {

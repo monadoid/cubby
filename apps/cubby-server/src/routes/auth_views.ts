@@ -27,7 +27,7 @@ app.get('/login', (c) => {
   <meta charset="utf-8" />
   <title>Login - Cubby</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="/htmx.min.js"></script>
   <style>${SHARED_STYLES}</style>
 </head>
 <body>
@@ -71,7 +71,7 @@ app.get('/sign-up', (c) => {
   <meta charset="utf-8" />
   <title>Sign Up - Cubby</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="/htmx.min.js"></script>
   <style>${SHARED_STYLES}</style>
 </head>
 <body>

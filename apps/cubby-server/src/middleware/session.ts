@@ -7,22 +7,12 @@ import type { Bindings, Variables } from '../index'
 /**
  * Session Authentication Middleware
  * 
- * Validates Stytch session JWTs from first-party clients (Rust CLI, browser sessions).
+ * For first-party clients (Rust CLI, browser sessions). Both token types include user_id claim.
  * 
- * Token Details:
- * - Issuer: stytch.com/{PROJECT_ID}
- * - Accepts from: Authorization header (Bearer token) OR cookie (stytch_session_jwt)
- * - Validation: Uses Stytch SDK client.sessions.authenticateJwt()
- * 
- * Sets in context:
- * - c.set('session', sessionData) - Full Stytch session object
- * - c.set('userId', string) - Extracted from session.custom_claims.user_id
- * 
- * @example
- * app.post('/devices/enroll', session(), async (c) => {
- *   const userId = c.get('userId')
- *   // ... use userId
- * })
+ * Token Differences vs OAuth:
+ * - Issuer: stytch.com/{PROJECT_ID} vs PROJECT_DOMAIN (e.g., https://login.cubby.sh)
+ * - Source: Authorization header OR cookie vs header only
+ * - No OAuth scopes
  */
 export function session(): MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> {
     return async (c: Context, next) => {
