@@ -26,8 +26,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cd apps/cubby-api/bruno && bru run . -r --env local` - Run Bruno tests manually
 
 ### Code Quality
-- `just lint` - Run clippy, cargo fmt check, and pnpm lint
-- `just fmt` - Format all code (cargo fmt + pnpm format)
+- `just check` - Run formatting checks, clippy, and workspace type checks
+- `just fix` - Apply formatting across Rust and TypeScript projects
 
 ### Database Operations
 - `cargo loco db migrate` - Run database migrations

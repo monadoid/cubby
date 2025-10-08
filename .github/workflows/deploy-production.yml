@@ -40,7 +40,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-          components: rustfmt
+          components: rustfmt,clippy
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -53,8 +53,8 @@ jobs:
         uses: extractions/setup-just@v2
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Run formatting checks
-        run: just fmt-check
+      - name: Run checks
+        run: just check
 
   build-binaries:
     name: Build Release Binaries
