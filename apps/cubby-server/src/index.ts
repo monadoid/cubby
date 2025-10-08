@@ -119,6 +119,101 @@ app.onError((err, c) => {
   return c.text("Internal Server Error", 500);
 });
 
+// OAuth token endpoint - must be defined BEFORE mounting oauth routes
+// Simple passthrough proxy to avoid CORS issues with browser-based OAuth clients
+// Public clients use PKCE (code_verifier), confidential clients include client_secret
+app.post("/oauth/token", async (c) => {
+  try {
+    const body = await c.req.text();
+
+    // Simple passthrough proxy - no modification
+    const response = await fetch(
+      `${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body,
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Token exchange failed:", data);
+    } else {
+      console.log("Token exchange successful");
+    }
+
+    return c.json(data, response.status as any);
+  } catch (error) {
+    console.error("Token exchange error:", error);
+    return c.json({ error: "Token exchange failed" }, 500);
+  }
+});
+
+// OAuth Dynamic Client Registration endpoint
+// Passthrough proxy to Stytch's DCR endpoint for third-party clients
+// No authentication required - this is a public endpoint per OAuth 2.0 DCR spec
+app.post("/oauth/register", async (c) => {
+  try {
+    const body = await c.req.json();
+
+    // Validate request body
+    const validated = DcrRegisterRequestSchema.safeParse(body);
+    if (!validated.success) {
+      console.error("DCR validation failed:", validated.error);
+      return c.json(
+        {
+          error: "invalid_client_metadata",
+          error_description: "Invalid client registration request",
+        },
+        400,
+      );
+    }
+
+    // Forward to Stytch DCR endpoint
+    const response = await fetch(
+      `${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/register`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(validated.data),
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Client registration failed:", data);
+    } else {
+      const successData = DcrRegisterResponseSchema.safeParse(data);
+      if (successData.success) {
+        console.log(
+          "Client registration successful:",
+          successData.data.client_id,
+        );
+      } else {
+        console.log("Client registration successful");
+      }
+    }
+
+    return c.json(data, response.status as any);
+  } catch (error) {
+    console.error("Client registration error:", error);
+    return c.json(
+      {
+        error: "server_error",
+        error_description: "Client registration failed",
+      },
+      500,
+    );
+  }
+});
+
 // Routes
 app.route("/oauth", oauthRoutes);
 app.route("/", authViews);
@@ -621,14 +716,15 @@ app.get("/mcp/openapi", (c) => {
   return c.json(spec);
 });
 
-// OAuth Protected Resource discovery - tells clients where to find the authorization server
+// OAuth 2.0 Protected Resource Metadata
+// Tells clients that login.cubby.sh is the authorization server for this resource
 app.get("/.well-known/oauth-protected-resource", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    // Stytch (at login.cubby.sh) is the authorization server
+    // Stytch at login.cubby.sh is the authorization server
     authorization_servers: ["https://login.cubby.sh"],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:screenpipe"],
@@ -638,11 +734,11 @@ app.get("/.well-known/oauth-protected-resource", (c) => {
 
 app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    // Stytch (at login.cubby.sh) is the authorization server
+    // Stytch at login.cubby.sh is the authorization server
     authorization_servers: ["https://login.cubby.sh"],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:screenpipe"],

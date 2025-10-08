@@ -63,17 +63,15 @@ export function generateMcpOpenAPISpec(baseUrl: string): OpenAPISpec {
           type: "oauth2",
           flows: {
             authorizationCode: {
-              // Stytch (login.cubby.sh) is the authorization server
-              // Custom consent UI at login.cubby.sh/oauth/authorize
-              authorizationUrl: "https://login.cubby.sh/oauth/authorize",
-              tokenUrl: "https://login.cubby.sh/v1/oauth2/token",
-              refreshUrl: "https://login.cubby.sh/v1/oauth2/token",
+              authorizationUrl: `${baseUrl}/oauth/authorize`,
+              tokenUrl: `${baseUrl}/oauth/token`,
+              refreshUrl: `${baseUrl}/oauth/token`,
               scopes: {
                 "read:screenpipe": "Read access to Screenpipe data",
               },
             },
           },
-          "x-registrationUrl": "https://login.cubby.sh/v1/oauth2/register",
+          "x-registrationUrl": `${baseUrl}/oauth/register`,
         },
         BearerAuth: {
           type: "http",
