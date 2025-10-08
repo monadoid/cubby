@@ -16,7 +16,7 @@ const rawOAuthSchema = z.object({
   client_id: z.string().min(1, "client_id is required"),
   redirect_uri: z.string().url("redirect_uri must be a valid URL"),
   response_type: z.literal("code").default("code"),
-  scope: z.string().min(1, "scope parameter is required"),
+  scope: z.string().optional().default("openid"),
   state: z.string().optional(),
   nonce: z.string().optional(),
   code_challenge: z.string().optional(),
@@ -93,7 +93,7 @@ function coerceScopeValue(scopeValue: unknown, scopesValue: unknown): string {
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 
-  return scopes.join(" ");
+  return scopes.length > 0 ? scopes.join(" ") : "openid";
 }
 
 // Middleware to require authentication with redirect to sign-up
@@ -136,11 +136,6 @@ app.get("/authorize", requireAuthWithRedirect(), async (c) => {
   }
 
   const normalized = withScopes(parsed.data);
-  if (normalized.scopes.length === 0) {
-    throw new HTTPException(400, {
-      message: "At least one scope must be requested",
-    });
-  }
 
   const sessionJWT = getCookie(c, "stytch_session_jwt");
   if (!sessionJWT) {
@@ -214,11 +209,6 @@ app.post("/authorize/submit", requireAuthWithRedirect(), async (c) => {
   }
 
   const normalized: SubmitOAuthParams = withScopes(parsed.data);
-  if (normalized.scopes.length === 0) {
-    throw new HTTPException(400, {
-      message: "At least one scope must be requested",
-    });
-  }
 
   const sessionJWT = getCookie(c, "stytch_session_jwt");
   if (!sessionJWT) {
