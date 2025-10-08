@@ -15,10 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
+      cubby-server: ${{ steps.filter.outputs.cubby-server }}
+      exampleco-website: ${{ steps.filter.outputs.exampleco-website }}
+      cubby-installer: ${{ steps.filter.outputs.cubby-installer }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Check for Rust changes
+      - name: Check for changes
         uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -27,6 +30,12 @@ jobs:
               - 'apps/cubby/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
+            cubby-server:
+              - 'apps/cubby-server/**'
+            exampleco-website:
+              - 'apps/exampleco_website/**'
+            cubby-installer:
+              - 'apps/cubby-installer/**'
 
   format-check:
     name: Check Code Formatting
@@ -244,7 +253,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   deploy-cubby-server:
-    needs: migrate-database
+    needs: [detect-changes, migrate-database]
+    if: ${{ !cancelled() && needs.detect-changes.outputs.cubby-server == 'true' && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') }}
     name: Deploy cubby-server
     runs-on: ubuntu-latest
     steps:
@@ -272,7 +282,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-exampleco-website:
-    needs: migrate-database
+    needs: [detect-changes, migrate-database]
+    if: ${{ !cancelled() && needs.detect-changes.outputs.exampleco-website == 'true' && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') }}
     name: Deploy exampleco_website
     runs-on: ubuntu-latest
     steps:
@@ -300,8 +311,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-cubby-installer:
-    needs: upload-to-r2
-    if: ${{ !cancelled() && (needs.upload-to-r2.result == 'success' || needs.upload-to-r2.result == 'skipped') }}
+    needs: [detect-changes, upload-to-r2]
+    if: ${{ !cancelled() && needs.detect-changes.outputs.cubby-installer == 'true' && (needs.upload-to-r2.result == 'success' || needs.upload-to-r2.result == 'skipped') }}
     name: Deploy cubby-installer
     runs-on: ubuntu-latest
     steps:
