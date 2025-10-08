@@ -40,7 +40,10 @@ export interface OpenAPISpec {
 /**
  * Generate OpenAPI specification from MCP server tools
  */
-export function generateMcpOpenAPISpec(baseUrl: string, stytchDomain: string): OpenAPISpec {
+export function generateMcpOpenAPISpec(
+  baseUrl: string,
+  stytchDomain: string,
+): OpenAPISpec {
   const spec: OpenAPISpec = {
     openapi: "3.0.0",
     info: {

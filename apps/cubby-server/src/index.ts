@@ -721,13 +721,19 @@ app.get("/mcp/openapi", (c) => {
 app.get("/.well-known/oauth-authorization-server", (c) => {
   // Redirect clients to Stytch's authorization server metadata
   // This fixes the issuer/endpoint domain mismatch that OpenAI flags as unsafe
-  return c.redirect(`${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/oauth-authorization-server`, 302);
+  return c.redirect(
+    `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/oauth-authorization-server`,
+    302,
+  );
 });
 
 // Also redirect OpenID Configuration for OIDC clients
 app.get("/.well-known/openid-configuration", (c) => {
   // Stytch provides both OAuth 2.0 and OpenID Connect discovery endpoints
-  return c.redirect(`${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/openid-configuration`, 302);
+  return c.redirect(
+    `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/openid-configuration`,
+    302,
+  );
 });
 
 app.get("/.well-known/oauth-protected-resource", (c) => {
