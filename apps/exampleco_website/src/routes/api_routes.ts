@@ -4,6 +4,7 @@ import { z } from 'zod'
 import OpenAI from 'openai'
 import type { Bindings, Variables } from '../index'
 import { renderDevicesFragment } from '../views/devices_fragment'
+import { callMcpTool } from '../lib/mcp_client'
 
 // Schemas matching screenpipe OpenAPI spec
 const contentTypeSchema = z.enum(['all', 'ocr', 'audio', 'ui', 'audio+ui', 'ocr+ui', 'audio+ocr']).optional()
@@ -75,6 +76,66 @@ app.get('/devices-fragment', async (c) => {
     return c.html('<option value="">❌ Error loading devices</option>')
   }
 })
+
+// MCP search endpoint - uses JSON-RPC 2.0 to call MCP tools
+app.post(
+  '/mcp-search',
+  zValidator('form', searchRequestSchema),
+  async (c) => {
+    const authHeader = c.req.header('Authorization')
+    if (!authHeader) {
+      return c.text('⚠️ Missing Authorization header', 401)
+    }
+
+    const { deviceId, q, limit, content_type } = c.req.valid('form')
+    const accessToken = authHeader.replace(/^Bearer\s+/i, '')
+
+    try {
+      // Construct MCP endpoint URL
+      const mcpUrl = new URL('/mcp', c.env.CUBBY_API_URL)
+
+      // Call MCP search tool via JSON-RPC 2.0
+      const result = await callMcpTool(
+        mcpUrl.toString(),
+        accessToken,
+        'search',
+        {
+          deviceId,
+          q: q && q.trim() !== '' ? q : undefined,
+          limit,
+          content_type,
+        }
+      )
+
+      // Extract structured content (SearchResponse)
+      const searchResponse = result.structuredContent
+      const textSummary = result.content.find(c => c.type === 'text')?.text || 'No summary available'
+
+      // Format response as HTML
+      const html = `
+<div class="summary-container">
+  <h3>MCP Tool Result</h3>
+  <div class="summary-text">
+    <strong>Tool:</strong> search<br/>
+    <strong>Summary:</strong> ${escapeHtml(textSummary)}
+  </div>
+  
+  <details>
+    <summary style="cursor: pointer; margin-top: 1rem; padding: 0.5rem; background: #374151; color: white; border-radius: 0.25rem; user-select: none;">
+      View Structured Response
+    </summary>
+    <pre style="margin-top: 0.5rem;">${escapeHtml(JSON.stringify(searchResponse, null, 2))}</pre>
+  </details>
+</div>
+`
+      
+      return c.html(html)
+    } catch (error) {
+      console.error('MCP search error:', error)
+      return c.text(`❌ MCP search failed: ${getErrorMessage(error)}`, 502)
+    }
+  }
+)
 
 app.post(
   '/search',

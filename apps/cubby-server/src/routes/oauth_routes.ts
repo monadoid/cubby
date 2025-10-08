@@ -16,25 +16,42 @@ export const baseOAuthSchema = z.object({
     client_id: z.string().min(1, 'client_id is required'),
     redirect_uri: z.url('redirect_uri must be a valid URL'),
     response_type: z.literal('code').default('code'),
-    scopes: z.array(z.string()).min(1, 'At least one scope is required'),
+    scope: z.string().min(1, 'scope parameter is required').transform((scope) => 
+        // OAuth 2.0 standard: space-separated string, convert to array for internal use
+        scope.split(' ').filter(Boolean)
+    ),
     state: z.string().optional(),
     nonce: z.string().optional(),
     code_challenge: z.string().optional(),
     prompt: z.string().optional(),
-})
+}).transform((data) => ({
+    ...data,
+    scopes: data.scope // Rename to scopes for internal Stytch API compatibility
+}))
 
 export type BaseOAuthParams = z.infer<typeof baseOAuthSchema>
 
-const submitSchema = baseOAuthSchema.extend({
+const submitSchema = z.object({
+    client_id: z.string().min(1, 'client_id is required'),
+    redirect_uri: z.url('redirect_uri must be a valid URL'),
+    response_type: z.literal('code').default('code'),
+    scope: z.string().optional().default('').transform((scope) => 
+        // OAuth 2.0 standard: space-separated string, convert to array for internal use
+        scope.split(' ').filter(Boolean)
+    ),
+    state: z.string().optional(),
+    nonce: z.string().optional(),
+    code_challenge: z.string().optional(),
+    prompt: z.string().optional(),
     consent_granted: z
         .union([z.literal('true'), z.literal('false')])
         .optional()
         .default('true')
         .transform((val) => val !== 'false'),
-}).extend({
-    // Make scopes optional for submit - user might deny all scopes
-    scopes: z.array(z.string()).default([])
-})
+}).transform((data) => ({
+    ...data,
+    scopes: data.scope // Rename to scopes for internal Stytch API compatibility
+}))
 
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -59,16 +76,11 @@ function requireAuthWithRedirect(): MiddlewareHandler {
 }
 
 app.get('/authorize', requireAuthWithRedirect(), async (c) => {
-    const scopes = c.req.queries('scopes')
-    if (!scopes) {
-        throw new HTTPException(400, { message: 'scopes parameter is required' })
-    }
-
     const params = {
         client_id: c.req.query('client_id'),
         redirect_uri: c.req.query('redirect_uri'),
         response_type: c.req.query('response_type'),
-        scopes,
+        scope: c.req.query('scope'), // OAuth 2.0 standard: space-separated string
         state: c.req.query('state'),
         nonce: c.req.query('nonce'),
         code_challenge: c.req.query('code_challenge'),
@@ -108,8 +120,10 @@ app.get('/authorize', requireAuthWithRedirect(), async (c) => {
 
     // If no explicit consent is required, finalize immediately
     if (!startResp.consent_required) {
+        // Extract only the fields Stytch expects (exclude 'scope', keep 'scopes')
+        const { scope, ...stytchData } = parsed.data
         const authReq: IDPOAuthAuthorizeRequest = {
-            ...parsed.data,
+            ...stytchData,
             consent_granted: true,
             session_jwt: sessionJWT,
         }
@@ -132,17 +146,8 @@ app.get('/authorize', requireAuthWithRedirect(), async (c) => {
 app.post('/authorize/submit', requireAuthWithRedirect(), async (c) => {
     const body = await c.req.parseBody()
     
-    // Normalize scopes to always be an array
-    const normalizedBody = {
-        ...body,
-        scopes: Array.isArray(body.scopes) 
-            ? body.scopes 
-            : body.scopes 
-                ? [body.scopes] 
-                : []
-    }
-    
-    const parsed = submitSchema.safeParse(normalizedBody)
+    // Schema will handle conversion of 'scope' (space-separated) to 'scopes' (array)
+    const parsed = submitSchema.safeParse(body)
     if (!parsed.success) {
         throw new HTTPException(400, { message: z.prettifyError(parsed.error) })
     }
@@ -158,8 +163,10 @@ app.post('/authorize/submit', requireAuthWithRedirect(), async (c) => {
         secret: c.env.STYTCH_PROJECT_SECRET,
     })
 
+    // Extract only the fields Stytch expects (exclude 'scope', keep 'scopes')
+    const { scope, ...stytchData } = parsed.data
     const authReq: IDPOAuthAuthorizeRequest = {
-        ...parsed.data,
+        ...stytchData,
         session_jwt: sessionJWT,
     }
 

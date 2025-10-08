@@ -1,9 +1,9 @@
-export function renderHomePage(cubbyApiUrl: string): string {
+export function renderMcpPage(cubbyApiUrl: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ExampleCo</title>
+  <title>ExampleCo - MCP Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <style>
@@ -25,21 +25,33 @@ export function renderHomePage(cubbyApiUrl: string): string {
     .htmx-request .htmx-indicator { display: inline; }
     .htmx-indicator { display: none; margin-left: 0.5rem; }
     .section { margin-bottom: 2rem; padding: 1rem; background: #f9fafb; border-radius: 0.5rem; }
+    .info-box { background: #eff6ff; border-left: 4px solid #2563eb; padding: 1rem; margin-bottom: 1.5rem; border-radius: 0.25rem; }
+    .info-box h3 { margin: 0 0 0.5rem 0; font-size: 1rem; color: #1e40af; }
+    .info-box p { margin: 0; color: #1e40af; font-size: 0.875rem; line-height: 1.5; }
   </style>
 </head>
 <body>
-  <h1>ExampleCo</h1>
-  <p>This page demonstrates ExampleCo acting as an OAuth client against Stytch to obtain a Cubby access token.</p>
+  <h1>ExampleCo - MCP Demo</h1>
+  
+  <div class="info-box">
+    <h3>🔧 Model Context Protocol (MCP)</h3>
+    <p>
+      This page demonstrates using MCP tools through the JSON-RPC 2.0 protocol.
+      MCP enables AI assistants and applications to call server-side tools in a standardized way.
+      The search is performed using the same OAuth confidential flow, but through the MCP <code>/mcp</code> endpoint
+      instead of the direct REST API.
+    </p>
+  </div>
   
   <div class="cta">
+    <a class="button secondary" href="/">← Back to Home</a>
     <a class="button" href="/connect">Connect Cubby</a>
-    <a class="button secondary" href="/mcp-demo">Try MCP Tools Demo</a>
   </div>
   
   <div class="section">
-    <h2>Test Device Search</h2>
-    <p>Search your Screenpipe device using the proxied API endpoint.</p>
-    <form hx-post="/api/search" hx-target="#search-result" hx-swap="innerHTML" hx-indicator="#search-indicator">
+    <h2>Test MCP Search Tool</h2>
+    <p>Call the <code>search</code> tool via MCP JSON-RPC 2.0 protocol.</p>
+    <form hx-post="/api/mcp-search" hx-target="#mcp-result" hx-swap="innerHTML" hx-indicator="#mcp-indicator">
       <div class="form-group">
         <label for="device-id">Select Device</label>
         <select 
@@ -63,13 +75,27 @@ export function renderHomePage(cubbyApiUrl: string): string {
         <input type="number" id="limit" name="limit" value="10" min="1" max="100" />
       </div>
       <button type="submit">
-        Search Device
-        <span id="search-indicator" class="htmx-indicator">⏳</span>
+        Call MCP Search Tool
+        <span id="mcp-indicator" class="htmx-indicator">⏳</span>
       </button>
     </form>
-    <div id="search-result" style="background: #f9fafb; padding: 1rem; border-radius: 0.5rem; min-height: 7rem;">
-      <p style="color: #6b7280;">Search results will appear here...</p>
+    <div id="mcp-result" style="background: #f9fafb; padding: 1rem; border-radius: 0.5rem; min-height: 7rem;">
+      <p style="color: #6b7280;">MCP tool results will appear here...</p>
     </div>
+  </div>
+
+  <div class="info-box">
+    <h3>📋 How It Works</h3>
+    <p>
+      1. Click "Connect Cubby" to obtain an OAuth access token (confidential flow with client_secret)<br/>
+      2. Select a device and enter a search query<br/>
+      3. The backend makes a JSON-RPC 2.0 request to <code>${cubbyApiUrl}/mcp</code> with:<br/>
+      &nbsp;&nbsp;• Method: <code>tools/call</code><br/>
+      &nbsp;&nbsp;• Tool: <code>search</code><br/>
+      &nbsp;&nbsp;• Args: <code>{ deviceId, q, limit, content_type }</code><br/>
+      4. MCP server validates the OAuth token and executes the tool<br/>
+      5. Results are returned in MCP format with structured content
+    </p>
   </div>
 
   <script type="module">

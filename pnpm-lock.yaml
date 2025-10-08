@@ -50,6 +50,9 @@ importers:
       jose:
         specifier: ^6.1.0
         version: 6.1.0
+      mcp-lite:
+        specifier: ^0.6.0
+        version: 0.6.0
       nanoid:
         specifier: ^5.1.6
         version: 5.1.6
@@ -1198,6 +1201,9 @@ packages:
   magic-string@0.25.9:
     resolution: {integrity: sha512-RmF0AsMzgt25qzqqLc1+MbHmhdx0ojF2Fvs4XnOqz2ZOBXzzkEwc/dJQZCYHAn7v1jbVOjAZfK8msRn4BxO4VQ==}
 
+  mcp-lite@0.6.0:
+    resolution: {integrity: sha512-Ehw1m+Fq/601PZuG23pGA7sQtNAEsWkKFmbR6XCxrI5l8qEJqrKUcUkaW77dlSk9xjGmGhdEAXf2L3PdNT6+CQ==}
+
   mime@3.0.0:
     resolution: {integrity: sha512-jSCU7/VB1loIWBZe14aEYHU/+1UMEHoaO7qxCOVJOw9GgH72VAWppxNcjU+x9a2k3GSIBXNKxXQFqRvvZ7vr3A==}
     engines: {node: '>=10.0.0'}
@@ -2258,6 +2264,10 @@ snapshots:
   magic-string@0.25.9:
     dependencies:
       sourcemap-codec: 1.4.8
+
+  mcp-lite@0.6.0:
+    dependencies:
+      '@standard-schema/spec': 1.0.0
 
   mime@3.0.0: {}
 

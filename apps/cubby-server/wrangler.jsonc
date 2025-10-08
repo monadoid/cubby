@@ -5,7 +5,7 @@
   "compatibility_date": "2025-09-24",
   "routes": [
     {
-      "pattern": "api.cubby.sh/*",
+      "pattern": "api.cubby.sh",
       "custom_domain": true
     }
   ]
