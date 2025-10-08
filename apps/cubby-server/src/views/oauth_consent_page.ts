@@ -1,5 +1,5 @@
 import type { IDPOAuthAuthorizeStartResponse } from "stytch";
-import { BaseOAuthParams } from "../routes/oauth_routes";
+import type { BaseOAuthParams } from "../routes/oauth_routes";
 
 /**
  * Renders an interactive HTML consent page where users can approve/deny scopes.
@@ -10,9 +10,8 @@ export function renderOAuthConsentPage(
   startResponse: IDPOAuthAuthorizeStartResponse,
   params: BaseOAuthParams,
 ): string {
-  // Build hidden inputs from all params except scopes (which are checkboxes)
   const hiddenInputs = Object.entries(params)
-    .filter(([key, value]) => key !== "scopes" && value !== undefined)
+    .filter(([key, value]) => key !== "scopes" && key !== "scope" && value !== undefined)
     .map(
       ([name, value]) =>
         `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(String(value))}" />`,
@@ -27,28 +26,20 @@ export function renderOAuthConsentPage(
       </div>`
     : "";
 
+  const requestedScopes = new Set(params.scopes);
   const grantableScopes = (startResponse.scope_results ?? []).filter(
-    (s) => s.is_grantable,
+    (scope) => scope.is_grantable,
   );
 
-<<<<<<< HEAD
   const scopesList = grantableScopes.length
     ? grantableScopes
-        .map((s) => {
-          const checked = params.scopes.includes(s.scope) ? "checked" : "";
+        .map((scope) => {
+          const checked = requestedScopes.has(scope.scope) ? "checked" : "";
           return `<label style="display:flex;align-items:flex-start;gap:.5rem;margin:.25rem 0;">
-            <input type="checkbox" name="scopes" value="${escapeHtml(s.scope)}" ${checked} />
-=======
-    const scopesList = grantableScopes.length
-        ? grantableScopes
-            .map(s => {
-                const checked = params.scopes.includes(s.scope) ? 'checked' : ''
-                return `<label style="display:flex;align-items:flex-start;gap:.5rem;margin:.25rem 0;">
-            <input type="checkbox" class="scope-checkbox" value="${escapeHtml(s.scope)}" ${checked} />
->>>>>>> 804745c (feat(server): Added MCP server)
+            <input type="checkbox" class="scope-checkbox" name="scopes" value="${escapeHtml(scope.scope)}" ${checked} />
             <span>
-              <div style="font-weight:600">${escapeHtml(s.scope)}</div>
-              <div style="color:#6b7280;font-size:.9rem">${escapeHtml(s.description ?? "")}</div>
+              <div style="font-weight:600">${escapeHtml(scope.scope)}</div>
+              <div style="color:#6b7280;font-size:.9rem">${escapeHtml(scope.description ?? "")}</div>
             </span>
           </label>`;
         })
@@ -81,19 +72,17 @@ export function renderOAuthConsentPage(
       <div>${scopesList}</div>
     </div>
     ${hiddenInputs}
-    <!-- OAuth 2.0 standard: scope as space-separated string -->
-    <input type="hidden" name="scope" id="scope-field" value="" />
+    <input type="hidden" name="scope" id="scope-field" value="${escapeHtml(params.scope)}" />
     <div class="actions">
       <button class="primary" type="submit" name="consent_granted" value="true">Allow</button>
       <button class="secondary" type="submit" name="consent_granted" value="false">Deny</button>
     </div>
   </form>
   <script>
-    // Convert checked scopes to space-separated string on submit (OAuth 2.0 standard)
-    document.getElementById('consent-form').addEventListener('submit', function(e) {
+    document.getElementById('consent-form').addEventListener('submit', function () {
       const checkboxes = document.querySelectorAll('.scope-checkbox:checked');
-      const scopes = Array.from(checkboxes).map(cb => cb.value).join(' ');
-      document.getElementById('scope-field').value = scopes;
+      const scopes = Array.from(checkboxes).map(function (checkbox) { return checkbox.value; });
+      document.getElementById('scope-field').value = scopes.join(' ');
     });
   </script>
 </body>

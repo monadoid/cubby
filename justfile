@@ -34,20 +34,17 @@ get-cubby-dev:
 install:
     pnpm install
 
-# Lint and format all code
-lint:
-    cargo clippy --workspace -- -D warnings
-    cargo fmt --check
-    pnpm -w lint
-
-# Format code
-fmt:
-    cargo fmt
-    pnpm -w run format
-
-fmt-check:
+# Combined code checks for Rust and TypeScript
+check:
     cargo fmt --all -- --check
+    cargo clippy --workspace -- -D warnings
+    pnpm -w typecheck
     pnpm -w run format:check
+
+# Apply automatic fixes across Rust and TypeScript codebases
+fix:
+    cargo fmt --all
+    pnpm -w run format
 
 # Clean build artifacts
 clean:

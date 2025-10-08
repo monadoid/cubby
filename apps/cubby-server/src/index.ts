@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
@@ -26,29 +25,8 @@ import oauthRoutes from "./routes/oauth_routes";
 import authViews from "./routes/auth_views";
 import { strictJSONResponse } from "./helpers";
 import { isPathAllowed } from "./proxy_config";
-=======
-import {Hono} from 'hono'
-import {HTTPException} from 'hono/http-exception'
-import {cors} from 'hono/cors'
-import {proxy} from 'hono/proxy'
-import {setCookie} from 'hono/cookie'
-import {describeRoute, resolver, openAPIRouteHandler} from 'hono-openapi'
-import {zValidator} from '@hono/zod-validator'
-import {z} from 'zod/v4'
-import stytch from 'stytch'
-import {buildCnameForTunnel, buildIngressForHost, CloudflareClient} from './clients/cloudflare'
-import {createDbClient} from './db/client'
-import {createDevice, getDeviceForUser, getDevicesByUserId} from './db/devices_repo'
-import {createUser, createUserSchema} from './db/users_repo'
-import {oauth, type AuthUser} from "./middleware/oauth";
-import {session} from "./middleware/session";
-import oauthRoutes from './routes/oauth_routes'
-import authViews from './routes/auth_views'
-import {strictJSONResponse} from "./helpers";
-import {isPathAllowed} from './proxy_config'
-import {mcpHttpHandler} from './mcp/handler'
-import {generateMcpOpenAPISpec} from './mcp/openapi'
->>>>>>> 804745c (feat(server): Added MCP server)
+import { mcpHttpHandler } from "./mcp/handler";
+import { generateMcpOpenAPISpec } from "./mcp/openapi";
 
 type Bindings = CloudflareBindings;
 
@@ -106,30 +84,26 @@ const whoamiResponseSchema = z.object({
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+function isDevEnvironment(env: Bindings): boolean {
+  return Boolean(env.STYTCH_BASE_URL?.includes("test.stytch.com"));
+}
+
 // CORS middleware - allow any origin for token-protected API
 // Security is enforced by Bearer token validation, not origin restrictions
-<<<<<<< HEAD
 app.use(
   "/*",
   cors({
     origin: "*",
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "mcp-protocol-version", // MCP protocol header
+    ],
+    exposeHeaders: ["mcp-protocol-version"],
+    credentials: true,
   }),
 );
-=======
-app.use('/*', cors({
-    origin: '*',
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: [
-        'Content-Type', 
-        'Authorization',
-        'mcp-protocol-version',  // MCP protocol header
-    ],
-    exposeHeaders: ['mcp-protocol-version'],
-    credentials: true,
-}))
->>>>>>> 804745c (feat(server): Added MCP server)
 
 // Global error handler
 app.onError((err, c) => {
@@ -560,67 +534,9 @@ app.all(
       return c.json({ error: "Endpoint not allowed" }, 403);
     }
 
-<<<<<<< HEAD
     const userId = c.get("userId");
     const db = createDbClient(c.env.DATABASE_URL);
     const device = await getDeviceForUser(db, deviceId, userId);
-=======
-app.all(
-    '/mcp',
-    describeRoute({
-        description: 'Model Context Protocol (MCP) endpoint for AI assistants to access Screenpipe data',
-        responses: {
-            200: {
-                description: 'MCP protocol response',
-                content: {
-                    'application/json': {
-                        schema: {
-                            type: 'object',
-                            description: 'MCP JSON-RPC 2.0 response'
-                        }
-                    }
-                }
-            },
-            401: {
-                description: 'Unauthorized - missing or invalid OAuth token'
-            },
-            500: {
-                description: 'Internal server error'
-            }
-        },
-        tags: ['MCP']
-    }),
-    oauth({
-        // TODO: Add proper scope when designing scope system
-        // requiredScopes: ['read:screenpipe']
-    }),
-    async (c) => {
-        const authHeader = c.req.header('Authorization')
-        const token = authHeader?.replace(/^Bearer\s+/i, '')
-        const auth = c.get('auth')
-        const userId = c.get('userId')
-
-        if (!token) {
-            console.error('Missing bearer token for MCP request')
-            return c.json({ error: 'Missing bearer token' }, 401)
-        }
-
-        const response = await mcpHttpHandler(c.req.raw, {
-            authInfo: {
-                token,
-                scopes: auth.scopes,
-                extra: {
-                    env: c.env,
-                    userId
-                }
-            }
-        })
-
-        return response
-    }
-)
-
->>>>>>> 804745c (feat(server): Added MCP server)
 
     if (!device) {
       console.warn(`Denied access to device ${deviceId} for user ${userId}`);
@@ -651,7 +567,62 @@ app.all(
   },
 );
 
-<<<<<<< HEAD
+app.all(
+  "/mcp",
+  describeRoute({
+    description:
+      "Model Context Protocol (MCP) endpoint for AI assistants to access Screenpipe data",
+    responses: {
+      200: {
+        description: "MCP protocol response",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              description: "MCP JSON-RPC 2.0 response",
+            },
+          },
+        },
+      },
+      401: {
+        description: "Unauthorized - missing or invalid OAuth token",
+      },
+      500: {
+        description: "Internal server error",
+      },
+    },
+    tags: ["MCP"],
+  }),
+  oauth({
+    // TODO: Add proper scope when designing scope system
+    // requiredScopes: ['read:screenpipe']
+  }),
+  async (c) => {
+    const authHeader = c.req.header("Authorization");
+    const token = authHeader?.replace(/^Bearer\s+/i, "");
+    const auth = c.get("auth");
+    const userId = c.get("userId");
+
+    if (!token) {
+      console.error("Missing bearer token for MCP request");
+      return c.json({ error: "Missing bearer token" }, 401);
+    }
+
+    const response = await mcpHttpHandler(c.req.raw, {
+      authInfo: {
+        token,
+        scopes: auth.scopes,
+        extra: {
+          env: c.env,
+          userId,
+        },
+      },
+    });
+
+    return response;
+  },
+);
+
 app.get(
   "/whoami",
   oauth({
@@ -670,111 +641,104 @@ app.get(
     });
   },
 );
-=======
-app.get('/mcp/openapi', (c) => {
-    const baseUrl = new URL(c.req.url).origin
-    const spec = generateMcpOpenAPISpec(baseUrl)
-    return c.json(spec)
-})
 
-// OAuth Authorization Server metadata for MCP inspector auto-discovery
-app.get('/.well-known/oauth-authorization-server', (c) => {
-    // Wrangler dev rewrites URLs based on routes config, so we need to detect dev environment
-    // In local dev, always use localhost; in production, use the actual domain
-    const isDev = c.env.STYTCH_BASE_URL?.includes('test.stytch.com') // Test env = dev mode
-    const baseUrl = isDev ? 'http://localhost:8787' : 'https://api.cubby.sh'
-    
-    return c.json({
-        issuer: c.env.STYTCH_PROJECT_DOMAIN,
-        authorization_endpoint: `${baseUrl}/oauth/authorize`,
-        token_endpoint: `${baseUrl}/oauth/token`,  // Our proxy, not Stytch directly
-        jwks_uri: `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`,
-        response_types_supported: ["code"],
-        grant_types_supported: ["authorization_code"],
-        code_challenge_methods_supported: ["S256"],
-        scopes_supported: ["openid", "read:screenpipe"],
-        // OAuth 2.0 uses 'scope' (singular) as space-separated string
-        request_parameter_supported: true,
-        request_uri_parameter_supported: false
-    })
-})
+app.get("/mcp/openapi", (c) => {
+  const baseUrl = new URL(c.req.url).origin;
+  const spec = generateMcpOpenAPISpec(baseUrl);
+  return c.json(spec);
+});
 
-// OAuth Protected Resource metadata (RFC 8707)
-// Tells OAuth clients that /mcp requires bearer tokens
-app.get('/.well-known/oauth-protected-resource', (c) => {
-    const isDev = c.env.STYTCH_BASE_URL?.includes('test.stytch.com')
-    const baseUrl = isDev ? 'http://localhost:8787' : 'https://api.cubby.sh'
-    
-    return c.json({
-        resource: `${baseUrl}/mcp`,
-        // Point to OUR authorization server, not Stytch
-        // We handle the OAuth flow and use Stytch internally
-        authorization_servers: [baseUrl],
-        bearer_methods_supported: ["header"],
-        scopes_supported: ["openid", "read:screenpipe"],
-        resource_documentation: `${baseUrl}/mcp/openapi`
-    })
-})
+app.get("/.well-known/oauth-authorization-server", (c) => {
+  const isDev = isDevEnvironment(c.env);
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
-// MCP-specific variant of oauth-protected-resource (some clients append /mcp)
-app.get('/.well-known/oauth-protected-resource/mcp', (c) => {
-    const isDev = c.env.STYTCH_BASE_URL?.includes('test.stytch.com')
-    const baseUrl = isDev ? 'http://localhost:8787' : 'https://api.cubby.sh'
-    
-    return c.json({
-        resource: `${baseUrl}/mcp`,
-        authorization_servers: [baseUrl],
-        bearer_methods_supported: ["header"],
-        scopes_supported: ["openid", "read:screenpipe"],
-        resource_documentation: `${baseUrl}/mcp/openapi`
-    })
-})
+  return c.json({
+    issuer: c.env.STYTCH_PROJECT_DOMAIN,
+    authorization_endpoint: `${baseUrl}/oauth/authorize`,
+    token_endpoint: `${baseUrl}/oauth/token`,
+    jwks_uri: `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`,
+    response_types_supported: ["code"],
+    grant_types_supported: ["authorization_code"],
+    code_challenge_methods_supported: ["S256"],
+    scopes_supported: ["openid", "read:screenpipe"],
+    request_parameter_supported: true,
+    request_uri_parameter_supported: false,
+  });
+});
+
+app.get("/.well-known/oauth-protected-resource", (c) => {
+  const isDev = isDevEnvironment(c.env);
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
+
+  return c.json({
+    resource: `${baseUrl}/mcp`,
+    authorization_servers: [baseUrl],
+    bearer_methods_supported: ["header"],
+    scopes_supported: ["openid", "read:screenpipe"],
+    resource_documentation: `${baseUrl}/mcp/openapi`,
+  });
+});
+
+app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
+  const isDev = isDevEnvironment(c.env);
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
+
+  return c.json({
+    resource: `${baseUrl}/mcp`,
+    authorization_servers: [baseUrl],
+    bearer_methods_supported: ["header"],
+    scopes_supported: ["openid", "read:screenpipe"],
+    resource_documentation: `${baseUrl}/mcp/openapi`,
+  });
+});
 
 // Development helper: Get a token for testing MCP
 // In production, remove this or add proper authentication
-app.post('/dev/get-token', 
-    describeRoute({
-        description: 'Development endpoint to get an OAuth token for testing',
-        responses: {
-            200: {
-                description: 'Token response',
-                content: {
-                    'application/json': {
-                        schema: {
-                            type: 'object',
-                            properties: {
-                                access_token: { type: 'string' },
-                                token_type: { type: 'string' }
-                            }
-                        }
-                    }
-                }
-            }
+app.post(
+  "/dev/get-token",
+  describeRoute({
+    description: "Development endpoint to get an OAuth token for testing",
+    responses: {
+      200: {
+        description: "Token response",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                access_token: { type: "string" },
+                token_type: { type: "string" },
+              },
+            },
+          },
         },
-        tags: ['Development']
-    }),
-    async (c) => {
-        // This uses the session middleware to validate user
-        const sessionJwt = c.req.header('authorization')?.replace(/^Bearer\s+/i, '')
-        
-        if (!sessionJwt) {
-            return c.json({ error: 'Provide session JWT as Bearer token' }, 401)
-        }
-        
-        // The session JWT from Stytch can be used directly as an OAuth token
-        // since our oauth middleware validates it the same way
-        return c.json({
-            access_token: sessionJwt,
-            token_type: 'Bearer',
-            note: 'This is your session JWT which works as an OAuth token for testing'
-        })
-    }
-)
+      },
+    },
+    tags: ["Development"],
+  }),
+  async (c) => {
+    const sessionJwt = c
+      .req
+      .header("authorization")
+      ?.replace(/^Bearer\s+/i, "");
 
-app.get('/', (c) => {
-    return c.text('Cubby API - Visit /openapi for REST API documentation or /mcp/openapi for MCP tools documentation')
-})
->>>>>>> 804745c (feat(server): Added MCP server)
+    if (!sessionJwt) {
+      return c.json({ error: "Provide session JWT as Bearer token" }, 401);
+    }
+
+    return c.json({
+      access_token: sessionJwt,
+      token_type: "Bearer",
+      note: "This is your session JWT which works as an OAuth token for testing",
+    });
+  },
+);
+
+app.get("/", (c) => {
+  return c.text(
+    "Cubby API - Visit /openapi for REST API documentation or /mcp/openapi for MCP tools documentation",
+  );
+});
 
 app.get(
   "/openapi",
