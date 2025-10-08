@@ -51,6 +51,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
   
   <div id="connect-section" class="cta">
     <a class="button" href="/connect">Connect Cubby</a>
+    <a class="button secondary" href="/mcp-demo">Try MCP Tools Demo</a>
   </div>
   
   <div id="search-section" class="section hidden">

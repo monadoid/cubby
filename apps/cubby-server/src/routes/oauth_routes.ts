@@ -13,6 +13,7 @@ import type {
 import { renderOAuthConsentPage } from "../views/oauth_consent_page";
 
 export const baseOAuthSchema = z.object({
+<<<<<<< HEAD
   client_id: z.string().min(1, "client_id is required"),
   redirect_uri: z.url("redirect_uri must be a valid URL"),
   response_type: z.literal("code").default("code"),
@@ -22,9 +23,27 @@ export const baseOAuthSchema = z.object({
   code_challenge: z.string().optional(),
   prompt: z.string().optional(),
 });
+=======
+    client_id: z.string().min(1, 'client_id is required'),
+    redirect_uri: z.url('redirect_uri must be a valid URL'),
+    response_type: z.literal('code').default('code'),
+    scope: z.string().min(1, 'scope parameter is required').transform((scope) => 
+        // OAuth 2.0 standard: space-separated string, convert to array for internal use
+        scope.split(' ').filter(Boolean)
+    ),
+    state: z.string().optional(),
+    nonce: z.string().optional(),
+    code_challenge: z.string().optional(),
+    prompt: z.string().optional(),
+}).transform((data) => ({
+    ...data,
+    scopes: data.scope // Rename to scopes for internal Stytch API compatibility
+}))
+>>>>>>> 804745c (feat(server): Added MCP server)
 
 export type BaseOAuthParams = z.infer<typeof baseOAuthSchema>;
 
+<<<<<<< HEAD
 const submitSchema = baseOAuthSchema
   .extend({
     consent_granted: z
@@ -37,6 +56,29 @@ const submitSchema = baseOAuthSchema
     // Make scopes optional for submit - user might deny all scopes
     scopes: z.array(z.string()).default([]),
   });
+=======
+const submitSchema = z.object({
+    client_id: z.string().min(1, 'client_id is required'),
+    redirect_uri: z.url('redirect_uri must be a valid URL'),
+    response_type: z.literal('code').default('code'),
+    scope: z.string().optional().default('').transform((scope) => 
+        // OAuth 2.0 standard: space-separated string, convert to array for internal use
+        scope.split(' ').filter(Boolean)
+    ),
+    state: z.string().optional(),
+    nonce: z.string().optional(),
+    code_challenge: z.string().optional(),
+    prompt: z.string().optional(),
+    consent_granted: z
+        .union([z.literal('true'), z.literal('false')])
+        .optional()
+        .default('true')
+        .transform((val) => val !== 'false'),
+}).transform((data) => ({
+    ...data,
+    scopes: data.scope // Rename to scopes for internal Stytch API compatibility
+}))
+>>>>>>> 804745c (feat(server): Added MCP server)
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -59,6 +101,7 @@ function requireAuthWithRedirect(): MiddlewareHandler {
   };
 }
 
+<<<<<<< HEAD
 app.get("/authorize", requireAuthWithRedirect(), async (c) => {
   const scopes = c.req.queries("scopes");
   if (!scopes) {
@@ -75,6 +118,19 @@ app.get("/authorize", requireAuthWithRedirect(), async (c) => {
     code_challenge: c.req.query("code_challenge"),
     prompt: c.req.query("prompt"),
   };
+=======
+app.get('/authorize', requireAuthWithRedirect(), async (c) => {
+    const params = {
+        client_id: c.req.query('client_id'),
+        redirect_uri: c.req.query('redirect_uri'),
+        response_type: c.req.query('response_type'),
+        scope: c.req.query('scope'), // OAuth 2.0 standard: space-separated string
+        state: c.req.query('state'),
+        nonce: c.req.query('nonce'),
+        code_challenge: c.req.query('code_challenge'),
+        prompt: c.req.query('prompt'),
+    }
+>>>>>>> 804745c (feat(server): Added MCP server)
 
   const parsed = baseOAuthSchema.safeParse(params);
   if (!parsed.success) {
@@ -92,6 +148,7 @@ app.get("/authorize", requireAuthWithRedirect(), async (c) => {
     secret: c.env.STYTCH_PROJECT_SECRET,
   });
 
+<<<<<<< HEAD
   const startReq: IDPOAuthAuthorizeStartRequest = {
     client_id: parsed.data.client_id,
     redirect_uri: parsed.data.redirect_uri,
@@ -116,6 +173,74 @@ app.get("/authorize", requireAuthWithRedirect(), async (c) => {
       consent_granted: true,
       session_jwt: sessionJWT,
     };
+=======
+    const startReq: IDPOAuthAuthorizeStartRequest = {
+        client_id: parsed.data.client_id,
+        redirect_uri: parsed.data.redirect_uri,
+        response_type: 'code',
+        scopes: parsed.data.scopes,
+        session_jwt: sessionJWT,
+    }
+    let startResp: IDPOAuthAuthorizeStartResponse
+    try {
+        startResp = await client.idp.oauth.authorizeStart(startReq)
+    } catch (err: any) {
+        console.error('authorizeStart failed', err)
+        throw new HTTPException(502, { message: 'Authorization service error (start)' })
+    }
+
+    // If no explicit consent is required, finalize immediately
+    if (!startResp.consent_required) {
+        // Extract only the fields Stytch expects (exclude 'scope', keep 'scopes')
+        const { scope, ...stytchData } = parsed.data
+        const authReq: IDPOAuthAuthorizeRequest = {
+            ...stytchData,
+            consent_granted: true,
+            session_jwt: sessionJWT,
+        }
+
+        try {
+            const authResp = await client.idp.oauth.authorize(authReq)
+            // Stytch returns a redirect_uri with either an authorization_code or error params
+            return c.redirect(authResp.redirect_uri, 302)
+        } catch (err: any) {
+            console.error('authorize failed', err)
+            throw new HTTPException(502, { message: 'Authorization service error (authorize)' })
+        }
+    }
+
+    // Render interactive consent page where user approves/denies requested scopes
+    const html = renderOAuthConsentPage(startResp, parsed.data)
+    return c.html(html)
+})
+
+app.post('/authorize/submit', requireAuthWithRedirect(), async (c) => {
+    const body = await c.req.parseBody()
+    
+    // Schema will handle conversion of 'scope' (space-separated) to 'scopes' (array)
+    const parsed = submitSchema.safeParse(body)
+    if (!parsed.success) {
+        throw new HTTPException(400, { message: z.prettifyError(parsed.error) })
+    }
+
+    // Get authenticated session JWT from cookie
+    const sessionJWT = getCookie(c, 'stytch_session_jwt')
+    if (!sessionJWT) {
+        throw new HTTPException(401, { message: 'Session JWT not found' })
+    }
+
+    const client = new stytch.Client({
+        project_id: c.env.STYTCH_PROJECT_ID,
+        secret: c.env.STYTCH_PROJECT_SECRET,
+    })
+
+    // Extract only the fields Stytch expects (exclude 'scope', keep 'scopes')
+    const { scope, ...stytchData } = parsed.data
+    const authReq: IDPOAuthAuthorizeRequest = {
+        ...stytchData,
+        session_jwt: sessionJWT,
+    }
+>>>>>>> 804745c (feat(server): Added MCP server)
 
     try {
       const authResp = await client.idp.oauth.authorize(authReq);

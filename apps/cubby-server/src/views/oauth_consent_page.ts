@@ -31,12 +31,21 @@ export function renderOAuthConsentPage(
     (s) => s.is_grantable,
   );
 
+<<<<<<< HEAD
   const scopesList = grantableScopes.length
     ? grantableScopes
         .map((s) => {
           const checked = params.scopes.includes(s.scope) ? "checked" : "";
           return `<label style="display:flex;align-items:flex-start;gap:.5rem;margin:.25rem 0;">
             <input type="checkbox" name="scopes" value="${escapeHtml(s.scope)}" ${checked} />
+=======
+    const scopesList = grantableScopes.length
+        ? grantableScopes
+            .map(s => {
+                const checked = params.scopes.includes(s.scope) ? 'checked' : ''
+                return `<label style="display:flex;align-items:flex-start;gap:.5rem;margin:.25rem 0;">
+            <input type="checkbox" class="scope-checkbox" value="${escapeHtml(s.scope)}" ${checked} />
+>>>>>>> 804745c (feat(server): Added MCP server)
             <span>
               <div style="font-weight:600">${escapeHtml(s.scope)}</div>
               <div style="color:#6b7280;font-size:.9rem">${escapeHtml(s.description ?? "")}</div>
@@ -66,17 +75,27 @@ export function renderOAuthConsentPage(
 <body>
   <h1>Authorize Connected App</h1>
   ${appHeader}
-  <form method="post" action="/oauth/authorize/submit">
+  <form method="post" action="/oauth/authorize/submit" id="consent-form">
     <div class="card">
       <div style="margin-bottom:.5rem; font-weight:600;">This application is requesting access to:</div>
       <div>${scopesList}</div>
     </div>
     ${hiddenInputs}
+    <!-- OAuth 2.0 standard: scope as space-separated string -->
+    <input type="hidden" name="scope" id="scope-field" value="" />
     <div class="actions">
       <button class="primary" type="submit" name="consent_granted" value="true">Allow</button>
       <button class="secondary" type="submit" name="consent_granted" value="false">Deny</button>
     </div>
   </form>
+  <script>
+    // Convert checked scopes to space-separated string on submit (OAuth 2.0 standard)
+    document.getElementById('consent-form').addEventListener('submit', function(e) {
+      const checkboxes = document.querySelectorAll('.scope-checkbox:checked');
+      const scopes = Array.from(checkboxes).map(cb => cb.value).join(' ');
+      document.getElementById('scope-field').value = scopes;
+    });
+  </script>
 </body>
 </html>`;
 }

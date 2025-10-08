@@ -52,6 +52,7 @@ export function createOAuthContext(config: OAuthConfig): OAuthContext {
   };
 }
 
+<<<<<<< HEAD
 export function buildAuthorizationUrl(
   config: OAuthConfig,
   state: string,
@@ -66,6 +67,19 @@ export function buildAuthorizationUrl(
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("state", state);
   return url;
+=======
+export function buildAuthorizationUrl(config: OAuthConfig, state: string, codeChallenge: string): URL {
+  const url = new URL(config.authorizationEndpoint)
+  url.searchParams.set('client_id', config.clientId)
+  url.searchParams.set('redirect_uri', config.redirectUri)
+  url.searchParams.set('response_type', 'code')
+  // OAuth 2.0 spec requires 'scope' (singular) as space-separated string
+  url.searchParams.set('scope', config.scopes.join(' '))
+  url.searchParams.set('code_challenge', codeChallenge)
+  url.searchParams.set('code_challenge_method', 'S256')
+  url.searchParams.set('state', state)
+  return url
+>>>>>>> 804745c (feat(server): Added MCP server)
 }
 
 export function validateCallbackParameters(
