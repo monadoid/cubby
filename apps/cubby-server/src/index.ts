@@ -119,101 +119,6 @@ app.onError((err, c) => {
   return c.text("Internal Server Error", 500);
 });
 
-// OAuth token endpoint - must be defined BEFORE mounting oauth routes
-// Simple passthrough proxy to avoid CORS issues with browser-based OAuth clients
-// Public clients use PKCE (code_verifier), confidential clients include client_secret
-app.post("/oauth/token", async (c) => {
-  try {
-    const body = await c.req.text();
-
-    // Simple passthrough proxy - no modification
-    const response = await fetch(
-      `${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/token`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body,
-      },
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("Token exchange failed:", data);
-    } else {
-      console.log("Token exchange successful");
-    }
-
-    return c.json(data, response.status as any);
-  } catch (error) {
-    console.error("Token exchange error:", error);
-    return c.json({ error: "Token exchange failed" }, 500);
-  }
-});
-
-// OAuth Dynamic Client Registration endpoint
-// Passthrough proxy to Stytch's DCR endpoint for third-party clients
-// No authentication required - this is a public endpoint per OAuth 2.0 DCR spec
-app.post("/oauth/register", async (c) => {
-  try {
-    const body = await c.req.json();
-
-    // Validate request body
-    const validated = DcrRegisterRequestSchema.safeParse(body);
-    if (!validated.success) {
-      console.error("DCR validation failed:", validated.error);
-      return c.json(
-        {
-          error: "invalid_client_metadata",
-          error_description: "Invalid client registration request",
-        },
-        400,
-      );
-    }
-
-    // Forward to Stytch DCR endpoint
-    const response = await fetch(
-      `${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/register`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(validated.data),
-      },
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("Client registration failed:", data);
-    } else {
-      const successData = DcrRegisterResponseSchema.safeParse(data);
-      if (successData.success) {
-        console.log(
-          "Client registration successful:",
-          successData.data.client_id,
-        );
-      } else {
-        console.log("Client registration successful");
-      }
-    }
-
-    return c.json(data, response.status as any);
-  } catch (error) {
-    console.error("Client registration error:", error);
-    return c.json(
-      {
-        error: "server_error",
-        error_description: "Client registration failed",
-      },
-      500,
-    );
-  }
-});
-
 // Routes
 app.route("/oauth", oauthRoutes);
 app.route("/", authViews);
@@ -712,39 +617,19 @@ app.get(
 
 app.get("/mcp/openapi", (c) => {
   const baseUrl = new URL(c.req.url).origin;
-  const spec = generateMcpOpenAPISpec(baseUrl, c.env.STYTCH_PROJECT_DOMAIN);
+  const spec = generateMcpOpenAPISpec(baseUrl);
   return c.json(spec);
 });
 
-// Redirect to Stytch's authorization server metadata
-// This makes it clear that Stytch is the authorization server, not us
-app.get("/.well-known/oauth-authorization-server", (c) => {
-  // Redirect clients to Stytch's authorization server metadata
-  // This fixes the issuer/endpoint domain mismatch that OpenAI flags as unsafe
-  return c.redirect(
-    `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/oauth-authorization-server`,
-    302,
-  );
-});
-
-// Also redirect OpenID Configuration for OIDC clients
-app.get("/.well-known/openid-configuration", (c) => {
-  // Stytch provides both OAuth 2.0 and OpenID Connect discovery endpoints
-  return c.redirect(
-    `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/openid-configuration`,
-    302,
-  );
-});
-
+// OAuth Protected Resource discovery - tells clients where to find the authorization server
 app.get("/.well-known/oauth-protected-resource", (c) => {
   const isDev = isDevEnvironment(c.env);
   const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    // Point to Stytch as the authorization server (not our domain)
-    // This fixes OpenAI's "unsafe" flag by properly identifying the auth server
-    authorization_servers: [c.env.STYTCH_PROJECT_DOMAIN],
+    // Stytch (at login.cubby.sh) is the authorization server
+    authorization_servers: ["https://login.cubby.sh"],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:screenpipe"],
     resource_documentation: `${baseUrl}/mcp/openapi`,
@@ -757,9 +642,8 @@ app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    // Point to Stytch as the authorization server (not our domain)
-    // This fixes OpenAI's "unsafe" flag by properly identifying the auth server
-    authorization_servers: [c.env.STYTCH_PROJECT_DOMAIN],
+    // Stytch (at login.cubby.sh) is the authorization server
+    authorization_servers: ["https://login.cubby.sh"],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:screenpipe"],
     resource_documentation: `${baseUrl}/mcp/openapi`,
