@@ -38,6 +38,7 @@ export function session(): MiddlewareHandler<{
     const client = new stytch.Client({
       project_id: c.env.STYTCH_PROJECT_ID,
       secret: c.env.STYTCH_PROJECT_SECRET,
+      custom_base_url: "https://login.cubby.sh",
     });
 
     try {

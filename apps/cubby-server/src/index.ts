@@ -273,6 +273,7 @@ app.post(
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
+        custom_base_url: "https://login.cubby.sh",
       });
 
       const response = await client.passwords.create({
@@ -394,6 +395,7 @@ app.post(
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
+        custom_base_url: "https://login.cubby.sh",
       });
 
       const response = await client.passwords.authenticate({

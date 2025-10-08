@@ -145,6 +145,7 @@ app.get("/authorize", requireAuthWithRedirect(), async (c) => {
   const client = new stytch.Client({
     project_id: c.env.STYTCH_PROJECT_ID,
     secret: c.env.STYTCH_PROJECT_SECRET,
+    custom_base_url: "https://login.cubby.sh",
   });
 
   const startReq: IDPOAuthAuthorizeStartRequest = {
@@ -218,6 +219,7 @@ app.post("/authorize/submit", requireAuthWithRedirect(), async (c) => {
   const client = new stytch.Client({
     project_id: c.env.STYTCH_PROJECT_ID,
     secret: c.env.STYTCH_PROJECT_SECRET,
+    custom_base_url: "https://login.cubby.sh",
   });
 
   const { scope: _scope, consent_granted, ...stytchData } = normalized;
