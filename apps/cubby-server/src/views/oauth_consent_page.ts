@@ -11,7 +11,10 @@ export function renderOAuthConsentPage(
   params: BaseOAuthParams,
 ): string {
   const hiddenInputs = Object.entries(params)
-    .filter(([key, value]) => key !== "scopes" && key !== "scope" && value !== undefined)
+    .filter(
+      ([key, value]) =>
+        key !== "scopes" && key !== "scope" && value !== undefined,
+    )
     .map(
       ([name, value]) =>
         `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(String(value))}" />`,

@@ -97,39 +97,31 @@ app.get("/devices-fragment", async (c) => {
 });
 
 // MCP search endpoint - uses JSON-RPC 2.0 to call MCP tools
-app.post(
-  "/mcp-search",
-  zValidator("form", searchRequestSchema),
-  async (c) => {
-    const authHeader = c.req.header("Authorization");
-    if (!authHeader) {
-      return c.text("⚠️ Missing Authorization header", 401);
-    }
+app.post("/mcp-search", zValidator("form", searchRequestSchema), async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader) {
+    return c.text("⚠️ Missing Authorization header", 401);
+  }
 
-    const { deviceId, q, limit, content_type } = c.req.valid("form");
-    const accessToken = authHeader.replace(/^Bearer\s+/i, "");
+  const { deviceId, q, limit, content_type } = c.req.valid("form");
+  const accessToken = authHeader.replace(/^Bearer\s+/i, "");
 
-    try {
-      const mcpUrl = new URL("/mcp", c.env.CUBBY_API_URL);
+  try {
+    const mcpUrl = new URL("/mcp", c.env.CUBBY_API_URL);
 
-      const result = await callMcpTool(
-        mcpUrl.toString(),
-        accessToken,
-        "search",
-        {
-          deviceId,
-          q: q && q.trim() !== "" ? q : undefined,
-          limit,
-          content_type,
-        },
-      );
+    const result = await callMcpTool(mcpUrl.toString(), accessToken, "search", {
+      deviceId,
+      q: q && q.trim() !== "" ? q : undefined,
+      limit,
+      content_type,
+    });
 
-      const searchResponse = result.structuredContent;
-      const textSummary =
-        result.content.find((content) => content.type === "text")?.text ||
-        "No summary available";
+    const searchResponse = result.structuredContent;
+    const textSummary =
+      result.content.find((content) => content.type === "text")?.text ||
+      "No summary available";
 
-      const html = `
+    const html = `
 <div class="summary-container">
   <h3>MCP Tool Result</h3>
   <div class="summary-text">
@@ -146,128 +138,123 @@ app.post(
 </div>
 `;
 
-      return c.html(html);
-    } catch (error) {
-      console.error("MCP search error:", error);
-      return c.text(`❌ MCP search failed: ${getErrorMessage(error)}`, 502);
-    }
-  },
-);
+    return c.html(html);
+  } catch (error) {
+    console.error("MCP search error:", error);
+    return c.text(`❌ MCP search failed: ${getErrorMessage(error)}`, 502);
+  }
+});
 
 // Screenpipe REST search proxy
-app.post(
-  "/search",
-  zValidator("form", searchRequestSchema),
-  async (c) => {
-    const authHeader = c.req.header("Authorization");
-    if (!authHeader) {
-      return c.text("⚠️ Missing Authorization header", 401);
+app.post("/search", zValidator("form", searchRequestSchema), async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader) {
+    return c.text("⚠️ Missing Authorization header", 401);
+  }
+
+  const { deviceId, q, limit, content_type } = c.req.valid("form");
+
+  try {
+    // Build search URL with query parameters matching screenpipe API
+    const searchUrl = new URL(
+      `/devices/${deviceId}/search`,
+      c.env.CUBBY_API_URL,
+    );
+
+    if (q && q.trim() !== "") {
+      const sanitizedQuery = sanitizeSearchQuery(q);
+      searchUrl.searchParams.set("q", sanitizedQuery);
+      console.log(
+        `[exampleco_website] Using text search with query: "${sanitizedQuery}"`,
+      );
+    } else {
+      console.log(
+        `[exampleco_website] No search query - will return recent activity`,
+      );
     }
 
-    const { deviceId, q, limit, content_type } = c.req.valid("form");
+    searchUrl.searchParams.set("limit", limit.toString());
+    searchUrl.searchParams.set("content_type", content_type);
 
+    console.log(`Proxying search request to: ${searchUrl.toString()}`);
+
+    const response = await fetch(searchUrl.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+      },
+    });
+
+    console.log(`[exampleco_website] Response status: ${response.status}`);
+
+    const body = await response.text();
+
+    if (!response.ok) {
+      console.error(`[exampleco_website] Error response body: ${body}`);
+      return c.text(`❌ Error (${response.status}): ${body}`);
+    }
+
+    let screenpipeData: unknown;
     try {
-      // Build search URL with query parameters matching screenpipe API
-      const searchUrl = new URL(
-        `/devices/${deviceId}/search`,
-        c.env.CUBBY_API_URL,
-      );
+      screenpipeData = JSON.parse(body) as Record<string, unknown>;
+    } catch {
+      return c.text(body);
+    }
 
-      if (q && q.trim() !== "") {
-        const sanitizedQuery = sanitizeSearchQuery(q);
-        searchUrl.searchParams.set("q", sanitizedQuery);
-        console.log(
-          `[exampleco_website] Using text search with query: "${sanitizedQuery}"`,
-        );
-      } else {
-        console.log(
-          `[exampleco_website] No search query - will return recent activity`,
-        );
-      }
+    const data = (screenpipeData as { data?: unknown[] }).data as any[];
+    const ocrTexts = data
+      ?.filter((item: any) => item.type === "OCR")
+      .map((item: any) => ({
+        timestamp: item.content?.timestamp,
+        app: item.content?.app_name,
+        window: item.content?.window_name,
+        text: item.content?.text?.slice(0, 500),
+      }))
+      .slice(0, 5);
 
-      searchUrl.searchParams.set("limit", limit.toString());
-      searchUrl.searchParams.set("content_type", content_type);
+    let summary = "No context available to summarize.";
 
-      console.log(`Proxying search request to: ${searchUrl.toString()}`);
-
-      const response = await fetch(searchUrl.toString(), {
-        method: "GET",
-        headers: {
-          Authorization: authHeader,
-        },
-      });
-
-      console.log(`[exampleco_website] Response status: ${response.status}`);
-
-      const body = await response.text();
-
-      if (!response.ok) {
-        console.error(`[exampleco_website] Error response body: ${body}`);
-        return c.text(`❌ Error (${response.status}): ${body}`);
-      }
-
-      let screenpipeData: unknown;
+    if (ocrTexts && ocrTexts.length > 0) {
       try {
-        screenpipeData = JSON.parse(body) as Record<string, unknown>;
-      } catch {
-        return c.text(body);
+        const openai = new OpenAI({
+          apiKey: c.env.OPENAI_API_KEY,
+        });
+
+        const contextText = ocrTexts
+          .map(
+            (item: any, index: number) =>
+              `[${index + 1}] ${item.app} - ${item.window}\n${item.text}\n`,
+          )
+          .join("\n---\n");
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a helpful assistant that summarizes screen content. Provide a brief 2-3 sentence summary of what the user is currently working on based on their screen captures.",
+            },
+            {
+              role: "user",
+              content: `Here is the user's current screen context from their device:\n\n${contextText}\n\nSummarize in 2-3 sentences what they are currently working on.`,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 150,
+        });
+
+        summary =
+          completion.choices[0]?.message?.content ||
+          "Failed to generate summary.";
+      } catch (error) {
+        console.error("[exampleco_website] OpenAI error:", error);
+        summary = "Failed to generate AI summary. Check API key configuration.";
       }
+    }
 
-      const data = (screenpipeData as { data?: unknown[] }).data as any[];
-      const ocrTexts = data
-        ?.filter((item: any) => item.type === "OCR")
-        .map((item: any) => ({
-          timestamp: item.content?.timestamp,
-          app: item.content?.app_name,
-          window: item.content?.window_name,
-          text: item.content?.text?.slice(0, 500),
-        }))
-        .slice(0, 5);
-
-      let summary = "No context available to summarize.";
-
-      if (ocrTexts && ocrTexts.length > 0) {
-        try {
-          const openai = new OpenAI({
-            apiKey: c.env.OPENAI_API_KEY,
-          });
-
-          const contextText = ocrTexts
-            .map(
-              (item: any, index: number) =>
-                `[${index + 1}] ${item.app} - ${item.window}\n${item.text}\n`,
-            )
-            .join("\n---\n");
-
-          const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a helpful assistant that summarizes screen content. Provide a brief 2-3 sentence summary of what the user is currently working on based on their screen captures.",
-              },
-              {
-                role: "user",
-                content: `Here is the user's current screen context from their device:\n\n${contextText}\n\nSummarize in 2-3 sentences what they are currently working on.`,
-              },
-            ],
-            temperature: 0.7,
-            max_tokens: 150,
-          });
-
-          summary =
-            completion.choices[0]?.message?.content ||
-            "Failed to generate summary.";
-        } catch (error) {
-          console.error("[exampleco_website] OpenAI error:", error);
-          summary =
-            "Failed to generate AI summary. Check API key configuration.";
-        }
-      }
-
-      const rawDataJson = JSON.stringify(screenpipeData, null, 2);
-      const html = `
+    const rawDataJson = JSON.stringify(screenpipeData, null, 2);
+    const html = `
 <div class="summary-container">
   <h3>AI Summary</h3>
   <div class="summary-text">${escapeHtml(summary)}</div>
@@ -281,12 +268,11 @@ app.post(
 </div>
 `;
 
-      return c.html(html);
-    } catch (error) {
-      console.error("Search proxy error:", error);
-      return c.text(`❌ Failed to search: ${getErrorMessage(error)}`, 502);
-    }
-  },
-);
+    return c.html(html);
+  } catch (error) {
+    console.error("Search proxy error:", error);
+    return c.text(`❌ Failed to search: ${getErrorMessage(error)}`, 502);
+  }
+});
 
 export default app;

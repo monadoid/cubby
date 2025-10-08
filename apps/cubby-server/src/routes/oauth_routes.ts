@@ -46,7 +46,9 @@ function scopeStringToArray(scope: string): string[] {
     .filter((value) => value.length > 0);
 }
 
-function withScopes<T extends { scope: string }>(data: T): T & { scopes: string[] } {
+function withScopes<T extends { scope: string }>(
+  data: T,
+): T & { scopes: string[] } {
   return {
     ...data,
     scopes: scopeStringToArray(data.scope),

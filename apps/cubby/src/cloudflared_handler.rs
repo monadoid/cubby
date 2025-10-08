@@ -1,21 +1,16 @@
 use anyhow::{bail, Result};
 use cliclack::confirm;
 use duct::cmd;
-use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Manages install / uninstall flow for the `cloudflared` system service.
 pub struct CloudflaredService {
     binary_path: PathBuf,
-    args: Vec<OsString>,
 }
 
 impl CloudflaredService {
     pub fn new_with_binary(binary_path: PathBuf) -> Result<Self> {
-        Ok(Self {
-            binary_path,
-            args: Vec::new(),
-        })
+        Ok(Self { binary_path })
     }
 
     #[cfg(target_os = "macos")]
@@ -58,7 +53,7 @@ impl CloudflaredService {
 
     pub fn install(&self, token: &str) -> Result<()> {
         let bin = self.binary_path.clone();
-        let res = cmd(bin, ["service", "install", token])
+        cmd(bin, ["service", "install", token])
             .stderr_to_stdout()
             .run()?;
         println!("cloudflared service command completed successfully");
@@ -82,7 +77,7 @@ impl CloudflaredService {
                 println!(
                     "Exiting as user does not want to overwrite existing cloudflared service."
                 );
-                return bail!("User chose not to overwrite existing cloudflared service.");
+                bail!("User chose not to overwrite existing cloudflared service.");
             }
 
             // If uninstall fails, abort early.

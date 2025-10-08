@@ -6,7 +6,9 @@ mod screenpipe_handler;
 
 use crate::cloudflared_handler::CloudflaredService;
 use crate::config::Config;
-use crate::cubby_api_client::{CubbyApiClient, SignUpRequest};
+use crate::cubby_api_client::{
+    CubbyApiClient, DeviceEnrollResponse, SignUpRequest, SignUpResponse,
+};
 use crate::deps_manager::{Dep, ToolManager};
 use crate::screenpipe_handler::ScreenpipeService;
 use anyhow::{bail, Context, Result};
@@ -76,7 +78,18 @@ fn start_command(force: bool) -> Result<()> {
         })
         .context("Failed to sign up user")?;
 
-    let session_jwt = sign_up_response.session_jwt.trim().to_owned();
+    let SignUpResponse {
+        user_id: _user_id,
+        session_token,
+        session_jwt,
+    } = sign_up_response;
+
+    let session_token = session_token.trim();
+    if session_token.is_empty() {
+        bail!("Sign-up response missing session token");
+    }
+
+    let session_jwt = session_jwt.trim().to_owned();
     if session_jwt.is_empty() {
         bail!("Sign-up response missing session JWT");
     }
@@ -97,17 +110,21 @@ fn start_command(force: bool) -> Result<()> {
         .enroll_device(&session_jwt)
         .context("Failed to enroll device")?;
 
-    cliclack::log::info("Device enrolled successfully!")?;
-    cliclack::log::info(format!("Hostname: {}", enroll_response.hostname))?;
+    let DeviceEnrollResponse {
+        device_id: _device_id,
+        hostname,
+        tunnel_token,
+    } = enroll_response;
 
-    cloudflared.run_install_flow(&enroll_response.tunnel_token)?;
+    cliclack::log::info("Device enrolled successfully!")?;
+    cliclack::log::info(format!("Hostname: {}", hostname))?;
+
+    cloudflared.run_install_flow(&tunnel_token)?;
     screenpipe.install()?;
     screenpipe.start_and_wait_healthy()?;
 
     cliclack::log::info("✅ Services are running in the background!")?;
-    cliclack::log::info(format!(
-        "   Run 'cubby uninstall' to stop and remove services."
-    ))?;
+    cliclack::log::info("   Run 'cubby uninstall' to stop and remove services.".to_string())?;
 
     Ok(())
 }

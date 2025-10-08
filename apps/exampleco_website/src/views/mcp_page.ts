@@ -108,6 +108,5 @@ export function renderMcpPage(cubbyApiUrl: string): string {
     });
   </script>
 </body>
-</html>`
+</html>`;
 }
-

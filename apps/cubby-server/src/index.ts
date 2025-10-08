@@ -118,33 +118,36 @@ app.onError((err, c) => {
 // OAuth token endpoint - must be defined BEFORE mounting oauth routes
 // Simple passthrough proxy to avoid CORS issues with browser-based OAuth clients
 // Public clients use PKCE (code_verifier), confidential clients include client_secret
-app.post('/oauth/token', async (c) => {
-    try {
-        const body = await c.req.text()
-        
-        // Simple passthrough proxy - no modification
-        const response = await fetch(`${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/token`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: body,
-        })
-        
-        const data = await response.json()
-        
-        if (!response.ok) {
-            console.error('Token exchange failed:', data)
-        } else {
-            console.log('Token exchange successful')
-        }
-        
-        return c.json(data, response.status)
-    } catch (error) {
-        console.error('Token exchange error:', error)
-        return c.json({ error: 'Token exchange failed' }, 500)
+app.post("/oauth/token", async (c) => {
+  try {
+    const body = await c.req.text();
+
+    // Simple passthrough proxy - no modification
+    const response = await fetch(
+      `${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/token`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body,
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Token exchange failed:", data);
+    } else {
+      console.log("Token exchange successful");
     }
-})
+
+    return c.json(data, response.status);
+  } catch (error) {
+    console.error("Token exchange error:", error);
+    return c.json({ error: "Token exchange failed" }, 500);
+  }
+});
 
 // Routes
 app.route("/oauth", oauthRoutes);
@@ -717,8 +720,7 @@ app.post(
     tags: ["Development"],
   }),
   async (c) => {
-    const sessionJwt = c
-      .req
+    const sessionJwt = c.req
       .header("authorization")
       ?.replace(/^Bearer\s+/i, "");
 

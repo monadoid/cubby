@@ -1,12 +1,12 @@
 /**
  * MCP Server Instance
- * 
+ *
  * Configures the Model Context Protocol server for Cubby.
  * Provides AI assistants with structured access to Screenpipe data.
  */
 
-import { McpServer } from 'mcp-lite'
-import { z } from 'zod'
+import { McpServer } from "mcp-lite";
+import { z } from "zod";
 
 /**
  * Main MCP server instance.
@@ -14,10 +14,7 @@ import { z } from 'zod'
  * for MCP protocol compatibility.
  */
 export const mcpServer = new McpServer({
-    name: 'cubby-screenpipe',
-    version: '1.0.0',
-    schemaAdapter: (schema) => z.toJSONSchema(schema as z.ZodType),
-})
-
-
-
+  name: "cubby-screenpipe",
+  version: "1.0.0",
+  schemaAdapter: (schema) => z.toJSONSchema(schema as z.ZodType),
+});

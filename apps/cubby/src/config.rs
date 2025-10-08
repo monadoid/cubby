@@ -26,6 +26,7 @@ impl Config {
     }
 
     /// Development configuration (localhost)
+    #[cfg(debug_assertions)]
     fn development() -> Self {
         Self {
             api_base_url: "http://localhost:8787".to_string(),
@@ -33,6 +34,7 @@ impl Config {
     }
 
     /// Production configuration
+    #[cfg(not(debug_assertions))]
     fn production() -> Self {
         Self {
             api_base_url: "https://api.cubby.sh".to_string(),

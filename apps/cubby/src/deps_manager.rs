@@ -19,6 +19,7 @@ pub enum Dep {
 pub enum VersionSpec {
     /// e.g., "v0.2.74" (screenpipe) or "2025.9.1" (cloudflared)
     Pinned(&'static str),
+    #[allow(dead_code)]
     Latest,
 }
 
@@ -43,6 +44,7 @@ impl ToolManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn latest_for_dev() -> Self {
         Self {
             screenpipe: VersionSpec::Latest,
@@ -139,6 +141,7 @@ impl ToolManager {
         Ok(target)
     }
 
+    #[allow(dead_code)]
     pub fn ensure_both(&self) -> Result<(PathBuf, PathBuf)> {
         let screenpipe = self.ensure(Dep::Screenpipe)?;
         let cloudflared = self.ensure(Dep::Cloudflared)?;
