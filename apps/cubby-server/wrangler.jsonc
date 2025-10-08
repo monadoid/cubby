@@ -9,6 +9,10 @@
     {
       "pattern": "api.cubby.sh",
       "custom_domain": true
+    },
+    {
+      "pattern": "api.cubby.tools",
+      "custom_domain": true
     }
   ],
   "observability": {

@@ -41,6 +41,20 @@ export function renderHomePage(cubbyApiUrl: string): string {
   <h1>ExampleCo</h1>
   <p>This page demonstrates ExampleCo acting as an OAuth client against Stytch to obtain a Cubby access token.</p>
   
+  <div class="section" style="margin-bottom: 1rem;">
+    <div class="form-group" style="max-width: 400px;">
+      <label for="api-domain-selector">API Domain to Test</label>
+      <select id="api-domain-selector" onchange="handleDomainChange(this.value)">
+        <option value="http://localhost:8787">localhost:8787 (dev)</option>
+        <option value="https://api.cubby.sh">api.cubby.sh (original)</option>
+        <option value="https://api.cubby.tools">api.cubby.tools (new)</option>
+      </select>
+      <p style="font-size: 0.875rem; color: #6b7280; margin: 0.5rem 0 0 0;">
+        Select which Cubby API domain to connect to for testing.
+      </p>
+    </div>
+  </div>
+  
   <div id="connection-status" class="cta">
     <span class="status-badge status-disconnected">Not Connected</span>
   </div>
@@ -50,7 +64,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
   </div>
   
   <div id="connect-section" class="cta">
-    <a class="button" href="/connect">Connect Cubby</a>
+    <a class="button" id="connect-button" href="/connect">Connect Cubby</a>
     <a class="button secondary" href="/mcp-demo">Try MCP Tools Demo</a>
   </div>
   
@@ -91,12 +105,56 @@ export function renderHomePage(cubbyApiUrl: string): string {
   </div>
 
   <script type="module">
-    // Configure HTMX to add Authorization header
+    // Domain selection management
+    const DEFAULT_DOMAIN = '${cubbyApiUrl}';
+    
+    function getSelectedDomain() {
+      return localStorage.getItem('cubby_api_domain') || DEFAULT_DOMAIN;
+    }
+    
+    function setSelectedDomain(domain) {
+      localStorage.setItem('cubby_api_domain', domain);
+    }
+    
+    window.handleDomainChange = function(domain) {
+      setSelectedDomain(domain);
+      updateConnectButton();
+      // If already connected, warn user to reconnect
+      const token = localStorage.getItem('cubby_access_token');
+      if (token) {
+        if (confirm('You are currently connected. Do you want to disconnect and switch domains?')) {
+          localStorage.removeItem('cubby_access_token');
+          window.location.reload();
+        }
+      }
+    };
+    
+    function updateConnectButton() {
+      const domain = getSelectedDomain();
+      const connectButton = document.getElementById('connect-button');
+      if (connectButton) {
+        connectButton.href = '/connect?domain=' + encodeURIComponent(domain);
+      }
+    }
+    
+    function initializeDomainSelector() {
+      const selector = document.getElementById('api-domain-selector');
+      const savedDomain = getSelectedDomain();
+      if (selector) {
+        selector.value = savedDomain;
+      }
+      updateConnectButton();
+    }
+    
+    // Configure HTMX to add Authorization header and selected domain
     document.body.addEventListener('htmx:configRequest', (event) => {
       const token = localStorage.getItem('cubby_access_token');
       if (token) {
         event.detail.headers['Authorization'] = 'Bearer ' + token;
       }
+      // Pass selected domain to server
+      const domain = getSelectedDomain();
+      event.detail.headers['X-Cubby-Domain'] = domain;
     });
 
     // Handle HTMX errors
@@ -128,9 +186,11 @@ export function renderHomePage(cubbyApiUrl: string): string {
       
       try {
         const token = localStorage.getItem('cubby_access_token');
+        const domain = getSelectedDomain();
         const response = await fetch('/api/devices-fragment', {
           headers: {
-            'Authorization': 'Bearer ' + token
+            'Authorization': 'Bearer ' + token,
+            'X-Cubby-Domain': domain
           }
         });
         
@@ -181,6 +241,7 @@ export function renderHomePage(cubbyApiUrl: string): string {
     }
 
     // Run on page load
+    initializeDomainSelector();
     checkAuthStatus();
   </script>
 </body>

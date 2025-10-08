@@ -67,7 +67,10 @@ app.get("/devices-fragment", async (c) => {
   }
 
   try {
-    const devicesUrl = new URL("/devices", c.env.CUBBY_API_URL);
+    // Use domain from header if provided, otherwise fall back to env var
+    const selectedDomain =
+      c.req.header("X-Cubby-Domain") || c.env.CUBBY_API_URL;
+    const devicesUrl = new URL("/devices", selectedDomain);
     console.log(
       `[devices-fragment] Fetching devices from: ${devicesUrl.toString()}`,
     );
@@ -107,7 +110,10 @@ app.post("/mcp-search", zValidator("form", searchRequestSchema), async (c) => {
   const accessToken = authHeader.replace(/^Bearer\s+/i, "");
 
   try {
-    const mcpUrl = new URL("/mcp", c.env.CUBBY_API_URL);
+    // Use domain from header if provided, otherwise fall back to env var
+    const selectedDomain =
+      c.req.header("X-Cubby-Domain") || c.env.CUBBY_API_URL;
+    const mcpUrl = new URL("/mcp", selectedDomain);
 
     const result = await callMcpTool(mcpUrl.toString(), accessToken, "search", {
       deviceId,
@@ -155,11 +161,11 @@ app.post("/search", zValidator("form", searchRequestSchema), async (c) => {
   const { deviceId, q, limit, content_type } = c.req.valid("form");
 
   try {
+    // Use domain from header if provided, otherwise fall back to env var
+    const selectedDomain =
+      c.req.header("X-Cubby-Domain") || c.env.CUBBY_API_URL;
     // Build search URL with query parameters matching screenpipe API
-    const searchUrl = new URL(
-      `/devices/${deviceId}/search`,
-      c.env.CUBBY_API_URL,
-    );
+    const searchUrl = new URL(`/devices/${deviceId}/search`, selectedDomain);
 
     if (q && q.trim() !== "") {
       const sanitizedQuery = sanitizeSearchQuery(q);
