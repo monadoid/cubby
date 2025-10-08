@@ -718,7 +718,7 @@ app.get("/mcp/openapi", (c) => {
 
 app.get("/.well-known/oauth-authorization-server", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
   return c.json({
     issuer: c.env.STYTCH_PROJECT_DOMAIN,
@@ -738,7 +738,7 @@ app.get("/.well-known/oauth-authorization-server", (c) => {
 
 app.get("/.well-known/oauth-protected-resource", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
   return c.json({
     resource: `${baseUrl}/mcp`,
@@ -751,7 +751,7 @@ app.get("/.well-known/oauth-protected-resource", (c) => {
 
 app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
+  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
   return c.json({
     resource: `${baseUrl}/mcp`,

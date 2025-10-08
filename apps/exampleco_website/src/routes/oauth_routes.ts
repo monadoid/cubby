@@ -19,11 +19,8 @@ import { renderCallbackPage } from "../views/callback_page";
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// OAuth configuration helper with optional domain override
-function getOAuthConfig(
-  env: Env,
-  domainOverride?: string,
-): {
+// OAuth configuration helper
+function getOAuthConfig(env: Env): {
   authorizationEndpoint: string;
   tokenEndpoint: string;
   clientId: string;
@@ -32,11 +29,8 @@ function getOAuthConfig(
   scopes: string[];
   issuer: string;
 } {
-  // Use domain override if provided, otherwise fall back to env var
-  const cubbyApiDomain = domainOverride || env.CUBBY_API_URL;
-
   return {
-    authorizationEndpoint: `${cubbyApiDomain}/oauth/authorize`,
+    authorizationEndpoint: env.STYTCH_AUTH_URL,
     tokenEndpoint: env.STYTCH_TOKEN_URL,
     clientId: env.STYTCH_CLIENT_ID,
     clientSecret: env.STYTCH_CLIENT_SECRET,
@@ -60,9 +54,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 app.get("/connect", async (c) => {
-  // Get domain from query parameter (user selection)
-  const domainParam = c.req.query("domain");
-  const oauthConfig = getOAuthConfig(c.env, domainParam);
+  const oauthConfig = getOAuthConfig(c.env);
 
   const codeVerifier = generateRandomCodeVerifier();
   const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
