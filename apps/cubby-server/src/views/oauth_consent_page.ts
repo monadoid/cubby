@@ -23,9 +23,9 @@ export function renderOAuthConsentPage(
 
   const connectedApp = startResponse.client;
   const appHeader = connectedApp
-    ? `<div style="margin-bottom: .5rem;">
-        <div style="font-weight:600">${escapeHtml(connectedApp.client_name ?? "Connected App")}</div>
-        <div style="font-size:.9rem;color:#6b7280;">${escapeHtml(connectedApp.client_description ?? "")}</div>
+    ? `<div class="mb-2">
+        <div class="font-semibold">${escapeHtml(connectedApp.client_name ?? "Connected App")}</div>
+        <div class="text-sm text-gray-500">${escapeHtml(connectedApp.client_description ?? "")}</div>
       </div>`
     : "";
 
@@ -38,11 +38,11 @@ export function renderOAuthConsentPage(
     ? grantableScopes
         .map((scope) => {
           const checked = requestedScopes.has(scope.scope) ? "checked" : "";
-          return `<label style="display:flex;align-items:flex-start;gap:.5rem;margin:.25rem 0;">
-            <input type="checkbox" class="scope-checkbox" name="scopes" value="${escapeHtml(scope.scope)}" ${checked} />
+          return `<label class="flex items-start gap-2 my-1">
+            <input type="checkbox" class="scope-checkbox mt-1" name="scopes" value="${escapeHtml(scope.scope)}" ${checked} />
             <span>
-              <div style="font-weight:600">${escapeHtml(scope.scope)}</div>
-              <div style="color:#6b7280;font-size:.9rem">${escapeHtml(scope.description ?? "")}</div>
+              <div class="font-semibold">${escapeHtml(scope.scope)}</div>
+              <div class="text-gray-500 text-sm">${escapeHtml(scope.description ?? "")}</div>
             </span>
           </label>`;
         })
@@ -55,30 +55,21 @@ export function renderOAuthConsentPage(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Authorize Connected App</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 3rem auto; max-width: 560px; padding: 0 1.25rem; }
-    h1 { font-size: 1.5rem; margin-bottom: .75rem; }
-    form { margin-top: 1.25rem; display: flex; flex-direction: column; gap: .75rem; }
-    .actions { display: flex; gap: .75rem; }
-    button { padding: .7rem 1.25rem; border: none; border-radius: .5rem; font-size: 1rem; cursor: pointer; }
-    .primary { background: #2563eb; color: #fff; }
-    .secondary { background: #e5e7eb; color: #111827; }
-    .card { border: 1px solid #e5e7eb; border-radius: .75rem; padding: 1rem; }
-  </style>
+  <link rel="stylesheet" href="/tailwind.css" />
 </head>
-<body>
-  <h1>Authorize Connected App</h1>
+<body class="font-sans mx-auto my-12 max-w-lg px-5">
+  <h1 class="text-2xl font-semibold mb-3">Authorize Connected App</h1>
   ${appHeader}
-  <form method="post" action="/oauth/authorize/submit" id="consent-form">
-    <div class="card">
-      <div style="margin-bottom:.5rem; font-weight:600;">This application is requesting access to:</div>
+  <form method="post" action="/oauth/authorize/submit" id="consent-form" class="mt-5 flex flex-col gap-3">
+    <div class="border border-gray-200 rounded-xl p-4">
+      <div class="mb-2 font-semibold">This application is requesting access to:</div>
       <div>${scopesList}</div>
     </div>
     ${hiddenInputs}
     <input type="hidden" name="scope" id="scope-field" value="${escapeHtml(params.scope)}" />
-    <div class="actions">
-      <button class="primary" type="submit" name="consent_granted" value="true">Allow</button>
-      <button class="secondary" type="submit" name="consent_granted" value="false">Deny</button>
+    <div class="flex gap-3">
+      <button class="px-5 py-3 border-none rounded-lg text-base cursor-pointer bg-blue-600 text-white hover:bg-blue-700" type="submit" name="consent_granted" value="true">Allow</button>
+      <button class="px-5 py-3 border-none rounded-lg text-base cursor-pointer bg-gray-200 text-gray-900 hover:bg-gray-300" type="submit" name="consent_granted" value="false">Deny</button>
     </div>
   </form>
   <script>
