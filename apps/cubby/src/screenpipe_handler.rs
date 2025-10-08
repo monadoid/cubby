@@ -5,7 +5,7 @@ use service_manager::{
     ServiceUninstallCtx,
 };
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 

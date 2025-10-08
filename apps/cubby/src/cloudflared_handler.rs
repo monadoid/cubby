@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use cliclack::confirm;
 use duct::cmd;
 use std::ffi::OsString;
