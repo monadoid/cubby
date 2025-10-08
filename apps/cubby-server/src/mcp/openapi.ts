@@ -12,6 +12,11 @@ import {
   SearchToolInputSchema,
   SearchResponseSchema,
 } from "../schemas/screenpipe";
+import {
+  DcrRegisterRequestSchema,
+  DcrRegisterResponseSchema,
+  DcrErrorResponseSchema,
+} from "../schemas/dcr";
 
 export interface OpenAPISpec {
   openapi: string;
@@ -60,11 +65,13 @@ export function generateMcpOpenAPISpec(baseUrl: string): OpenAPISpec {
             authorizationCode: {
               authorizationUrl: `${baseUrl}/oauth/authorize`,
               tokenUrl: `${baseUrl}/oauth/token`,
+              refreshUrl: `${baseUrl}/oauth/token`,
               scopes: {
                 "read:screenpipe": "Read access to Screenpipe data",
               },
             },
           },
+          "x-registrationUrl": `${baseUrl}/oauth/register`,
         },
         BearerAuth: {
           type: "http",
@@ -74,6 +81,66 @@ export function generateMcpOpenAPISpec(baseUrl: string): OpenAPISpec {
       },
     },
     security: [{ OAuth2: ["read:screenpipe"] }, { BearerAuth: [] }],
+  };
+
+  // Add OAuth DCR endpoint documentation
+  spec.paths["/oauth/register"] = {
+    post: {
+      summary: "Register OAuth 2.0 Client",
+      description:
+        "Dynamic Client Registration endpoint. Allows third-party applications to register themselves as OAuth clients without manual configuration. Implements RFC 7591 and OpenID Connect Dynamic Client Registration.",
+      tags: ["OAuth"],
+      operationId: "registerOAuthClient",
+      security: [], // Public endpoint - no authentication required
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: z.toJSONSchema(DcrRegisterRequestSchema),
+          },
+        },
+      },
+      responses: {
+        200: {
+          description: "Client registered successfully",
+          content: {
+            "application/json": {
+              schema: z.toJSONSchema(DcrRegisterResponseSchema),
+            },
+          },
+        },
+        400: {
+          description: "Invalid client metadata",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  error: { type: "string" },
+                  error_description: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        429: {
+          description: "Too many requests",
+          content: {
+            "application/json": {
+              schema: z.toJSONSchema(DcrErrorResponseSchema),
+            },
+          },
+        },
+        500: {
+          description: "Internal server error",
+          content: {
+            "application/json": {
+              schema: z.toJSONSchema(DcrErrorResponseSchema),
+            },
+          },
+        },
+      },
+    },
   };
 
   // Get tools from MCP server

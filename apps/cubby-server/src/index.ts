@@ -27,6 +27,10 @@ import { strictJSONResponse } from "./helpers";
 import { isPathAllowed } from "./proxy_config";
 import { mcpHttpHandler } from "./mcp/handler";
 import { generateMcpOpenAPISpec } from "./mcp/openapi";
+import {
+  DcrRegisterRequestSchema,
+  DcrRegisterResponseSchema,
+} from "./schemas/dcr";
 
 type Bindings = CloudflareBindings;
 
@@ -142,10 +146,71 @@ app.post("/oauth/token", async (c) => {
       console.log("Token exchange successful");
     }
 
-    return c.json(data, response.status);
+    return c.json(data, response.status as any);
   } catch (error) {
     console.error("Token exchange error:", error);
     return c.json({ error: "Token exchange failed" }, 500);
+  }
+});
+
+// OAuth Dynamic Client Registration endpoint
+// Passthrough proxy to Stytch's DCR endpoint for third-party clients
+// No authentication required - this is a public endpoint per OAuth 2.0 DCR spec
+app.post("/oauth/register", async (c) => {
+  try {
+    const body = await c.req.json();
+
+    // Validate request body
+    const validated = DcrRegisterRequestSchema.safeParse(body);
+    if (!validated.success) {
+      console.error("DCR validation failed:", validated.error);
+      return c.json(
+        {
+          error: "invalid_client_metadata",
+          error_description: "Invalid client registration request",
+        },
+        400,
+      );
+    }
+
+    // Forward to Stytch DCR endpoint
+    const response = await fetch(
+      `${c.env.STYTCH_PROJECT_DOMAIN}/v1/oauth2/register`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(validated.data),
+      },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Client registration failed:", data);
+    } else {
+      const successData = DcrRegisterResponseSchema.safeParse(data);
+      if (successData.success) {
+        console.log(
+          "Client registration successful:",
+          successData.data.client_id,
+        );
+      } else {
+        console.log("Client registration successful");
+      }
+    }
+
+    return c.json(data, response.status as any);
+  } catch (error) {
+    console.error("Client registration error:", error);
+    return c.json(
+      {
+        error: "server_error",
+        error_description: "Client registration failed",
+      },
+      500,
+    );
   }
 });
 
@@ -659,9 +724,11 @@ app.get("/.well-known/oauth-authorization-server", (c) => {
     issuer: c.env.STYTCH_PROJECT_DOMAIN,
     authorization_endpoint: `${baseUrl}/oauth/authorize`,
     token_endpoint: `${baseUrl}/oauth/token`,
+    registration_endpoint: `${baseUrl}/oauth/register`,
     jwks_uri: `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`,
     response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code"],
+    grant_types_supported: ["authorization_code", "refresh_token"],
+    token_endpoint_auth_methods_supported: ["none"],
     code_challenge_methods_supported: ["S256"],
     scopes_supported: ["openid", "read:screenpipe"],
     request_parameter_supported: true,
