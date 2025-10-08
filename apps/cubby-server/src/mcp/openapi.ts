@@ -40,7 +40,7 @@ export interface OpenAPISpec {
 /**
  * Generate OpenAPI specification from MCP server tools
  */
-export function generateMcpOpenAPISpec(baseUrl: string): OpenAPISpec {
+export function generateMcpOpenAPISpec(baseUrl: string, stytchDomain: string): OpenAPISpec {
   const spec: OpenAPISpec = {
     openapi: "3.0.0",
     info: {
@@ -63,15 +63,17 @@ export function generateMcpOpenAPISpec(baseUrl: string): OpenAPISpec {
           type: "oauth2",
           flows: {
             authorizationCode: {
-              authorizationUrl: `${baseUrl}/oauth/authorize`,
-              tokenUrl: `${baseUrl}/oauth/token`,
-              refreshUrl: `${baseUrl}/oauth/token`,
+              // Point to Stytch as the authorization server
+              // This fixes OpenAI's "unsafe" flag by clearly identifying Stytch as the auth server
+              authorizationUrl: `${stytchDomain}/v1/public/oauth/authorize`,
+              tokenUrl: `${stytchDomain}/v1/oauth2/token`,
+              refreshUrl: `${stytchDomain}/v1/oauth2/token`,
               scopes: {
                 "read:screenpipe": "Read access to Screenpipe data",
               },
             },
           },
-          "x-registrationUrl": `${baseUrl}/oauth/register`,
+          "x-registrationUrl": `${stytchDomain}/v1/oauth2/register`,
         },
         BearerAuth: {
           type: "http",

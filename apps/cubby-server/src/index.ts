@@ -712,37 +712,33 @@ app.get(
 
 app.get("/mcp/openapi", (c) => {
   const baseUrl = new URL(c.req.url).origin;
-  const spec = generateMcpOpenAPISpec(baseUrl);
+  const spec = generateMcpOpenAPISpec(baseUrl, c.env.STYTCH_PROJECT_DOMAIN);
   return c.json(spec);
 });
 
+// Redirect to Stytch's authorization server metadata
+// This makes it clear that Stytch is the authorization server, not us
 app.get("/.well-known/oauth-authorization-server", (c) => {
-  const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
+  // Redirect clients to Stytch's authorization server metadata
+  // This fixes the issuer/endpoint domain mismatch that OpenAI flags as unsafe
+  return c.redirect(`${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/oauth-authorization-server`, 302);
+});
 
-  return c.json({
-    issuer: c.env.STYTCH_PROJECT_DOMAIN,
-    authorization_endpoint: `${baseUrl}/oauth/authorize`,
-    token_endpoint: `${baseUrl}/oauth/token`,
-    registration_endpoint: `${baseUrl}/oauth/register`,
-    jwks_uri: `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`,
-    response_types_supported: ["code"],
-    grant_types_supported: ["authorization_code", "refresh_token"],
-    token_endpoint_auth_methods_supported: ["none"],
-    code_challenge_methods_supported: ["S256"],
-    scopes_supported: ["openid", "read:screenpipe"],
-    request_parameter_supported: true,
-    request_uri_parameter_supported: false,
-  });
+// Also redirect OpenID Configuration for OIDC clients
+app.get("/.well-known/openid-configuration", (c) => {
+  // Stytch provides both OAuth 2.0 and OpenID Connect discovery endpoints
+  return c.redirect(`${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/openid-configuration`, 302);
 });
 
 app.get("/.well-known/oauth-protected-resource", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
+  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    authorization_servers: [baseUrl],
+    // Point to Stytch as the authorization server (not our domain)
+    // This fixes OpenAI's "unsafe" flag by properly identifying the auth server
+    authorization_servers: [c.env.STYTCH_PROJECT_DOMAIN],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:screenpipe"],
     resource_documentation: `${baseUrl}/mcp/openapi`,
@@ -751,11 +747,13 @@ app.get("/.well-known/oauth-protected-resource", (c) => {
 
 app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
   const isDev = isDevEnvironment(c.env);
-  const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
+  const baseUrl = isDev ? "http://localhost:8787" : new URL(c.req.url).origin;
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    authorization_servers: [baseUrl],
+    // Point to Stytch as the authorization server (not our domain)
+    // This fixes OpenAI's "unsafe" flag by properly identifying the auth server
+    authorization_servers: [c.env.STYTCH_PROJECT_DOMAIN],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:screenpipe"],
     resource_documentation: `${baseUrl}/mcp/openapi`,
