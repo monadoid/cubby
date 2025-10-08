@@ -1,0 +1,54 @@
+name: CI Checks
+
+on:
+  push:
+    branches:
+      - '**'        # Run on all branches
+      - '!main'     # Except main (covered by deploy-production.yml)
+  pull_request:
+    branches:
+      - '**'        # Run on PRs to all branches
+      - '!main'     # Except main
+
+env:
+  RUST_TOOLCHAIN: stable
+  TOOLCHAIN_PROFILE: minimal
+
+jobs:
+  format-and-lint:
+    name: Check Code Formatting and Linting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt,clippy
+      
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      
+      - name: Install just
+        uses: extractions/setup-just@v2
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Run checks
+        run: just check
+
