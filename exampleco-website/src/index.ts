@@ -14,10 +14,12 @@ export type { Bindings, Variables };
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+// Home page route
 app.get("/", (c) => {
   return c.html(renderHomePage(c.env.CUBBY_API_URL));
 });
 
+// MCP demo page route
 app.get("/mcp-demo", (c) => {
   return c.html(renderMcpPage(c.env.CUBBY_API_URL));
 });

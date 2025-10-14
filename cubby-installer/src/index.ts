@@ -7,7 +7,7 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Serve the install script
+// Serve the install script at /cli endpoint
 app.get('/cli', (c) => {
 	return c.text(installScript, 200, {
 		'Content-Type': 'text/plain',

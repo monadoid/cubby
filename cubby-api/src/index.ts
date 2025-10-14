@@ -782,9 +782,10 @@ app.post(
   },
 );
 
+// Main API root endpoint
 app.get("/", (c) => {
   return c.text(
-    "Cubby API - Visit /openapi for REST API documentation or /mcp/openapi for MCP tools documentation",
+    "cubby api - visit /openapi for rest api documentation or /mcp/openapi for mcp tools documentation",
   );
 });
 
