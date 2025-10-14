@@ -1,3 +1,4 @@
+// cubby-api - main API server for cubby
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";

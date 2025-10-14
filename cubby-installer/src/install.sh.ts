@@ -1,6 +1,7 @@
 export const installScript = `#!/bin/sh
 set -e
 
+# cubby installer script - downloads and installs the cubby binary
 # Colors for output
 RED='\\033[0;31m'
 GREEN='\\033[0;32m'
