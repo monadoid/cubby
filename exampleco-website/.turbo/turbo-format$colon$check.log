@@ -1,0 +1,10 @@
+
+
+> ExampleCo Website@0.0.0 format:check /Users/samfinton/Documents/Programming/cubby/apps/exampleco_website
+> prettier --check "src/**/*.{ts,tsx,js,jsx}" "public/**/*.{ts,tsx,js,jsx}"
+
+Checking formatting...
+src/global.d.ts[2K[1Gsrc/index.ts[2K[1Gsrc/lib/mcp_client.ts[2K[1Gsrc/lib/oauth.ts[2K[1Gsrc/lib/session.ts[2K[1Gsrc/routes/api_routes.ts[2K[1G[[33mwarn[39m] src/routes/api_routes.ts
+src/routes/oauth_routes.ts[2K[1G[[33mwarn[39m] src/routes/oauth_routes.ts
+src/views/callback_page.ts[2K[1Gsrc/views/devices_fragment.ts[2K[1Gsrc/views/home_page.ts[2K[1Gsrc/views/mcp_page.ts[2K[1Gpublic/htmx.min.js[2K[1G[[33mwarn[39m] Code style issues found in 2 files. Run Prettier with --write to fix.
+[41m[30m ELIFECYCLE [39m[49m [31mCommand failed with exit code 1.[39m

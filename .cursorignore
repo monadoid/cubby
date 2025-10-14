@@ -1,0 +1,11 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+data/
+
+models/
+
+
+package-lock.json
+bun.lockb
+pnpm-lock.yaml
+
+

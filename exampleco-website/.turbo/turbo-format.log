@@ -1,0 +1,16 @@
+
+> ExampleCo Website@0.0.0 format /Users/samfinton/Documents/Programming/cubby/apps/exampleco_website
+> prettier --write "src/**/*.{ts,tsx,js,jsx}" "public/**/*.{ts,tsx,js,jsx}"
+
+src/global.d.ts 30ms (unchanged)
+src/index.ts 13ms (unchanged)
+src/lib/mcp_client.ts 17ms (unchanged)
+src/lib/oauth.ts 12ms (unchanged)
+src/lib/session.ts 8ms (unchanged)
+src/routes/api_routes.ts 43ms (unchanged)
+src/routes/oauth_routes.ts 15ms (unchanged)
+src/views/callback_page.ts 1ms (unchanged)
+src/views/devices_fragment.ts 3ms (unchanged)
+src/views/home_page.ts 2ms (unchanged)
+src/views/mcp_page.ts 2ms (unchanged)
+public/htmx.min.js 315ms (unchanged)

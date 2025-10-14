@@ -1,0 +1,7 @@
+packages:
+  - "cubby-api"
+  - "cubby-installer"
+  - "exampleco-website"
+  - "cubby-js/*"
+  - "cubby-js/examples/*"
+

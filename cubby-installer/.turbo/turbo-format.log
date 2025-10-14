@@ -1,0 +1,6 @@
+
+> cubby-installer@0.0.0 format /Users/samfinton/Documents/Programming/cubby/apps/cubby-installer
+> prettier --write "src/**/*.{ts,tsx,js,jsx}"
+
+src/index.ts 94ms (unchanged)
+src/install.sh.ts 7ms (unchanged)

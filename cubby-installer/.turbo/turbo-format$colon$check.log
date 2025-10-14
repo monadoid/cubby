@@ -1,0 +1,7 @@
+
+
+> cubby-installer@0.0.0 format:check /Users/samfinton/Documents/Programming/cubby/apps/cubby-installer
+> prettier --check "src/**/*.{ts,tsx,js,jsx}"
+
+Checking formatting...
+src/index.ts[2K[1Gsrc/install.sh.ts[2K[1GAll matched files use Prettier code style!

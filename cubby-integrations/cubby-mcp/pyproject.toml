@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cubby-mcp"
+version = "0.1.0"
+description = "MCP server for cubby search"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp",
+    "httpx",
+    "nest-asyncio"
+]
+
+[project.scripts]
+cubby-mcp = "cubby_mcp:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cubby_mcp"]
+
+[tool.hatch.build]
+only-packages = true

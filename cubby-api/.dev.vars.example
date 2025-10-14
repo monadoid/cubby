@@ -1,0 +1,17 @@
+# Database
+DATABASE_URL=your_neon_database_url_here
+
+# Cloudflare
+CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+
+# Stytch Authentication
+STYTCH_PROJECT_ID=your_stytch_project_id
+STYTCH_SECRET=your_stytch_secret
+
+# MCP Authentication
+MCP_AUTH_SECRET=your_mcp_auth_secret
+
+
+
+

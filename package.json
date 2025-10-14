@@ -1,0 +1,14 @@
+{
+  "name": "cubby",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "typecheck": "pnpm -r run type-check",
+    "format": "pnpm -r run format",
+    "format:check": "pnpm -r run format:check"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}
+
