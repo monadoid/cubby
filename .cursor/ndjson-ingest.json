@@ -1,4 +1,4 @@
 {
-  "externalUrl": "http://127.0.0.1:53321/ingest",
+  "externalUrl": "http://127.0.0.1:55471/ingest",
   "logPath": "/Users/samfinton/Documents/Programming/cubby/.cursor/debug.log"
 }
