@@ -27,7 +27,6 @@ src-tauri/deno-*
 
 # Tauri signing key
 tauri_key_louis.key
-pnpm-lock.yaml
 
 .DS_Store
 
