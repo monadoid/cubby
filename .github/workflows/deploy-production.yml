@@ -220,7 +220,7 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         working-directory: cubby-api
-        run: pnpm deploy
+        run: pnpm exec wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -254,7 +254,7 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         working-directory: exampleco-website
-        run: pnpm deploy
+        run: pnpm exec wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -284,7 +284,7 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         working-directory: cubby-installer
-        run: pnpm deploy
+        run: pnpm exec wrangler deploy --minify
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
