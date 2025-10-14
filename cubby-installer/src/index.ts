@@ -15,7 +15,7 @@ app.get('/cli', (c) => {
 	});
 });
 
-// Serve binaries from R2
+// Serve binaries from R2 storage
 app.get('/binaries/:filename', async (c) => {
 	const filename = c.req.param('filename');
 

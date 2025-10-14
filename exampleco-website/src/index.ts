@@ -24,6 +24,7 @@ app.get("/mcp-demo", (c) => {
   return c.html(renderMcpPage(c.env.CUBBY_API_URL));
 });
 
+// Mount routes
 app.route("/", oauthRoutes);
 app.route("/api", apiRoutes);
 

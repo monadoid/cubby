@@ -789,6 +789,7 @@ app.get("/", (c) => {
   );
 });
 
+// OpenAPI documentation endpoint
 app.get(
   "/openapi",
   openAPIRouteHandler(app, {
