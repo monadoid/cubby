@@ -1,0 +1,26 @@
+export function TopBar() {
+  return (
+    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 48px; background-color: #000; border-bottom: 1px solid #333; z-index: 40; display: flex; align-items: center; justify-content: flex-end; padding: 0 1rem;">
+      <div style="display: flex; gap: 1rem;">
+        <a 
+          href="/docs" 
+          style="color: #fff; text-decoration: none; font-family: 'Courier New', monospace; font-size: 14px; hover: color: #ccc;"
+          onMouseOver={(e) => e.target.style.color = '#ccc'}
+          onMouseOut={(e) => e.target.style.color = '#fff'}
+        >
+          docs
+        </a>
+        <a 
+          href="https://github.com/monadoid/cubby/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          style="color: #fff; text-decoration: none; font-family: 'Courier New', monospace; font-size: 14px; hover: color: #ccc;"
+          onMouseOver={(e) => e.target.style.color = '#ccc'}
+          onMouseOut={(e) => e.target.style.color = '#fff'}
+        >
+          github
+        </a>
+      </div>
+    </div>
+  );
+}

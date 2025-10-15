@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { Content } from "./components/Content";
 import { Fluid } from "./components/Fluid";
+import { TopBar } from "./components/TopBar";
 
 type Bindings = {
   // Add Cloudflare bindings here as needed
@@ -41,6 +42,7 @@ app.get("/", (c) => {
         </style>
       </head>
       <body hx-boost="true" hx-ext="sse,ws">
+        <TopBar />
         <Fluid />
         <Content />
       </body>
@@ -58,6 +60,50 @@ app.post("/posts", (c) => {
         ← back to home
       </a>
     </div>
+  );
+});
+
+// Docs page
+app.get("/docs", (c) => {
+  return c.html(
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>cubby docs</title>
+        <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+        <link rel="stylesheet" href="tailwind.css" />
+        <style>
+          {`
+            body {
+              font-family: 'Courier New', monospace;
+              background-color: #000;
+              color: #fff;
+            }
+            .pixelated {
+              image-rendering: pixelated;
+              image-rendering: -moz-crisp-edges;
+              image-rendering: crisp-edges;
+            }
+          `}
+        </style>
+      </head>
+      <body hx-boost="true" hx-ext="sse,ws">
+        <TopBar />
+        <div style="position: fixed; top: 48px; left: 0; width: 100vw; height: calc(100vh - 48px); z-index: 30; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+          <div style="background-color: #000; padding: 2rem; pointer-events: auto; max-width: 800px; margin: 0 auto;">
+            <h1 class="text-4xl font-bold mb-8 pixelated">cubby docs</h1>
+            <div class="space-y-4">
+              <p>welcome to the cubby documentation.</p>
+              <p>this is a hello world docs page. more documentation coming soon.</p>
+              <a href="/" class="text-white underline hover:text-gray-300">
+                ← back to home
+              </a>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
   );
 });
 

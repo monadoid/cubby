@@ -19,19 +19,19 @@ export function Fluid() {
             z-index: 1;
             image-rendering: pixelated;
             position: fixed;
-            top: 0;
+            top: 48px;
             left: 0;
             width: 100vw;
-            height: 100vh;
+            height: calc(100vh - 48px);
             pointer-events: auto;
           }
 
           .render {
             position: fixed;
-            top: 0;
+            top: 48px;
             left: 0;
             width: 100vw;
-            height: 100vh;
+            height: calc(100vh - 48px);
             white-space: pre;
             letter-spacing: 0.4em;
             font-size: var(--cell-size);

@@ -1,6 +1,5 @@
-# cubby - context layer for agi
+# cubby 
 
-cubby is the context layer for agi - recording screens, audio 24/7, extracting ocr & stt, saving to local db, and connecting to ai.
 
 ## quick start
 
@@ -19,11 +18,16 @@ when you run `cubby start`, the local rust server runs on `localhost:3030`
 ### mcp tools available
 
 - **search-content** - search through ocr text, audio transcriptions, ui elements
-- **pixel-control** - control mouse and keyboard (cross-platform)
-- **find-elements** - find ui elements by role (macos only)
-- **click-element** - click ui elements by id (macos only)
-- **fill-element** - type into ui elements (macos only)  
-- **scroll-element** - scroll ui elements (macos only)
+
+[//]: # (- **pixel-control** - control mouse and keyboard &#40;cross-platform&#41;)
+
+[//]: # (- **find-elements** - find ui elements by role &#40;macos only&#41;)
+
+[//]: # (- **click-element** - click ui elements by id &#40;macos only&#41;)
+
+[//]: # (- **fill-element** - type into ui elements &#40;macos only&#41;  )
+
+[//]: # (- **scroll-element** - scroll ui elements &#40;macos only&#41;)
 - **open-application** - open applications by name (macos only)
 - **open-url** - open urls in browser (cross-platform)
 
