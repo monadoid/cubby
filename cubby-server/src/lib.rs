@@ -7,6 +7,7 @@ pub mod cloudflared_manager;
 pub mod core;
 pub mod cubby_api_client;
 pub mod filtering;
+pub mod mcp;
 pub mod onboarding;
 pub mod permission_checker;
 pub mod pipe_manager;

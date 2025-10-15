@@ -1280,6 +1280,8 @@ impl SCServer {
             .route("/ws/events", get(ws_events_handler))
             .route("/ws/health", get(ws_health_handler))
             .route("/frames/export", get(handle_video_export_ws))
+            // MCP server endpoint
+            .nest_service("/mcp", crate::mcp::server::create_mcp_service(app_state.clone()))
             .with_state(app_state)
             .layer(cors)
             .layer(TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::default()))

@@ -129,6 +129,8 @@ lru = "0.13.0"
 tokio-util = { version = "0.7", features = ["io"] }
 
 once_cell = { workspace = true }
+schemars = "0.8"
+rmcp = { version = "0.8.1", features = ["server", "transport-streamable-http-server", "macros"] }
 [dev-dependencies]
 env_logger = "0.10"
 tempfile = "3.3.0"
