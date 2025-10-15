@@ -35,12 +35,15 @@ app.get("/", (c) => {
               image-rendering: -moz-crisp-edges;
               image-rendering: crisp-edges;
             }
+            /* allow dragging on canvas underneath while keeping ui usable */
+            .content { pointer-events: none; }
+            .content input, .content button, .content textarea, .content select, .content a { pointer-events: auto; }
           `}
         </style>
       </head>
       <body hx-boost="true" hx-ext="sse,ws">
         <Fluid />
-        <div class="min-h-screen flex items-center justify-center relative z-30">
+        <div class="content min-h-screen flex items-center justify-center relative z-30">
           <div class="w-full max-w-4xl mx-auto px-4">
             <Header />
             <Form />

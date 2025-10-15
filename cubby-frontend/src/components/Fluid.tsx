@@ -23,6 +23,7 @@ export function Fluid() {
             left: 0;
             width: 100vw;
             height: 100vh;
+            pointer-events: auto;
           }
 
           .render {
@@ -38,6 +39,7 @@ export function Fluid() {
             font-weight: 700;
             font-family: "Geist Mono", monospace;
             z-index: 2;
+            pointer-events: none; /* let clicks pass through to the canvas */
           }
         `
       }} />
