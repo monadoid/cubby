@@ -1,7 +1,6 @@
 // cubby-frontend - simple hello world htmx frontend
 import { Hono } from "hono";
-import { Header } from "./components/Header";
-import { Form } from "./components/Form";
+import { Content } from "./components/Content";
 import { Fluid } from "./components/Fluid";
 
 type Bindings = {
@@ -43,12 +42,7 @@ app.get("/", (c) => {
       </head>
       <body hx-boost="true" hx-ext="sse,ws">
         <Fluid />
-        <div class="content min-h-screen flex items-center justify-center relative z-30">
-          <div class="w-full max-w-4xl mx-auto px-4">
-            <Header />
-            <Form />
-          </div>
-        </div>
+        <Content />
       </body>
     </html>
   );

@@ -1,6 +1,6 @@
-name: Code Quality & Optimization
+# name: Code Quality & Optimization
 
-on: [push]
+# on: [push]
 
 env:
   CARGO_TERM_COLOR: always
