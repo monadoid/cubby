@@ -79,20 +79,6 @@ nuke:
     @echo "cleaning cache and model files..."
     -rm -rf ~/.cubby/*.log
     -rm -rf ~/Library/Caches/cubby/models/*.onnx
-    @echo ""
-    @echo "⚠️  now resetting TCC permissions (requires full disk access)..."
-    @echo "💡 if you see errors, grant your terminal 'full disk access' in:"
-    @echo "   system settings > privacy & security > full disk access"
-    @echo ""
-    @read -p "press enter to continue or ctrl+c to skip permission reset..."
-    @echo "resetting screen recording permission..."
-    -tccutil reset ScreenCapture 2>/dev/null || echo "❌ failed - grant terminal full disk access"
-    @echo "resetting microphone permission..."
-    -tccutil reset Microphone 2>/dev/null || echo "❌ failed - grant terminal full disk access"
-    @echo "resetting accessibility permission..."
-    -tccutil reset Accessibility 2>/dev/null || echo "❌ failed - grant terminal full disk access"
-    @echo ""
-    @echo "✅ nuke complete! you can now run 'just cubby-start' or 'cargo run' for a fresh start"
 
 # show available commands
 help:

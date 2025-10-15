@@ -272,6 +272,15 @@ app.post(
     const newUserId = crypto.randomUUID();
 
     try {
+      // Diagnostic logging for production debugging
+      console.log("env keys available:", Object.keys(c.env || {}));
+      console.log("STYTCH_PROJECT_ID first 20 chars:", c.env.STYTCH_PROJECT_ID?.substring(0, 20));
+      console.log("STYTCH_PROJECT_ID type:", typeof c.env.STYTCH_PROJECT_ID);
+      console.log("STYTCH_PROJECT_ID first 20 chars:", c.env.STYTCH_PROJECT_ID?.substring(0, 20));
+      console.log("STYTCH_PROJECT_SECRET first 20 chars:", c.env.STYTCH_PROJECT_SECRET?.substring(0, 20));
+      console.log("STYTCH_PROJECT_DOMAIN first 20 chars:", c.env.STYTCH_PROJECT_DOMAIN?.substring(0, 20));
+      console.log("DATABASE_URL first 20 chars:", c.env.DATABASE_URL?.substring(0, 20));
+      
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
@@ -394,6 +403,10 @@ app.post(
     }
 
     try {
+      // Diagnostic logging for production debugging
+      console.log("login - env keys available:", Object.keys(c.env || {}));
+      console.log("login - STYTCH_PROJECT_ID exists:", !!c.env.STYTCH_PROJECT_ID);
+      
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
@@ -781,6 +794,28 @@ app.post(
     });
   },
 );
+
+// Development endpoint to check environment variables (remove in production)
+app.get("/debug/env", (c) => {
+  const envStatus = {
+    STYTCH_PROJECT_ID: !!c.env.STYTCH_PROJECT_ID,
+    STYTCH_PROJECT_SECRET: !!c.env.STYTCH_PROJECT_SECRET,
+    STYTCH_PROJECT_DOMAIN: !!c.env.STYTCH_PROJECT_DOMAIN,
+    STYTCH_BASE_URL: !!c.env.STYTCH_BASE_URL,
+    CF_API_TOKEN: !!c.env.CF_API_TOKEN,
+    CF_ACCOUNT_ID: !!c.env.CF_ACCOUNT_ID,
+    CF_ZONE_ID: !!c.env.CF_ZONE_ID,
+    ACCESS_CLIENT_ID: !!c.env.ACCESS_CLIENT_ID,
+    ACCESS_CLIENT_SECRET: !!c.env.ACCESS_CLIENT_SECRET,
+    TUNNEL_DOMAIN: !!c.env.TUNNEL_DOMAIN,
+    DATABASE_URL: !!c.env.DATABASE_URL,
+  };
+  
+  return c.json({
+    message: "environment variables status (true = exists, false = missing)",
+    env: envStatus,
+  });
+});
 
 // Main API root endpoint
 app.get("/", (c) => {

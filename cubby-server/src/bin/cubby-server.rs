@@ -1126,9 +1126,9 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         .unwrap_or_else(|| PathBuf::from("~"))
         .to_string_lossy()
         .to_string();
-    log::success("cubby is running in the background!");
-    log::success(&format!("Logs: {}/.cubby/cubby-*.log", home_dir));
-    log::success("Stop service: cubby --uninstall\n");
+    log::success("cubby is running in the background!")?;
+    log::success(&format!("Logs: {}/.cubby/cubby-*.log", home_dir))?;
+    log::success("Stop service: cubby --uninstall\n")?;
     Ok(())
 }
 
