@@ -226,7 +226,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           STYTCH_PROJECT_ID: ${{ secrets.STYTCH_PROJECT_ID }}
-          STYTCH_SECRET: ${{ secrets.STYTCH_SECRET }}
+          STYTCH_PROJECT_SECRET: ${{ secrets.STYTCH_PROJECT_SECRET }}
+          STYTCH_PROJECT_DOMAIN: ${{ secrets.STYTCH_PROJECT_DOMAIN }}
+          STYTCH_BASE_URL: ${{ secrets.STYTCH_BASE_URL }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
+          ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
+          TUNNEL_DOMAIN: ${{ secrets.TUNNEL_DOMAIN }}
           MCP_AUTH_SECRET: ${{ secrets.MCP_AUTH_SECRET }}
 
   deploy-exampleco-website:

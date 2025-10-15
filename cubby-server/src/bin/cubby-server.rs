@@ -22,7 +22,6 @@ use cubby_server::{
         OutputFormat, PipeCommand, VisionCommand, McpCommand,
     },
     handle_index_command,
-    pipe_manager::PipeInfo,
     start_continuous_recording, watch_pid, PipeManager, ResourceMonitor, SCServer,
 };
 use cubby_vision::monitor::list_monitors;
@@ -43,16 +42,6 @@ use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, Layer};
 use serde::Deserialize;
 use std::path::Path;
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-
-const DISPLAY: &str = r"
-                                            _          
-   __________________  ___  ____     ____  (_____  ___ 
-  / ___/ ___/ ___/ _ \/ _ \/ __ \   / __ \/ / __ \/ _ \
- (__  / /__/ /  /  __/  __/ / / /  / /_/ / / /_/ /  __/
-/____/\___/_/   \___/\___/_/ /_/  / .___/_/ .___/\___/ 
-                                 /_/     /_/           
-
-";
 
 // Add the struct definition with proper derive attributes
 #[derive(Deserialize, Debug)]
@@ -156,14 +145,8 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
         ),
     );
 
-    // Build the final registry with conditional Sentry layer
-    if !cli.disable_telemetry {
-        tracing_registry
-            .with(sentry::integrations::tracing::layer())
-            .init();
-    } else {
-        tracing_registry.init();
-    };
+    // Build the final registry
+    tracing_registry.init();
 
     Ok(guard)
 }
@@ -184,50 +167,11 @@ async fn main() -> anyhow::Result<()> {
         return handle_service_mode(&cli).await;
     }
 
-    // Initialize Sentry only if telemetry is enabled
-    let _sentry_guard = if !cli.disable_telemetry {
-        let sentry_release_name_append = env::var("SENTRY_RELEASE_NAME_APPEND").unwrap_or_default();
-        let release_name = format!(
-            "{}{}",
-            sentry::release_name!().unwrap_or_default(),
-            sentry_release_name_append
-        );
-        Some(sentry::init((
-            "https://cf682877173997afc8463e5ca2fbe3c7@o4507617161314304.ingest.us.sentry.io/4507617170161664",
-            sentry::ClientOptions {
-                release: Some(release_name.into()),
-                traces_sample_rate: 0.1,
-                ..Default::default()
-            }
-        )))
-    } else {
-        None
-    };
-
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
 
     // Only set up logging if we're not running a pipe command with JSON output
     let should_log = match &cli.command {
-        Some(Command::Pipe { subcommand }) => {
-            matches!(
-                subcommand,
-                PipeCommand::List {
-                    output: OutputFormat::Text,
-                    ..
-                } | PipeCommand::Install {
-                    output: OutputFormat::Text,
-                    ..
-                } | PipeCommand::Info {
-                    output: OutputFormat::Text,
-                    ..
-                } | PipeCommand::Enable { .. }
-                    | PipeCommand::Disable { .. }
-                    | PipeCommand::Update { .. }
-                    | PipeCommand::Purge { .. }
-                    | PipeCommand::Delete { .. }
-            )
-        }
         Some(Command::Add {
             output: OutputFormat::Text,
             ..
@@ -246,11 +190,6 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    let pipe_manager = if cli.enable_pipe_manager {
-        Arc::new(PipeManager::new(local_data_dir_clone.clone()))
-    } else {
-        Arc::new(PipeManager::new(PathBuf::from("")))
-    };
 
     if let Some(ref command) = cli.command {
         match command {
@@ -315,10 +254,6 @@ async fn main() -> anyhow::Result<()> {
             },
             Command::Completions { shell } => {
                 cli.handle_completions(*shell)?;
-                return Ok(());
-            }
-            Command::Pipe { subcommand } => {
-                handle_pipe_command(subcommand, &pipe_manager, cli.enable_pipe_manager).await?;
                 return Ok(());
             }
             Command::Migrate {
@@ -557,10 +492,6 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
                 return Ok(());
             }
-            Command::Mcp { subcommand } => {
-                handle_mcp_command(subcommand, &local_data_dir_clone).await?;
-                return Ok(());
-            }
         }
     }
 
@@ -582,7 +513,25 @@ async fn main() -> anyhow::Result<()> {
         return Err(anyhow::anyhow!("port already in use"));
     }
 
-    let all_monitors = list_monitors().await;
+    // Don't trigger permission prompts from service - only list monitors if we already have permission
+    let all_monitors = if cli.disable_vision {
+        Vec::new()
+    } else {
+        #[cfg(target_os = "macos")]
+        {
+            use objc2_core_graphics::CGPreflightScreenCaptureAccess;
+            // Silently check permission without triggering dialog
+            if unsafe { CGPreflightScreenCaptureAccess() } {
+                list_monitors().await
+            } else {
+                // No permission - skip vision silently (onboarding should have handled this)
+                warn!("screen recording permission not granted, skipping vision");
+                Vec::new()
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        list_monitors().await
+    };
 
     let mut audio_devices = Vec::new();
 
@@ -648,7 +597,9 @@ async fn main() -> anyhow::Result<()> {
 
     let warning_ocr_engine_clone = cli.ocr_engine.clone();
     let warning_audio_transcription_engine_clone = cli.audio_transcription_engine.clone();
-    let monitor_ids = if cli.monitor_id.is_empty() {
+    let monitor_ids = if cli.disable_vision || all_monitors.is_empty() {
+        Vec::new()
+    } else if cli.monitor_id.is_empty() {
         all_monitors.iter().map(|m| m.id()).collect::<Vec<_>>()
     } else {
         cli.monitor_id.clone()
@@ -700,8 +651,15 @@ async fn main() -> anyhow::Result<()> {
     let audio_manager = match audio_manager_builder.build(db.clone()).await {
         Ok(manager) => Arc::new(manager),
         Err(e) => {
-            error!("{e}");
-            return Ok(());
+            error!("failed to build audio manager: {e}");
+            error!("continuing without audio functionality");
+            // Create a dummy audio manager or handle this more gracefully
+            // For now, we need to properly clean up and exit
+            tokio::task::block_in_place(|| {
+                drop(pipes_runtime);
+                drop(vision_runtime);
+            });
+            anyhow::bail!("audio manager initialization failed: {e}");
         }
     };
 
@@ -763,22 +721,12 @@ async fn main() -> anyhow::Result<()> {
         db_server,
         SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), cli.port),
         local_data_dir_clone_2,
-        pipe_manager.clone(),
         cli.disable_vision,
         cli.disable_audio,
         cli.enable_ui_monitoring,
         audio_manager.clone(),
-        cli.enable_pipe_manager,
     );
 
-    // print cubby in gradient
-    println!("\n\n{}", DISPLAY.truecolor(147, 112, 219).bold());
-    println!(
-        "\n{}",
-        "build ai apps that have the full context"
-            .bright_yellow()
-            .italic()
-    );
     println!(
         "{}\n\n",
         "open source | runs locally | developer friendly".bright_green()
@@ -988,32 +936,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Pipes section
-    println!("├────────────────────────┼────────────────────────────────────┤");
-    println!("│ pipes                  │                                    │");
-    let pipes = pipe_manager.list_pipes().await;
-    if pipes.is_empty() {
-        println!("│ {:<22} │ {:<34} │", "", "no pipes available");
-    } else {
-        let total_pipes = pipes.len();
-        for (_, pipe) in pipes.iter().enumerate().take(MAX_ITEMS_TO_DISPLAY) {
-            let pipe_str = format!(
-                "({}) {}",
-                if pipe.enabled { "enabled" } else { "disabled" },
-                pipe.id,
-            );
-            let formatted_pipe = format_cell(&pipe_str, VALUE_WIDTH);
-            println!("│ {:<22} │ {:<34} │", "", formatted_pipe);
-        }
-        if total_pipes > MAX_ITEMS_TO_DISPLAY {
-            println!(
-                "│ {:<22} │ {:<34} │",
-                "",
-                format!("... and {} more", total_pipes - MAX_ITEMS_TO_DISPLAY)
-            );
-        }
-    }
-
     println!("└────────────────────────┴────────────────────────────────────┘");
 
     // Add warning for cloud arguments and telemetry
@@ -1048,14 +970,6 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Add changelog link
-    println!(
-        "\n{}",
-        "check latest changes here: https://github.com/monadoid/cubby-sp/releases"
-            .bright_blue()
-            .italic()
-    );
-
     // start recording after all this text
     if !cli.disable_audio {
         let audio_manager_clone = audio_manager.clone();
@@ -1065,66 +979,8 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    // Start pipes
-    info!("starting pipes");
-    let pipes = pipe_manager.list_pipes().await;
-    for pipe in pipes {
-        debug!("pipe: {:?}", pipe.id);
-        if !pipe.enabled {
-            debug!("pipe {} is disabled, skipping", pipe.id);
-            continue;
-        }
-        match pipe_manager.start_pipe_task(pipe.id.clone()).await {
-            Ok(future) => {
-                pipes_handle.spawn(future);
-            }
-            Err(e) => {
-                error!("failed to start pipe {}: {}", pipe.id, e);
-            }
-        }
-    }
-
     let server_future = server.start(cli.enable_frame_cache);
     pin_mut!(server_future);
-
-    // Add auto-destruct watcher
-    if let Some(pid) = cli.auto_destruct_pid {
-        info!("watching pid {} for auto-destruction", pid);
-        let shutdown_tx_clone = shutdown_tx.clone();
-        tokio::spawn(async move {
-            // sleep for 1 seconds
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            if watch_pid(pid).await {
-                info!("Watched pid ({}) has stopped, initiating shutdown", pid);
-
-                // Get list of enabled pipes
-                let pipes = pipe_manager.list_pipes().await;
-                let enabled_pipes: Vec<_> = pipes.into_iter().filter(|p| p.enabled).collect();
-                // Stop all enabled pipes in parallel
-                let stop_futures = enabled_pipes.iter().map(|pipe| {
-                    let pipe_manager = pipe_manager.clone();
-                    let pipe_id = pipe.id.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = pipe_manager.stop_pipe(&pipe_id).await {
-                            error!("failed to stop pipe {}: {}", pipe_id, e);
-                        }
-                    })
-                });
-                // Wait for all pipes to stop with timeout
-                let timeout = tokio::time::sleep(Duration::from_secs(10));
-                tokio::pin!(timeout);
-                tokio::select! {
-                    _ = futures::future::join_all(stop_futures) => {
-                        info!("all pipes stopped successfully");
-                    }
-                    _ = &mut timeout => {
-                        warn!("timeout waiting for pipes to stop");
-                    }
-                }
-                let _ = shutdown_tx_clone.send(());
-            }
-        });
-    }
 
     let ctrl_c_future = signal::ctrl_c();
     pin_mut!(ctrl_c_future);
@@ -1183,525 +1039,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn handle_pipe_command(
-    command: &PipeCommand,
-    pipe_manager: &Arc<PipeManager>,
-    enable_pipe_manager: bool,
-) -> anyhow::Result<()> {
-
-    if !enable_pipe_manager {
-        println!("note: pipe functionality is disabled");
-        return Ok(());
-    }
-
-    let client = reqwest::Client::new();
-    let server_url = "http://localhost";
-
-    match command {
-        PipeCommand::List { output, port } => {
-            let server_url = format!("{}:{}", server_url, port);
-            let pipes = match client
-                .get(format!("{}/pipes/list", server_url))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    // The server returns { data: [...] }, so we need to extract the data field
-                    let response: Value = response.json().await?;
-                    response
-                        .get("data")
-                        .and_then(|d| d.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| serde_json::from_value::<PipeInfo>(v.clone()).ok())
-                                .collect()
-                        })
-                        .ok_or_else(|| anyhow::anyhow!("invalid response format"))?
-                }
-                _ => {
-                    println!("note: server not running, showing pipe configurations");
-                    pipe_manager.list_pipes().await
-                }
-            };
-
-            match output {
-                OutputFormat::Json => println!(
-                    "{}",
-                    serde_json::to_string_pretty(&json!({
-                        "data": pipes,
-                        "success": true
-                    }))?
-                ),
-                OutputFormat::Text => {
-                    println!("available pipes:");
-                    for pipe in pipes {
-                        let id = pipe.id;
-                        let enabled = pipe.enabled;
-                        println!("  id: {}, enabled: {}", id, enabled);
-                    }
-                }
-            }
-        }
-
-        #[allow(deprecated)]
-        PipeCommand::Download { url, output, port }
-        | PipeCommand::Install { url, output, port } => {
-            match client
-                .post(format!("{}:{}/pipes/download", server_url, port))
-                .json(&json!({ "url": url }))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    let data: Value = response.json().await?;
-                    match output {
-                        OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&data)?),
-                        OutputFormat::Text => println!(
-                            "pipe downloaded successfully. id: {}",
-                            data["pipe_id"].as_str().unwrap_or("unknown")
-                        ),
-                    }
-                }
-                _ => match pipe_manager.download_pipe(url).await {
-                    Ok(pipe_id) => match output {
-                        OutputFormat::Json => println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json!({
-                                "data": {
-                                    "pipe_id": pipe_id,
-                                    "message": "pipe downloaded successfully"
-                                },
-                                "success": true
-                            }))?
-                        ),
-                        OutputFormat::Text => {
-                            println!("pipe downloaded successfully. id: {}", pipe_id)
-                        }
-                    },
-                    Err(e) => {
-                        let error_msg = format!("failed to download pipe: {}", e);
-                        match output {
-                            OutputFormat::Json => println!(
-                                "{}",
-                                serde_json::to_string_pretty(&json!({
-                                    "error": error_msg,
-                                    "success": false
-                                }))?
-                            ),
-                            OutputFormat::Text => eprintln!("{}", error_msg),
-                        }
-                    }
-                },
-            }
-        }
-
-        PipeCommand::Info { id, output, port } => {
-            let info = match client
-                .get(format!("{}:{}/pipes/info/{}", server_url, port, id))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => response.json().await?,
-                _ => {
-                    println!("note: server not running, showing pipe configuration");
-                    pipe_manager
-                        .get_pipe_info(id)
-                        .await
-                        .ok_or_else(|| anyhow::anyhow!("pipe not found"))?
-                }
-            };
-
-            match output {
-                OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&info)?),
-                OutputFormat::Text => println!("pipe info: {:?}", info),
-            }
-        }
-        PipeCommand::Enable { id, port } => {
-            match client
-                .post(format!("{}:{}/pipes/enable", server_url, port))
-                .json(&json!({ "pipe_id": id }))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    println!("pipe {} enabled in running server", id);
-                }
-                _ => {
-                    pipe_manager
-                        .update_config(id, json!({"enabled": true}))
-                        .await?;
-                    println!("note: server not running, updated config only. pipe will start on next server launch");
-                }
-            }
-        }
-
-        PipeCommand::Disable { id, port } => {
-            match client
-                .post(format!("{}:{}/pipes/disable", server_url, port))
-                .json(&json!({ "pipe_id": id }))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    println!("pipe {} disabled in running server", id);
-                }
-                _ => {
-                    pipe_manager
-                        .update_config(id, json!({"enabled": false}))
-                        .await?;
-                    println!("note: server not running, updated config only");
-                }
-            }
-        }
-
-        PipeCommand::Update { id, config, port } => {
-            let config: Value =
-                serde_json::from_str(config).map_err(|e| anyhow::anyhow!("invalid json: {}", e))?;
-
-            match client
-                .post(format!("{}:{}/pipes/update", server_url, port))
-                .json(&json!({
-                    "pipe_id": id,
-                    "config": config
-                }))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    println!("pipe {} config updated in running server", id);
-                }
-                _ => {
-                    pipe_manager.update_config(id, config).await?;
-                    println!("note: server not running, updated config only");
-                }
-            }
-        }
-
-        PipeCommand::Delete { id, yes, port } => {
-            if !yes {
-                print!("are you sure you want to delete pipe '{}'? [y/N] ", id);
-                std::io::stdout().flush()?;
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                if !input.trim().eq_ignore_ascii_case("y") {
-                    println!("pipe deletion cancelled");
-                    return Ok(());
-                }
-            }
-
-            match client
-                .delete(format!("{}:{}/pipes/delete/{}", server_url, port, id))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    println!("pipe '{}' deleted from running server", id);
-                }
-                _ => match pipe_manager.delete_pipe(id).await {
-                    Ok(_) => println!("pipe '{}' deleted from local files", id),
-                    Err(e) => println!("failed to delete pipe: {}", e),
-                },
-            }
-        }
-
-        PipeCommand::Purge { yes, port } => {
-            if !yes {
-                print!("are you sure you want to purge all pipes? this action cannot be undone. (y/N): ");
-                std::io::stdout().flush()?;
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input)?;
-                if !input.trim().eq_ignore_ascii_case("y") {
-                    println!("pipe purge cancelled");
-                    return Ok(());
-                }
-            }
-
-            match client
-                .post(format!("{}:{}/pipes/purge", server_url, port))
-                .send()
-                .await
-            {
-                Ok(response) if response.status().is_success() => {
-                    println!("all pipes purged from running server");
-                }
-                _ => match pipe_manager.purge_pipes().await {
-                    Ok(_) => println!("all pipes purged from local files"),
-                    Err(e) => println!("failed to purge pipes: {}", e),
-                },
-            }
-        }
-    }
-    Ok(())
-}
-
-pub async fn handle_mcp_command(command: &McpCommand, local_data_dir: &PathBuf) -> Result<(), anyhow::Error> {
-    let client = Client::new();
-
-    // Check if Python is installed
-    if !is_command_available("python") || !is_command_available("python3") {
-        warn!("note: python is not installed. please install it from the official website: https://www.python.org/");
-    }
-
-    // Check if uv is installed
-    if !is_command_available("uv") {
-        warn!("note: uv is not installed. please install it using the instructions at: https://docs.astral.sh/uv/#installation");
-    }
-
-    match command {
-        McpCommand::Setup { directory, output, port, update, purge } => {
-            let mcp_dir = directory
-                .as_ref()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| local_data_dir.join("mcp"));
-
-            // If purge flag is set, just remove the directory and return
-            if *purge {
-                if mcp_dir.exists() {
-                    info!("Purging MCP directory: {}", mcp_dir.display());
-                    tokio::fs::remove_dir_all(&mcp_dir).await?;
-                    
-                    match output {
-                        OutputFormat::Json => println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json!({
-                                "data": {
-                                    "message": "MCP directory purged successfully",
-                                    "directory": mcp_dir.to_string_lossy(),
-                                },
-                                "success": true
-                            }))?
-                        ),
-                        OutputFormat::Text => {
-                            println!("MCP directory purged successfully");
-                            println!("Directory: {}", mcp_dir.display());
-                        }
-                    }
-                } else {
-                    match output {
-                        OutputFormat::Json => println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json!({
-                                "data": {
-                                    "message": "MCP directory does not exist",
-                                    "directory": mcp_dir.to_string_lossy(),
-                                },
-                                "success": true
-                            }))?
-                        ),
-                        OutputFormat::Text => {
-                            println!("MCP directory does not exist: {}", mcp_dir.display());
-                        }
-                    }
-                }
-                return Ok(());
-            }
-
-            let should_download = if mcp_dir.exists() {
-                if *update {
-                    tokio::fs::remove_dir_all(&mcp_dir).await?;
-                    true
-                } else {
-                    let mut entries = tokio::fs::read_dir(&mcp_dir).await?;
-                    entries.next_entry().await?.is_none()
-                }
-            } else {
-                true
-            };
-
-            // Create config regardless of download status
-            let config = json!({
-                "mcpServers": {
-                    "cubby": {
-                        "command": "uv",
-                        "args": [
-                            "--directory",
-                            mcp_dir.to_string_lossy().to_string(),
-                            "run",
-                            "cubby-mcp",
-                            "--port",
-                            port.to_string()
-                        ]
-                    }
-                }
-            });
-
-            let run_command = format!(
-                "uv --directory {} run cubby-mcp --port {}",
-                mcp_dir.to_string_lossy(),
-                port
-            );
-
-            let config_path = mcp_dir.join("config.json");
-
-            if should_download {
-                tokio::fs::create_dir_all(&mcp_dir).await?;
-                
-                // Log the start of the download process
-                info!("starting download process for MCP directory");
-
-                let owner = "monadoid";
-                let repo = "cubby";
-                let branch = "main";
-                let target_dir = "cubby-integrations/cubby-mcp";
-
-                let api_url = format!(
-                    "https://api.github.com/repos/{}/{}/contents/{}?ref={}",
-                    owner, repo, target_dir, branch
-                );
-
-                // Setup ctrl+c handler
-                let (tx, mut rx) = tokio::sync::mpsc::channel(1);
-                let cancel_handle = tokio::spawn(async move {
-                    if signal::ctrl_c().await.is_ok() {
-                        let _ = tx.send(()).await;
-                    }
-                });
-
-                // Download with cancellation support
-                let download_result = tokio::select! {
-                    result = download_mcp_directory(&client, &api_url, &mcp_dir) => result,
-                    _ = rx.recv() => {
-                        info!("Received ctrl+c, canceling download...");
-                        Err(anyhow::anyhow!("Download cancelled by user"))
-                    }
-                };
-
-                // Clean up cancel handler
-                cancel_handle.abort();
-
-                // Handle download result
-                match download_result {
-                    Ok(_) => {
-                        tokio::fs::write(&config_path, serde_json::to_string_pretty(&config)?).await?;
-                    }
-                    Err(e) => {
-                        // Clean up on failure
-                        if mcp_dir.exists() {
-                            let _ = tokio::fs::remove_dir_all(&mcp_dir).await;
-                        }
-                        return Err(e);
-                    }
-                }
-            }
-
-            // Always create/update config.json regardless of download
-            tokio::fs::write(&config_path, serde_json::to_string_pretty(&config)?).await?;
-
-            match output {
-                OutputFormat::Json => println!(
-                    "{}",
-                    serde_json::to_string_pretty(&json!({
-                        "data": {
-                            "message": if should_download { "MCP setup completed successfully" } else { "MCP files already exist" },
-                            "config": config,
-                            "config_path": config_path.to_string_lossy(),
-                            "directory": mcp_dir.to_string_lossy(),
-                            "port": port
-                        },
-                        "success": true
-                    }))?
-                ),
-                OutputFormat::Text => {
-                    if should_download {
-                        println!("MCP setup completed successfully");
-                    } else {
-                        println!("MCP files already exist at: {}", mcp_dir.display());
-                        println!("Use --update flag to force update or --purge to start fresh");
-                    }
-                    println!("Directory: {}", mcp_dir.display());
-                    println!("Config file: {}", config_path.display());
-                    println!("\nTo run the MCP server, use this command:");
-                    println!("$ {}", run_command);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn download_mcp_directory(
-    client: &Client,
-    api_url: &str,
-    target_dir: &Path,
-) -> Result<(), anyhow::Error> {
-    let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, HeaderValue::from_static("cubby-cli"));
-
-    let response = client
-        .get(api_url)
-        .headers(headers)
-        .send()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to send request: {}", e))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_default();
-        return Err(anyhow::anyhow!("GitHub API error (status {}): {}", status, error_text));
-    }
-
-    let contents: Vec<GitHubContent> = response
-        .json()
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to parse GitHub API response: {}", e))?;
-
-    for item in contents {
-        let target_path = target_dir.join(&item.name);
-        
-        match item.content_type.as_str() {
-            "file" => {
-                if let Some(download_url) = item.download_url {
-                    let file_response = client
-                        .get(&download_url)
-                        .send()
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to download file {}: {}", download_url, e))?;
-
-                    let content = file_response
-                        .bytes()
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to get file content: {}", e))?;
-
-                    tokio::fs::write(&target_path, content)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to write file {}: {}", target_path.display(), e))?;
-
-                    debug!("Downloaded file: {}", target_path.display());
-                }
-            }
-            "dir" => {
-                tokio::fs::create_dir_all(&target_path)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create directory {}: {}", target_path.display(), e))?;
-
-                let subdir_api_url = format!(
-                    "https://api.github.com/repos/{}/{}/contents/{}?ref={}",
-                    "monadoid", "cubby-sp", item.path, "main"
-                );
-                
-                // Fix recursion with Box::pin
-                let future = Box::pin(download_mcp_directory(client, &subdir_api_url, &target_path));
-                future.await?;
-            }
-            _ => {
-                warn!("Skipping unsupported content type: {}", item.content_type);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-// Helper function to check if a command is available
-fn is_command_available(command: &str) -> bool {
-    std::process::Command::new(command)
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-}
-
 async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
     use cubby_server::service_manager::cubbyServiceManager;
     use cubby_server::cloudflared_downloader::ensure_cloudflared;
@@ -1729,15 +1066,20 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         #[cfg(debug_assertions)]
         println!("📦 Setting up cloudflared tunnel...");
         
-        // Download cloudflared binary
-        let cloudflared_path = ensure_cloudflared()?;
+        // Download cloudflared binary (blocking operation)
+        let cloudflared_path = tokio::task::spawn_blocking(|| ensure_cloudflared())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared download task: {}", e))??;
         
         #[cfg(debug_assertions)]
         println!("✅ Cloudflared binary ready");
         
         // Install cloudflared service
         let cloudflared_manager = CloudflaredManager::new(cloudflared_path)?;
-        cloudflared_manager.install_with_overwrite(&token)?;
+        let token_clone = token.clone();
+        tokio::task::spawn_blocking(move || cloudflared_manager.install_with_overwrite(&token_clone))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared install task: {}", e))??;
         
         #[cfg(not(debug_assertions))]
         use cliclack::log;
@@ -1774,32 +1116,19 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
     #[cfg(debug_assertions)]
     println!("⏳ Waiting for service to become healthy...");
     
-    service_manager.wait_for_health()?;
+    let service_manager_clone = service_manager.clone();
+    tokio::task::spawn_blocking(move || service_manager_clone.wait_for_health())
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to spawn health check task: {}", e))??;
     
-    #[cfg(not(debug_assertions))]
-    {
-        use cliclack::log;
-        log::success("cubby-sp is running in the background!")?;
-        let home_dir = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .to_string_lossy()
-            .to_string();
-        log::info(format!("Logs: {}/.cubby/cubby-*.log", home_dir))?;
-        log::info("Stop service: cubby --uninstall")?;
-        cliclack::outro("Setup complete!")?;
-    }
-    
-    #[cfg(debug_assertions)]
-    {
-        println!("\n✅ cubby-sp is running in the background!");
-        let home_dir = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("~"))
-            .to_string_lossy()
-            .to_string();
-        println!("   Logs: {}/.cubby/cubby-*.log", home_dir);
-        println!("   Stop service: cubby --uninstall\n");
-    }
-    
+    use cliclack::log;
+    let home_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("~"))
+        .to_string_lossy()
+        .to_string();
+    log::success("cubby is running in the background!");
+    log::success(&format!("Logs: {}/.cubby/cubby-*.log", home_dir));
+    log::success("Stop service: cubby --uninstall\n");
     Ok(())
 }
 
@@ -1815,13 +1144,17 @@ async fn handle_uninstall() -> anyhow::Result<()> {
     println!("🛑 Stopping and uninstalling cubby-sp service...");
     
     // Try to uninstall cloudflared service if it exists
-    if let Ok(cloudflared_path) = ensure_cloudflared() {
+    if let Some(cloudflared_path) = tokio::task::spawn_blocking(|| ensure_cloudflared()).await.ok().and_then(|r| r.ok()) {
         let cloudflared_manager = CloudflaredManager::new(cloudflared_path)?;
         if cloudflared_manager.is_installed() {
             #[cfg(debug_assertions)]
             println!("🛑 Uninstalling cloudflared tunnel service...");
             
-            if let Err(e) = cloudflared_manager.uninstall() {
+            let uninstall_result = tokio::task::spawn_blocking(move || cloudflared_manager.uninstall())
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared uninstall task: {}", e))?;
+            
+            if let Err(e) = uninstall_result {
                 #[cfg(debug_assertions)]
                 println!("⚠️  Warning: Failed to uninstall cloudflared service: {}", e);
                 
@@ -1843,7 +1176,7 @@ async fn handle_uninstall() -> anyhow::Result<()> {
         }
         
         // Clean up cloudflared binaries
-        if let Err(e) = cleanup_cloudflared() {
+        if let Some(Err(e)) = tokio::task::spawn_blocking(|| cleanup_cloudflared()).await.ok() {
             #[cfg(debug_assertions)]
             println!("⚠️  Warning: Failed to clean up cloudflared binaries: {}", e);
         }
@@ -1967,10 +1300,6 @@ fn build_service_args(cli: &Cli) -> Vec<String> {
     
     if cli.enable_realtime_vision {
         args.push("--enable-realtime-vision".to_string());
-    }
-    
-    if cli.enable_pipe_manager {
-        args.push("--enable-pipe-manager".to_string());
     }
     
     // Audio devices

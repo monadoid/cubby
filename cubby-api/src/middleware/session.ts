@@ -4,6 +4,10 @@ import stytch from "stytch";
 import type { Context, MiddlewareHandler } from "hono";
 import type { Bindings, Variables } from "../index";
 
+function isDevEnvironment(env: Bindings): boolean {
+  return Boolean(env.STYTCH_BASE_URL?.includes("test.stytch.com"));
+}
+
 /**
  * Session Authentication Middleware
  *
@@ -38,7 +42,7 @@ export function session(): MiddlewareHandler<{
     const client = new stytch.Client({
       project_id: c.env.STYTCH_PROJECT_ID,
       secret: c.env.STYTCH_PROJECT_SECRET,
-      custom_base_url: "https://login.cubby.sh",
+      ...(isDevEnvironment(c.env) ? {} : { custom_base_url: "https://login.cubby.sh" }),
     });
 
     try {

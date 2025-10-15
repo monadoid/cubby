@@ -329,16 +329,6 @@ pub enum Command {
         #[command(subcommand)]
         subcommand: VisionCommand,
     },
-    /// Pipe management commands
-    Pipe {
-        #[command(subcommand)]
-        subcommand: PipeCommand,
-    },
-    /// MCP Server management commands
-    Mcp {
-        #[command(subcommand)]
-        subcommand: McpCommand,
-    },
     /// Add video files to existing cubby data (OCR only) - DOES NOT SUPPORT AUDIO
     Add {
         /// Path to folder containing video files

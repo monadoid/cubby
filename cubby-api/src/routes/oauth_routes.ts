@@ -12,6 +12,10 @@ import type {
 } from "stytch";
 import { renderOAuthConsentPage } from "../views/oauth_consent_page";
 
+function isDevEnvironment(env: Bindings): boolean {
+  return Boolean(env.STYTCH_BASE_URL?.includes("test.stytch.com"));
+}
+
 const rawOAuthSchema = z.object({
   client_id: z.string().min(1, "client_id is required"),
   redirect_uri: z.string().url("redirect_uri must be a valid URL"),
@@ -145,7 +149,7 @@ app.get("/authorize", requireAuthWithRedirect(), async (c) => {
   const client = new stytch.Client({
     project_id: c.env.STYTCH_PROJECT_ID,
     secret: c.env.STYTCH_PROJECT_SECRET,
-    custom_base_url: "https://login.cubby.sh",
+    ...(isDevEnvironment(c.env) ? {} : { custom_base_url: "https://login.cubby.sh" }),
   });
 
   const startReq: IDPOAuthAuthorizeStartRequest = {
@@ -219,7 +223,7 @@ app.post("/authorize/submit", requireAuthWithRedirect(), async (c) => {
   const client = new stytch.Client({
     project_id: c.env.STYTCH_PROJECT_ID,
     secret: c.env.STYTCH_PROJECT_SECRET,
-    custom_base_url: "https://login.cubby.sh",
+    ...(isDevEnvironment(c.env) ? {} : { custom_base_url: "https://login.cubby.sh" }),
   });
 
   const { scope: _scope, consent_granted, ...stytchData } = normalized;

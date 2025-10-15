@@ -29,6 +29,11 @@ pub async fn start_continuous_recording(
     capture_unfocused_windows: bool,
     realtime_vision: bool,
 ) -> Result<()> {
+    if monitor_ids.is_empty() {
+        info!("no monitors to record (vision disabled or no permission)");
+        return Ok(());
+    }
+    
     info!("Starting video recording for monitors {:?}", monitor_ids);
     let video_tasks = if !vision_disabled {
         monitor_ids

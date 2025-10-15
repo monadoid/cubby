@@ -88,11 +88,9 @@ pub struct AppState {
     pub audio_manager: Arc<AudioManager>,
     pub app_start_time: DateTime<Utc>,
     pub cubby_dir: PathBuf,
-    pub pipe_manager: Arc<PipeManager>,
     pub vision_disabled: bool,
     pub audio_disabled: bool,
     pub ui_monitoring_enabled: bool,
-    pub enable_pipe_manager: bool,
     pub frame_cache: Option<Arc<FrameCache>>,
     pub frame_image_cache: Option<Arc<Mutex<FrameImageCache>>>,
     pub element_cache: Arc<Mutex<Option<(Vec<UIElement>, Instant, String)>>>,
@@ -826,298 +824,14 @@ struct UpdatePipeVersionRequest {
     source: String,
 }
 
-#[oasgen]
-async fn download_pipe_handler(
-    State(state): State<Arc<AppState>>,
-    JsonResponse(payload): JsonResponse<DownloadPipeRequest>,
-) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    debug!("Downloading pipe: {}", payload.url);
-    match state.pipe_manager.download_pipe(&payload.url).await {
-        Ok(pipe_dir) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": pipe_dir,
-                "message": "pipe downloaded successfully"
-            },
-            "success": true
-        }))),
-        Err(e) => {
-            error!("Failed to download pipe: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                JsonResponse(json!({
-                    "error": format!("failed to download pipe: {}", e),
-                    "success": false
-                })),
-            ))
-        }
-    }
-}
-
-#[oasgen]
-async fn download_pipe_private_handler(
-    State(state): State<Arc<AppState>>,
-    JsonResponse(payload): JsonResponse<DownloadPipePrivateRequest>,
-) -> Result<JsonResponse<serde_json::Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    match state
-        .pipe_manager
-        .download_pipe_private(&payload.url, &payload.pipe_name, &payload.pipe_id)
-        .await
-    {
-        Ok(pipe_dir) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": pipe_dir,
-                "message": "pipe downloaded successfully"
-            },
-            "success": true
-        }))),
-        Err(e) => {
-            error!("Failed to download pipe: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                JsonResponse(json!({
-                    "error": format!("failed to download pipe: {}", e),
-                    "success": false
-                })),
-            ))
-        }
-    }
-}
-
-#[oasgen]
-async fn run_pipe_handler(
-    State(state): State<Arc<AppState>>,
-    JsonResponse(payload): JsonResponse<RunPipeRequest>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    debug!("starting pipe: {}", payload.pipe_id);
-
-    match state
-        .pipe_manager
-        .update_config(
-            &payload.pipe_id,
-            serde_json::json!({
-                "enabled": true,
-            }),
-        )
-        .await
-    {
-        Ok(_) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": payload.pipe_id,
-                "message": "pipe started"
-            },
-            "success": true
-        }))),
-        Err(e) => Err((
-            StatusCode::BAD_REQUEST,
-            JsonResponse(json!({
-                "error": format!("failed to start pipe: {}", e),
-                "success": false
-            })),
-        )),
-    }
-}
-
-#[oasgen]
-async fn stop_pipe_handler(
-    State(state): State<Arc<AppState>>,
-    JsonResponse(payload): JsonResponse<RunPipeRequest>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    debug!("Stopping pipe: {}", payload.pipe_id);
-    match state
-        .pipe_manager
-        .update_config(
-            &payload.pipe_id,
-            serde_json::json!({
-                "enabled": false,
-            }),
-        )
-        .await
-    {
-        Ok(_) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": payload.pipe_id,
-                "message": "pipe stopped"
-            },
-            "success": true
-        }))),
-        Err(e) => Err((
-            StatusCode::BAD_REQUEST,
-            JsonResponse(json!({
-                "error": format!("failed to stop pipe: {}", e),
-                "success": false
-            })),
-        )),
-    }
-}
-
-#[oasgen]
-async fn update_pipe_config_handler(
-    State(state): State<Arc<AppState>>,
-    JsonResponse(payload): JsonResponse<UpdatePipeConfigRequest>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    debug!("Updating pipe config: {}", payload.pipe_id);
-    match state
-        .pipe_manager
-        .update_config(&payload.pipe_id, payload.config)
-        .await
-    {
-        Ok(_) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": payload.pipe_id,
-                "message": "pipe config updated"
-            },
-            "success": true
-        }))),
-        Err(e) => Err((
-            StatusCode::BAD_REQUEST,
-            JsonResponse(json!({
-                "error": format!("failed to update pipe config: {}", e),
-                "success": false
-            })),
-        )),
-    }
-}
-
-#[oasgen]
-async fn update_pipe_version_handler(
-    State(state): State<Arc<AppState>>,
-    JsonResponse(payload): JsonResponse<UpdatePipeVersionRequest>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    debug!("Updating pipe version: {}", payload.pipe_id);
-    match state
-        .pipe_manager
-        .update_pipe_version(&payload.pipe_id, &payload.source)
-        .await
-    {
-        Ok(_) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": payload.pipe_id,
-                "message": "pipe version updated"
-            },
-            "success": true
-        }))),
-        Err(e) => Err((
-            StatusCode::BAD_REQUEST,
-            JsonResponse(json!({
-                "error": format!("failed to update pipe version: {}", e),
-                "success": false
-            })),
-        )),
-    }
-}
-
-#[oasgen]
-async fn get_pipe_info_handler(
-    State(state): State<Arc<AppState>>,
-    Path(pipe_id): Path<String>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    debug!("Getting pipe info for: {}", pipe_id);
-    match state.pipe_manager.get_pipe_info(&pipe_id).await {
-        Some(info) => Ok(JsonResponse(json!({
-            "data": info,
-            "success": true
-        }))),
-        None => Err((
-            StatusCode::NOT_FOUND,
-            JsonResponse(json!({
-                "error": "pipe not found",
-                "success": false
-            })),
-        )),
-    }
-}
-
-#[oasgen]
-async fn list_pipes_handler(State(state): State<Arc<AppState>>) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    let pipes = state.pipe_manager.list_pipes().await;
-    Ok(JsonResponse(json!({
-        "data": pipes,
-        "success": true
-    })))
-}
-
 pub struct SCServer {
     db: Arc<DatabaseManager>,
     addr: SocketAddr,
     audio_manager: Arc<AudioManager>,
     cubby_dir: PathBuf,
-    pipe_manager: Arc<PipeManager>,
     vision_disabled: bool,
     audio_disabled: bool,
     ui_monitoring_enabled: bool,
-    enable_pipe: bool,
 }
 
 impl SCServer {
@@ -1126,23 +840,19 @@ impl SCServer {
         db: Arc<DatabaseManager>,
         addr: SocketAddr,
         cubby_dir: PathBuf,
-        pipe_manager: Arc<PipeManager>,
         vision_disabled: bool,
         audio_disabled: bool,
         ui_monitoring_enabled: bool,
         audio_manager: Arc<AudioManager>,
-        enable_pipe: bool,
     ) -> Self {
         SCServer {
             db,
             addr,
             cubby_dir,
-            pipe_manager,
             vision_disabled,
             audio_disabled,
             ui_monitoring_enabled,
             audio_manager,
-            enable_pipe,
         }
     }
 
@@ -1171,11 +881,9 @@ impl SCServer {
             audio_manager: self.audio_manager.clone(),
             app_start_time: Utc::now(),
             cubby_dir: self.cubby_dir.clone(),
-            pipe_manager: self.pipe_manager.clone(),
             vision_disabled: self.vision_disabled,
             audio_disabled: self.audio_disabled,
             ui_monitoring_enabled: self.ui_monitoring_enabled,
-            enable_pipe_manager: self.enable_pipe,
             frame_cache: if enable_frame_cache {
                 Some(Arc::new(
                     FrameCache::new(self.cubby_dir.clone().join("data"), self.db.clone())
@@ -1209,16 +917,6 @@ impl SCServer {
             .get("/vision/list", api_list_monitors)
             .post("/tags/:content_type/:id", add_tags)
             .delete("/tags/:content_type/:id", remove_tags)
-            .get("/pipes/info/:pipe_id", get_pipe_info_handler)
-            .get("/pipes/list", list_pipes_handler)
-            .post("/pipes/download", download_pipe_handler)
-            .post("/pipes/download-private", download_pipe_private_handler)
-            .post("/pipes/enable", run_pipe_handler)
-            .post("/pipes/disable", stop_pipe_handler)
-            .post("/pipes/update", update_pipe_config_handler)
-            .post("/pipes/update-version", update_pipe_version_handler)
-            .post("/pipes/delete", delete_pipe_handler)
-            .post("/pipes/purge", purge_pipe_handler)
             .get("/frames/:frame_id", get_frame_data)
             .get("/health", health_check)
             .post("/raw_sql", execute_raw_sql)
@@ -1263,7 +961,6 @@ impl SCServer {
             .post("/audio/start", start_audio)
             .post("/audio/stop", stop_audio)
             .get("/semantic-search", semantic_search_handler)
-            .get("/pipes/build-status/:pipe_id", get_pipe_build_status)
             .get("/search/keyword", keyword_search_handler)
             .post("/v1/embeddings", create_embeddings)
             .post("/audio/device/start", start_audio_device)
@@ -2615,123 +2312,6 @@ async fn handle_video_export(
 }
 
 #[oasgen]
-async fn get_pipe_build_status(
-    Path(pipe_id): Path<String>,
-    State(state): State<Arc<AppState>>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    let pipe_dir = state.cubby_dir.join("pipes").join(&pipe_id);
-
-    // 1. First check if there's a lock file
-    let lock_file = pipe_dir.join(".download.lock");
-    if lock_file.exists() {
-        return Ok(JsonResponse(json!({
-            "status": "in_progress",
-            "step": "downloading",
-            "message": "Update in progress"
-        })));
-    }
-
-    // 2. Check if the pipe directory exists
-    if pipe_dir.exists() {
-        // Then check if there's a pipe.json file
-        let pipe_json_path = pipe_dir.join("pipe.json");
-        if pipe_json_path.exists() {
-            let pipe_json = tokio::fs::read_to_string(&pipe_json_path)
-                .await
-                .map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        JsonResponse(
-                            json!({"error": format!("Failed to read pipe config: {}", e)}),
-                        ),
-                    )
-                })?;
-
-            let pipe_config: Value = serde_json::from_str(&pipe_json).map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    JsonResponse(json!({"error": format!("Failed to parse pipe config: {}", e)})),
-                )
-            })?;
-
-            // Check if there's a buildStatus field
-            if let Some(build_status) = pipe_config.get("buildStatus") {
-                // Return the build status directly
-                return Ok(JsonResponse(build_status.clone()));
-            }
-        } else {
-            // Pipe directory exists but pipe.json doesn't exist yet
-            // This likely means the pipe is still being created
-            debug!(
-                "Pipe directory exists but pipe.json not found for pipe: {}",
-                pipe_id
-            );
-            return Ok(JsonResponse(json!({
-                "status": "in_progress",
-                "step": "creating_config",
-                "message": "Creating pipe configuration"
-            })));
-        }
-    } else {
-        // If pipe directory doesn't exist, check temp directory
-        if pipe_dir.exists() {
-            let temp_pipe_json = pipe_dir.join("pipe.json");
-            if temp_pipe_json.exists() {
-                let pipe_json = tokio::fs::read_to_string(&temp_pipe_json)
-                    .await
-                    .map_err(|e| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            JsonResponse(
-                                json!({"error": format!("Failed to read temp pipe config: {}", e)}),
-                            ),
-                        )
-                    })?;
-
-                let pipe_config: Value = serde_json::from_str(&pipe_json).map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        JsonResponse(
-                            json!({"error": format!("Failed to parse temp pipe config: {}", e)}),
-                        ),
-                    )
-                })?;
-
-                debug!("Found build status in temp directory for pipe: {}", pipe_id);
-                if let Some(build_status) = pipe_config.get("buildStatus") {
-                    return Ok(JsonResponse(build_status.clone()));
-                }
-            }
-
-            // Temp directory exists but no pipe.json or no buildStatus
-            return Ok(JsonResponse(json!({
-                "status": "in_progress",
-                "step": "initializing",
-                "message": "Initializing pipe"
-            })));
-        }
-
-        // If neither pipe directory nor temp directory exists, return not found
-        return Err((
-            StatusCode::NOT_FOUND,
-            JsonResponse(json!({"error": "Pipe not found"})),
-        ));
-    }
-
-    // If we get here, there's a pipe.json but no buildStatus field
-    Ok(JsonResponse(json!(null)))
-}
-
-#[oasgen]
 async fn keyword_search_handler(
     Query(query): Query<KeywordSearchRequest>,
     State(state): State<Arc<AppState>>,
@@ -3088,69 +2668,6 @@ async fn stream_frames_handler(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_stream_frames_socket(socket, state))
-}
-
-#[oasgen]
-pub async fn delete_pipe_handler(
-    State(state): State<Arc<AppState>>,
-    Json(request): Json<DeletePipeRequest>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    match state.pipe_manager.delete_pipe(&request.pipe_id).await {
-        Ok(_) => Ok(JsonResponse(json!({
-            "data": {
-                "pipe_id": request.pipe_id,
-                "message": "pipe deleted"
-            },
-            "success": true
-        }))),
-        Err(e) => Err((
-            StatusCode::BAD_REQUEST,
-            JsonResponse(json!({
-                "error": format!("failed to delete pipe: {}", e),
-                "success": false
-            })),
-        )),
-    }
-}
-
-#[oasgen]
-pub async fn purge_pipe_handler(
-    State(state): State<Arc<AppState>>,
-    Json(_request): Json<PurgePipeRequest>,
-) -> Result<JsonResponse<Value>, (StatusCode, JsonResponse<Value>)> {
-    if !state.enable_pipe_manager {
-        return Err((
-            StatusCode::FORBIDDEN,
-            JsonResponse(json!({
-                "error": "pipe functionality is disabled",
-                "success": false
-            })),
-        ));
-    }
-    match state.pipe_manager.purge_pipes().await {
-        Ok(_) => Ok(JsonResponse(json!({
-            "data": {
-                "message": "all pipes purged"
-            },
-            "success": true
-        }))),
-        Err(e) => Err((
-            StatusCode::BAD_REQUEST,
-            JsonResponse(json!({
-                "error": format!("failed to purge pipes: {}", e),
-                "success": false
-            })),
-        )),
-    }
 }
 
 // Add this struct for the request payload

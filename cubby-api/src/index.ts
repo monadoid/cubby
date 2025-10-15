@@ -275,7 +275,7 @@ app.post(
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
-        custom_base_url: "https://login.cubby.sh",
+        ...(isDevEnvironment(c.env) ? {} : { custom_base_url: "https://login.cubby.sh" }),
       });
 
       const response = await client.passwords.create({
@@ -397,7 +397,7 @@ app.post(
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,
-        custom_base_url: "https://login.cubby.sh",
+        ...(isDevEnvironment(c.env) ? {} : { custom_base_url: "https://login.cubby.sh" }),
       });
 
       const response = await client.passwords.authenticate({
@@ -712,15 +712,15 @@ app.get("/mcp/openapi", (c) => {
 });
 
 // OAuth 2.0 Protected Resource Metadata
-// Tells clients that login.cubby.sh is the authorization server for this resource
+// Tells clients that Stytch is the authorization server for this resource
 app.get("/.well-known/oauth-protected-resource", (c) => {
   const isDev = isDevEnvironment(c.env);
   const baseUrl = isDev ? "http://localhost:8787" : "https://api.cubby.sh";
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    // Stytch at login.cubby.sh is the authorization server
-    authorization_servers: ["https://login.cubby.sh"],
+    // Stytch is the authorization server
+    authorization_servers: [isDev ? c.env.STYTCH_PROJECT_DOMAIN : "https://login.cubby.sh"],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:cubby"],
     resource_documentation: `${baseUrl}/mcp/openapi`,
@@ -733,8 +733,8 @@ app.get("/.well-known/oauth-protected-resource/mcp", (c) => {
 
   return c.json({
     resource: `${baseUrl}/mcp`,
-    // Stytch at login.cubby.sh is the authorization server
-    authorization_servers: ["https://login.cubby.sh"],
+    // Stytch is the authorization server
+    authorization_servers: [isDev ? c.env.STYTCH_PROJECT_DOMAIN : "https://login.cubby.sh"],
     bearer_methods_supported: ["header"],
     scopes_supported: ["openid", "read:cubby"],
     resource_documentation: `${baseUrl}/mcp/openapi`,

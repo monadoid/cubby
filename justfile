@@ -53,6 +53,47 @@ clean:
     cargo clean
     rm -rf **/dist **/node_modules/.cache cubby-api/node_modules cubby-installer/node_modules exampleco-website/node_modules
 
+# completely nuke all cubby services, permissions, and caches
+nuke:
+    @echo "🔥 nuking all cubby services and permissions..."
+    @echo ""
+    @echo "⚠️  this will:"
+    @echo "  - stop and uninstall all cubby services"
+    @echo "  - remove all plist files"
+    @echo "  - kill any running cubby processes"
+    @echo "  - reset screen recording & microphone permissions"
+    @echo "  - clean cache and model files"
+    @echo ""
+    @echo "stopping cubby service..."
+    -launchctl bootout gui/$(id -u)/com.tabsandtabs.cubby 2>/dev/null || true
+    @echo "stopping cloudflared service..."
+    -launchctl bootout gui/$(id -u)/com.example.cubby.cloudflared 2>/dev/null || true
+    -launchctl bootout gui/$(id -u)/com.example.cubby.screenpipe 2>/dev/null || true
+    @echo "removing plist files..."
+    -rm -f ~/Library/LaunchAgents/com.tabsandtabs.cubby.plist
+    -rm -f ~/Library/LaunchAgents/com.example.cubby.cloudflared.plist
+    -rm -f ~/Library/LaunchAgents/com.example.cubby.screenpipe.plist
+    @echo "killing any stray cubby processes..."
+    -pkill -9 -f "cubby.*--no-service" || true
+    -pkill -9 -f cloudflared || true
+    @echo "cleaning cache and model files..."
+    -rm -rf ~/.cubby/*.log
+    -rm -rf ~/Library/Caches/cubby/models/*.onnx
+    @echo ""
+    @echo "⚠️  now resetting TCC permissions (requires full disk access)..."
+    @echo "💡 if you see errors, grant your terminal 'full disk access' in:"
+    @echo "   system settings > privacy & security > full disk access"
+    @echo ""
+    @read -p "press enter to continue or ctrl+c to skip permission reset..."
+    @echo "resetting screen recording permission..."
+    -tccutil reset ScreenCapture 2>/dev/null || echo "❌ failed - grant terminal full disk access"
+    @echo "resetting microphone permission..."
+    -tccutil reset Microphone 2>/dev/null || echo "❌ failed - grant terminal full disk access"
+    @echo "resetting accessibility permission..."
+    -tccutil reset Accessibility 2>/dev/null || echo "❌ failed - grant terminal full disk access"
+    @echo ""
+    @echo "✅ nuke complete! you can now run 'just cubby-start' or 'cargo run' for a fresh start"
+
 # show available commands
 help:
     @just --list

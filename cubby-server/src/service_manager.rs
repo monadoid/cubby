@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 const SERVICE_LABEL_STR: &str = "com.tabsandtabs.cubby";
 
+#[derive(Clone)]
 pub struct cubbyServiceManager {
     label: ServiceLabel,
     binary_path: PathBuf,
