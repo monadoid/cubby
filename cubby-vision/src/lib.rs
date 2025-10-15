@@ -8,6 +8,7 @@ pub mod monitor;
 #[cfg(target_os = "macos")]
 pub mod run_ui_monitoring_macos;
 pub mod tesseract;
+pub mod unstructured_ocr;
 pub mod utils;
 #[cfg(target_os = "macos")]
 pub use apple::perform_ocr_apple;

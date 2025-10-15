@@ -14,7 +14,7 @@ use base64::{engine::general_purpose, Engine as _};
 use image::codecs::jpeg::JpegEncoder;
 use image::DynamicImage;
 use cubby_core::Language;
-use cubby_integrations::unstructured_ocr::perform_ocr_cloud;
+use crate::unstructured_ocr::perform_ocr_cloud;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;

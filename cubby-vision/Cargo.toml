@@ -28,7 +28,6 @@ image-compare = "0.4.1"
 clap = { version = "4.0", features = ["derive"] }
 
 # Integrations
-cubby-integrations = { path = "../cubby-integrations" }
 cubby-events = { path = "../cubby-events" }
 
 # Lanuage specification
@@ -46,9 +45,11 @@ once_cell = { workspace = true }
 base64 = "0.22.1"
 
 reqwest = { workspace = true }
+tempfile = "3.3.0"
+mime_guess = "2.0.5"
+log = "0.4"
 
 [dev-dependencies]
-tempfile = "3.3.0"
 criterion = { workspace = true }
 strsim = "0.10.0"
 memory-stats = "1.2.0"

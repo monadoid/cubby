@@ -4,7 +4,6 @@ members = [
     "cubby-vision",
     "cubby-audio",
     "cubby-server",
-    "cubby-integrations",
     "cubby-events",
     "cubby-db",
 ]

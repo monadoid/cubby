@@ -1829,21 +1829,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cubby-integrations"
-version = "0.2.75"
-dependencies = [
- "anyhow",
- "cubby-core",
- "image 0.25.5",
- "log",
- "mime_guess",
- "reqwest 0.12.12",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "cubby-server"
 version = "0.2.75"
 dependencies = [
@@ -1932,12 +1917,13 @@ dependencies = [
  "cubby-core",
  "cubby-db",
  "cubby-events",
- "cubby-integrations",
  "futures-util",
  "image 0.25.5",
  "image-compare",
  "libc",
+ "log",
  "memory-stats",
+ "mime_guess",
  "once_cell",
  "reqwest 0.12.12",
  "rusty-tesseract",

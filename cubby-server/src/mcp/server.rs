@@ -1,15 +1,17 @@
 use crate::server::{AppState, SearchQuery, SearchResponse};
 use axum::extract::{Query, State};
+use chrono::{DateTime, Utc};
+use cubby_db::ContentType;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::*;
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, StreamableHttpService,
 };
-use schemars::schema_for;
-use serde_json::{json, Value};
+use schemars::{schema_for, JsonSchema};
+use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
-use tracing::error;
 
 #[derive(Clone)]
 pub struct CubbyMcpServer {
@@ -109,88 +111,176 @@ pub fn create_mcp_service(
     )
 }
 
-// Tool creation functions
+// MCP-specific request structs with proper types matching Python implementation
+
+fn default_limit() -> u32 {
+    10
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Search through cubby recorded content")]
+struct McpSearchRequest {
+    #[schemars(description = "Search query to find in recorded content")]
+    q: Option<String>,
+    #[serde(default = "default_limit")]
+    #[schemars(description = "Maximum number of results to return")]
+    limit: u32,
+    #[serde(default)]
+    #[schemars(description = "Number of results to skip (for pagination)")]
+    offset: u32,
+    #[serde(default)]
+    #[schemars(description = "Type of content to search")]
+    content_type: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Start time in ISO format UTC")]
+    start_time: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "End time in ISO format UTC")]
+    end_time: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Filter by application name")]
+    app_name: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Filter by window name or title")]
+    window_name: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Filter by frame name")]
+    frame_name: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Include frame data in results")]
+    include_frames: bool,
+    #[serde(default)]
+    #[schemars(description = "Minimum content length in characters")]
+    min_length: Option<u32>,
+    #[serde(default)]
+    #[schemars(description = "Maximum content length in characters")]
+    max_length: Option<u32>,
+    #[serde(default)]
+    #[schemars(description = "Comma-separated list of speaker IDs to filter")]
+    speaker_ids: Option<String>,
+    #[serde(default)]
+    #[schemars(description = "Filter by focused window")]
+    focused: Option<bool>,
+    #[serde(default)]
+    #[schemars(description = "Filter by browser URL")]
+    browser_url: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct McpPixelControlAction {
+    #[schemars(description = "Type of input action to perform")]
+    r#type: String,
+    #[schemars(description = "Action-specific data")]
+    data: Value,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Control mouse and keyboard at the pixel level")]
+struct McpPixelControlRequest {
+    #[schemars(description = "The action to perform")]
+    action: McpPixelControlAction,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct McpSelector {
+    #[schemars(description = "The name of the application")]
+    app_name: String,
+    #[serde(default)]
+    #[schemars(description = "The window name or title (optional)")]
+    window_name: Option<String>,
+    #[schemars(description = "The role or element locator")]
+    locator: String,
+    #[serde(default = "default_true")]
+    #[schemars(description = "Whether to look in background apps")]
+    use_background_apps: bool,
+    #[serde(default = "default_true")]
+    #[schemars(description = "Whether to activate the app before interaction")]
+    activate_app: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_results() -> u32 {
+    10
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Find UI elements with a specific role in an application")]
+struct McpFindElementsRequest {
+    #[schemars(description = "Element selector")]
+    selector: McpSelector,
+    #[serde(default = "default_max_results")]
+    #[schemars(description = "Maximum number of elements to return")]
+    max_results: u32,
+    #[serde(default)]
+    #[schemars(description = "Maximum depth of element tree to search")]
+    max_depth: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Click an element in an application")]
+struct McpClickElementRequest {
+    #[schemars(description = "Element selector")]
+    selector: McpSelector,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Type text into an element in an application")]
+struct McpFillElementRequest {
+    #[schemars(description = "Element selector")]
+    selector: McpSelector,
+    #[schemars(description = "The text to type into the element")]
+    text: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Scroll an element in a specific direction")]
+struct McpScrollElementRequest {
+    #[schemars(description = "Element selector")]
+    selector: McpSelector,
+    #[schemars(description = "The direction to scroll")]
+    direction: String,
+    #[schemars(description = "The amount to scroll in pixels")]
+    amount: u32,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Open an application by name")]
+struct McpOpenApplicationRequest {
+    #[schemars(description = "The name of the application to open")]
+    app_name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[schemars(description = "Open a URL in a browser")]
+struct McpOpenUrlRequest {
+    #[schemars(description = "The URL to open")]
+    url: String,
+    #[serde(default)]
+    #[schemars(description = "The browser to use (optional)")]
+    browser: Option<String>,
+}
+
+// Tool creation functions using schemars
 
 fn create_search_tool() -> Tool {
-    // Manually create schema since SearchQuery has types from different schemars versions
-    let schema_json = json!({
-        "type": "object",
-        "properties": {
-            "q": {
-                "type": "string",
-                "description": "Search query to find in recorded content"
-            },
-            "limit": {
-                "type": "integer",
-                "description": "Maximum number of results to return",
-                "default": 10
-            },
-            "offset": {
-                "type": "integer",
-                "description": "Number of results to skip (for pagination)",
-                "default": 0
-            },
-            "content_type": {
-                "type": "string",
-                "enum": ["ocr", "audio", "ui", "all"],
-                "description": "Type of content to search",
-                "default": "all"
-            },
-            "start_time": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Start time in ISO format UTC"
-            },
-            "end_time": {
-                "type": "string",
-                "format": "date-time",
-                "description": "End time in ISO format UTC"
-            },
-            "app_name": {
-                "type": "string",
-                "description": "Filter by application name"
-            },
-            "window_name": {
-                "type": "string",
-                "description": "Filter by window name or title"
-            },
-            "frame_name": {
-                "type": "string",
-                "description": "Filter by frame name"
-            },
-            "include_frames": {
-                "type": "boolean",
-                "description": "Include frame data in results",
-                "default": false
-            },
-            "min_length": {
-                "type": "integer",
-                "description": "Minimum content length in characters"
-            },
-            "max_length": {
-                "type": "integer",
-                "description": "Maximum content length in characters"
-            },
-            "speaker_ids": {
-                "type": "string",
-                "description": "Comma-separated list of speaker IDs to filter"
-            },
-            "focused": {
-                "type": "boolean",
-                "description": "Filter by focused window"
-            },
-            "browser_url": {
-                "type": "string",
-                "description": "Filter by browser URL"
-            }
-        }
-    });
-
+    let schema = schema_for!(McpSearchRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "search-content".into(),
         title: None,
         description: Some("Search through cubby recorded content (OCR text, audio transcriptions, UI elements). Use this to find specific content that has appeared on your screen or been spoken. Results include timestamps, app context, and the content itself.".into()),
-        input_schema: Arc::new(schema_json.as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -198,30 +288,21 @@ fn create_search_tool() -> Tool {
 }
 
 fn create_pixel_control_tool() -> Tool {
+    let schema = schema_for!(McpPixelControlRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "pixel-control".into(),
         title: None,
         description: Some("Control mouse and keyboard at the pixel level. This is a cross-platform tool that works on all operating systems. Use this to type text, press keys, move the mouse, and click buttons.".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "action": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "string",
-                            "enum": ["WriteText", "KeyPress", "MouseMove", "MouseClick"],
-                            "description": "Type of input action to perform"
-                        },
-                        "data": {
-                            "description": "Action-specific data"
-                        }
-                    },
-                    "required": ["type", "data"]
-                }
-            },
-            "required": ["action"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -229,29 +310,21 @@ fn create_pixel_control_tool() -> Tool {
 }
 
 fn create_find_elements_tool() -> Tool {
+    let schema = schema_for!(McpFindElementsRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "find-elements".into(),
         title: None,
         description: Some("Find UI elements with a specific role in an application. This tool is especially useful for identifying interactive elements.\n\nMacOS Accessibility Roles Guide:\n- Basic roles: 'button', 'textfield', 'checkbox', 'menu', 'list'\n- MacOS specific roles: 'AXButton', 'AXTextField', 'AXCheckBox', 'AXMenu', etc.\n- Text inputs can be: 'AXTextField', 'AXTextArea', 'AXComboBox', 'AXSearchField'\n- Clickable items: 'AXButton', 'AXMenuItem', 'AXMenuBarItem', 'AXImage', 'AXStaticText'\n- Web content may use: 'AXWebArea', 'AXLink', 'AXHeading', 'AXRadioButton'\n\nUse MacOS Accessibility Inspector app to identify the exact roles in your target application.".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "selector": {
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string", "description": "The name of the application (e.g., 'Chrome', 'Finder', 'Terminal')"},
-                        "window_name": {"type": "string", "description": "The window name or title (optional)"},
-                        "locator": {"type": "string", "description": "The role to search for (e.g., 'button', 'textfield', 'AXButton', 'AXTextField'). For best results, use MacOS AX prefixed roles."},
-                        "use_background_apps": {"type": "boolean", "description": "Whether to look in background apps", "default": true},
-                        "activate_app": {"type": "boolean", "description": "Whether to activate the app before searching", "default": true}
-                    },
-                    "required": ["app_name", "locator"]
-                },
-                "max_results": {"type": "integer", "description": "Maximum number of elements to return", "default": 10},
-                "max_depth": {"type": "integer", "description": "Maximum depth of element tree to search"}
-            },
-            "required": ["selector"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -259,27 +332,21 @@ fn create_find_elements_tool() -> Tool {
 }
 
 fn create_click_element_tool() -> Tool {
+    let schema = schema_for!(McpClickElementRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "click-element".into(),
         title: None,
         description: Some("Click an element in an application using its id (MacOS only)".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "selector": {
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string", "description": "The name of the application"},
-                        "window_name": {"type": "string", "description": "The window name (optional)"},
-                        "locator": {"type": "string", "description": "The id of the element to click (e.g., '#element-id')"},
-                        "use_background_apps": {"type": "boolean", "description": "Whether to look in background apps", "default": true},
-                        "activate_app": {"type": "boolean", "description": "Whether to activate the app before clicking", "default": true}
-                    },
-                    "required": ["app_name", "locator"]
-                }
-            },
-            "required": ["selector"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -287,28 +354,21 @@ fn create_click_element_tool() -> Tool {
 }
 
 fn create_fill_element_tool() -> Tool {
+    let schema = schema_for!(McpFillElementRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "fill-element".into(),
         title: None,
         description: Some("Type text into an element in an application (MacOS only)".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "selector": {
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string", "description": "The name of the application"},
-                        "window_name": {"type": "string", "description": "The window name (optional)"},
-                        "locator": {"type": "string", "description": "The id of the element to fill (e.g., '#element-id')"},
-                        "use_background_apps": {"type": "boolean", "description": "Whether to look in background apps", "default": true},
-                        "activate_app": {"type": "boolean", "description": "Whether to activate the app before typing", "default": true}
-                    },
-                    "required": ["app_name", "locator"]
-                },
-                "text": {"type": "string", "description": "The text to type into the element"}
-            },
-            "required": ["selector", "text"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -316,29 +376,21 @@ fn create_fill_element_tool() -> Tool {
 }
 
 fn create_scroll_element_tool() -> Tool {
+    let schema = schema_for!(McpScrollElementRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "scroll-element".into(),
         title: None,
         description: Some("Scroll an element in a specific direction (MacOS only)".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "selector": {
-                    "type": "object",
-                    "properties": {
-                        "app_name": {"type": "string", "description": "The name of the application"},
-                        "window_name": {"type": "string", "description": "The window name (optional)"},
-                        "locator": {"type": "string", "description": "The id of the element to scroll (e.g., '#element-id')"},
-                        "use_background_apps": {"type": "boolean", "description": "Whether to look in background apps", "default": true},
-                        "activate_app": {"type": "boolean", "description": "Whether to activate the app before scrolling", "default": true}
-                    },
-                    "required": ["app_name", "locator"]
-                },
-                "direction": {"type": "string", "enum": ["up", "down", "left", "right"], "description": "The direction to scroll"},
-                "amount": {"type": "integer", "description": "The amount to scroll in pixels"}
-            },
-            "required": ["selector", "direction", "amount"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -346,17 +398,21 @@ fn create_scroll_element_tool() -> Tool {
 }
 
 fn create_open_application_tool() -> Tool {
+    let schema = schema_for!(McpOpenApplicationRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "open-application".into(),
         title: None,
         description: Some("Open an application by name".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "app_name": {"type": "string", "description": "The name of the application to open"}
-            },
-            "required": ["app_name"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -364,18 +420,21 @@ fn create_open_application_tool() -> Tool {
 }
 
 fn create_open_url_tool() -> Tool {
+    let schema = schema_for!(McpOpenUrlRequest);
+    let mut schema_obj = serde_json::to_value(&schema.schema)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+    
+    // Ensure type is set to "object" as a string (MCP requirement)
+    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
+    
     Tool {
         name: "open-url".into(),
         title: None,
         description: Some("Open a URL in a browser".into()),
-        input_schema: Arc::new(json!({
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "The URL to open"},
-                "browser": {"type": "string", "description": "The browser to use (optional)"}
-            },
-            "required": ["url"]
-        }).as_object().unwrap().clone()),
+        input_schema: Arc::new(schema_obj),
         output_schema: None,
         annotations: None,
         icons: None,
@@ -388,11 +447,59 @@ async fn handle_search_tool(
     app_state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let args: SearchQuery = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+    // Deserialize MCP request with integer types
+    let mcp_args: McpSearchRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
         ErrorData::invalid_params(format!("invalid search params: {}", e), None)
     })?;
 
-    let result = crate::server::search(Query(args), State(app_state))
+    // Convert to internal SearchQuery format by building a JSON object with string values
+    // that will be properly deserialized by SearchQuery's deserialize_number_from_string
+    let mut query_json = serde_json::json!({
+        "limit": mcp_args.limit.to_string(),
+        "offset": mcp_args.offset.to_string(),
+        "content_type": mcp_args.content_type.unwrap_or_else(|| "all".to_string()),
+        "include_frames": mcp_args.include_frames,
+    });
+
+    if let Some(q) = mcp_args.q {
+        query_json["q"] = serde_json::Value::String(q);
+    }
+    if let Some(start_time) = mcp_args.start_time {
+        query_json["start_time"] = serde_json::Value::String(start_time);
+    }
+    if let Some(end_time) = mcp_args.end_time {
+        query_json["end_time"] = serde_json::Value::String(end_time);
+    }
+    if let Some(app_name) = mcp_args.app_name {
+        query_json["app_name"] = serde_json::Value::String(app_name);
+    }
+    if let Some(window_name) = mcp_args.window_name {
+        query_json["window_name"] = serde_json::Value::String(window_name);
+    }
+    if let Some(frame_name) = mcp_args.frame_name {
+        query_json["frame_name"] = serde_json::Value::String(frame_name);
+    }
+    if let Some(min_length) = mcp_args.min_length {
+        query_json["min_length"] = serde_json::Value::Number(min_length.into());
+    }
+    if let Some(max_length) = mcp_args.max_length {
+        query_json["max_length"] = serde_json::Value::Number(max_length.into());
+    }
+    if let Some(speaker_ids) = mcp_args.speaker_ids {
+        query_json["speaker_ids"] = serde_json::Value::String(speaker_ids);
+    }
+    if let Some(focused) = mcp_args.focused {
+        query_json["focused"] = serde_json::Value::Bool(focused);
+    }
+    if let Some(browser_url) = mcp_args.browser_url {
+        query_json["browser_url"] = serde_json::Value::String(browser_url);
+    }
+
+    let query: SearchQuery = serde_json::from_value(query_json).map_err(|e| {
+        ErrorData::invalid_params(format!("failed to convert search params: {}", e), None)
+    })?;
+
+    let result = crate::server::search(Query(query), State(app_state))
         .await
         .map_err(|e| ErrorData::internal_error(format!("search failed: {:?}", e), None))?;
 
@@ -420,16 +527,19 @@ async fn handle_pixel_control_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    // The pixel control expects an "action" object
-    let action_value = arguments.get("action").ok_or_else(|| {
-        ErrorData::invalid_params("missing 'action' field".to_string(), None)
+    let mcp_args: McpPixelControlRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid pixel control params: {}", e), None)
     })?;
 
-    let payload = json!({ "action": action_value });
+    let payload = serde_json::json!({
+        "action": {
+            "type": mcp_args.action.r#type,
+            "data": mcp_args.action.data
+        }
+    });
 
-    // Call the existing handler - note: this handler may not be public, we'll need to check
     let result = reqwest::Client::new()
-        .post(format!("http://localhost:3030/experimental/operator/pixel"))
+        .post("http://localhost:3030/experimental/operator/pixel")
         .json(&payload)
         .send()
         .await
@@ -450,7 +560,21 @@ async fn handle_find_elements_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let payload = Value::Object(arguments);
+    let mcp_args: McpFindElementsRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid find elements params: {}", e), None)
+    })?;
+
+    let payload = serde_json::json!({
+        "selector": {
+            "app_name": mcp_args.selector.app_name,
+            "window_name": mcp_args.selector.window_name,
+            "locator": mcp_args.selector.locator,
+            "use_background_apps": mcp_args.selector.use_background_apps,
+            "activate_app": mcp_args.selector.activate_app,
+        },
+        "max_results": mcp_args.max_results,
+        "max_depth": mcp_args.max_depth,
+    });
 
     let result = reqwest::Client::new()
         .post("http://localhost:3030/experimental/operator/find-elements")
@@ -475,7 +599,19 @@ async fn handle_click_element_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let payload = Value::Object(arguments);
+    let mcp_args: McpClickElementRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid click element params: {}", e), None)
+    })?;
+
+    let payload = serde_json::json!({
+        "selector": {
+            "app_name": mcp_args.selector.app_name,
+            "window_name": mcp_args.selector.window_name,
+            "locator": mcp_args.selector.locator,
+            "use_background_apps": mcp_args.selector.use_background_apps,
+            "activate_app": mcp_args.selector.activate_app,
+        }
+    });
 
     let result = reqwest::Client::new()
         .post("http://localhost:3030/experimental/operator/click")
@@ -499,7 +635,20 @@ async fn handle_fill_element_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let payload = Value::Object(arguments);
+    let mcp_args: McpFillElementRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid fill element params: {}", e), None)
+    })?;
+
+    let payload = serde_json::json!({
+        "selector": {
+            "app_name": mcp_args.selector.app_name,
+            "window_name": mcp_args.selector.window_name,
+            "locator": mcp_args.selector.locator,
+            "use_background_apps": mcp_args.selector.use_background_apps,
+            "activate_app": mcp_args.selector.activate_app,
+        },
+        "text": mcp_args.text
+    });
 
     let result = reqwest::Client::new()
         .post("http://localhost:3030/experimental/operator/type")
@@ -523,7 +672,21 @@ async fn handle_scroll_element_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let payload = Value::Object(arguments);
+    let mcp_args: McpScrollElementRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid scroll element params: {}", e), None)
+    })?;
+
+    let payload = serde_json::json!({
+        "selector": {
+            "app_name": mcp_args.selector.app_name,
+            "window_name": mcp_args.selector.window_name,
+            "locator": mcp_args.selector.locator,
+            "use_background_apps": mcp_args.selector.use_background_apps,
+            "activate_app": mcp_args.selector.activate_app,
+        },
+        "direction": mcp_args.direction,
+        "amount": mcp_args.amount
+    });
 
     let result = reqwest::Client::new()
         .post("http://localhost:3030/experimental/operator/scroll")
@@ -547,7 +710,13 @@ async fn handle_open_application_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let payload = Value::Object(arguments);
+    let mcp_args: McpOpenApplicationRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid open application params: {}", e), None)
+    })?;
+
+    let payload = serde_json::json!({
+        "app_name": mcp_args.app_name
+    });
 
     let result = reqwest::Client::new()
         .post("http://localhost:3030/experimental/operator/open-application")
@@ -573,7 +742,14 @@ async fn handle_open_url_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let payload = Value::Object(arguments);
+    let mcp_args: McpOpenUrlRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
+        ErrorData::invalid_params(format!("invalid open url params: {}", e), None)
+    })?;
+
+    let payload = serde_json::json!({
+        "url": mcp_args.url,
+        "browser": mcp_args.browser
+    });
 
     let result = reqwest::Client::new()
         .post("http://localhost:3030/experimental/operator/open-url")
@@ -592,4 +768,3 @@ async fn handle_open_url_tool(
         response_text
     )), None)]))
 }
-

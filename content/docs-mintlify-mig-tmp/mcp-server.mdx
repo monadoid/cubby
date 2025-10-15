@@ -3,90 +3,62 @@ title: "MCP"
 icon: "server"
 ---
 
-cubby offers robust capabilities for integrating with various MCP clients, allowing users to leverage its features across different platforms. This guide will walk you through the setup and usage of cubby with supported MCP clients.
+cubby offers robust MCP (Model Context Protocol) server capabilities, allowing integration with various AI clients like Claude Desktop and Cursor IDE. The MCP server is built directly into the cubby binary and runs as an HTTP service.
+
+## Architecture
+
+The cubby MCP server:
+- Runs natively in Rust for optimal performance
+- Uses HTTP Streamable transport (compatible with MCP Inspector)
+- Starts automatically with the cubby service
+- Available at `http://localhost:3030/mcp` by default
+- No separate installation or process required
 
 ## Prerequisites
 
-Before setting up the MCP server, ensure you have the following installed:
-
-### 1. Python
-
-Install Python from the [official Python website](https://www.python.org/). Make sure to add Python to your system's PATH during installation.
-
-### 2. uv Package Manager
-
-Install uv using one of these commands based on your operating system:
-
-<Tabs>
-  <Tab title="macOS/Linux">
-    ```bash
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    ```
-  </Tab>
-  <Tab title="Windows">
-    ```powershell
-    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-    ```
-  </Tab>
-</Tabs>
-
-Verify the installation by running:
+Ensure cubby is installed and running:
 
 ```bash
-uv --version
+# Start cubby service
+cargo run
+```
+
+Or if installed as a service:
+
+```bash
+# The MCP server starts automatically with cubby
+cubby
 ```
 
 ## Supported MCP Clients
 
+- [MCP Inspector](#mcp-inspector)
 - [Claude Desktop](#claude-desktop)
 - [Cursor IDE](#cursor-ide)
 
-## Setting Up the MCP Server
+## MCP Inspector
 
-To set up the MCP server, execute the following command in your terminal:
+The MCP Inspector is the recommended tool for testing and debugging the cubby MCP server.
+
+### Testing with MCP Inspector
+
+Once cubby is running on port 3030:
 
 ```bash
-cubby mcp setup
+pnpx @modelcontextprotocol/inspector http://localhost:3030/mcp
 ```
 
-Upon successful setup, you will see the following confirmation:
-
-```
-MCP setup completed successfully
-Directory: C:\Users\divan\.cubby\mcp
-Config file: C:\Users\divan\.cubby\mcp\config.json
-
-To run the MCP server, use this command:
-$ uv --directory C:\Users\divan\.cubby\mcp run cubby-mcp --port 3030
-```
-
-## Configuration
-
-The configuration for the MCP server is stored in `config.json` located in the `.cubby\mcp` directory. Here is an example configuration:
-
-```json
-{
-  "mcpServers": {
-    "cubby": {
-      "args": [
-        "--directory",
-        "C:\\Users\\divan\\.cubby\\mcp",
-        "run",
-        "cubby-mcp",
-        "--port",
-        "3030"
-      ],
-      "command": "uv"
-    }
-  }
-}
-```
+This will open the MCP Inspector interface where you can:
+- View all available tools
+- Test tool calls interactively
+- Inspect request/response data
+- Debug MCP protocol interactions
 
 ## Claude Desktop
 
-cubby integrates with **Claude Desktop**, allowing seamless interaction via MCP. Follow this guide to set it up properly.
+cubby integrates with **Claude Desktop** via the HTTP MCP transport.
 
-### 1. Open the Configuration File
+### 1. Configure Claude Desktop
 
 <Tabs>
   <Tab title="Windows">
@@ -106,7 +78,7 @@ cubby integrates with **Claude Desktop**, allowing seamless interaction via MCP.
     </Tabs>
   </Tab>
   <Tab title="macOS">
-    Open the configuration file using your preferred editor (e.g., VSCode, Cursor, or Vim):
+    Open the configuration file using your preferred editor:
 
     ```bash
     code "~/Library/Application Support/Claude/claude_desktop_config.json"  
@@ -114,41 +86,32 @@ cubby integrates with **Claude Desktop**, allowing seamless interaction via MCP.
   </Tab>
 </Tabs>
 
-### 2. Update the Configuration
+### 2. Add cubby MCP Configuration
 
-Modify the `claude_desktop_config.json` file to include the following configuration:
+Add the following to your `claude_desktop_config.json`:
 
 ```json
 {
     "mcpServers": {
         "cubby": {
-            "command": "uv",
-            "args": [
-                "--directory",
-                "C:\\Users\\divan\\.cubby\\mcp",
-                "run",
-                "cubby-mcp",
-                "--port",
-                "3030"
-            ]
+            "url": "http://localhost:3030/mcp",
+            "transport": "streamable-http"
         }
     }
 }
 ```
 
-> **Note:** Ensure that this configuration matches the generated `config.json` by the [MCP server setup](#setting-up-the-mcp-server).
+> **Note:** Ensure cubby is running on port 3030. You can customize the port using the `-p` flag when starting cubby.
 
 ### 3. Restart Claude Desktop
 
 After making changes to the configuration, restart Claude Desktop to apply the updates.
 
-![Claude Setup Gi](https://media.githubusercontent.com/media/monadoid/cubby/refs/heads/main/content/docs-mintlify-mig-tmp/public/claude-setup.gif)
-
-If the setup is successful, you'll see a **hammer icon** appear in the interface.
+If the setup is successful, you'll see a **hammer icon** appear in the interface, indicating MCP tools are available.
 
 ## Cursor IDE
 
-cubby MCP can be integrated with **Cursor IDE** to make it available across all your projects. Follow these steps to set it up.
+cubby MCP can be integrated with **Cursor IDE** to make it available across all your projects.
 
 ### 1. Open Cursor Settings
 
@@ -159,31 +122,154 @@ cubby MCP can be integrated with **Cursor IDE** to make it available across all 
 ### 2. Add a Global MCP Server
 
 - Click on **"Add New Global MCP Server"**.
-- If the configuration file doesn't exist yet, click **"Create File"** (as shown in Cursor IDE).
-- Paste the configuration from the [Configuration](#configuration) section.
+- If the configuration file doesn't exist yet, click **"Create File"**.
+- Add the following configuration:
+
+```json
+{
+    "mcpServers": {
+        "cubby": {
+            "url": "http://localhost:3030/mcp",
+            "transport": "streamable-http"
+        }
+    }
+}
+```
 
 ### 3. Restart MCP in Cursor
 
 - Navigate back to the **Cursor Settings** tab.
 - Click the **refresh icon** next to MCP servers.
 
-  <Frame>
-    ![Cursor IDE](https://media.githubusercontent.com/media/monadoid/cubby/refs/heads/main/content/docs-mintlify-mig-tmp/public/cursor-setup.gif)
-  </Frame>
-
-That's it\! Now Cursor IDE should recognize and use the cubby MCP server.
+That's it! Now Cursor IDE should recognize and use the cubby MCP server.
 
 - Start by opening a new Composer and enable Agent mode
-- From there onwards you can use this tool
+- From there onwards you can use the cubby tools
 
-![Cursor Mcp Result Pn](/content/docs-mintlify-mig-tmp/public/cursor-mcp-result.png)
+## Available Tools
+
+The cubby MCP server provides the following tools:
+
+### 1. search-content
+Search through cubby recorded content (OCR text, audio transcriptions, UI elements). Find specific content that appeared on your screen or was spoken.
+
+**Parameters:**
+- `q`: Search query string
+- `limit`: Maximum results (default: 10)
+- `offset`: Pagination offset (default: 0)
+- `content_type`: Filter by type ("ocr", "audio", "ui", "all")
+- `start_time`/`end_time`: Time range filters (ISO format UTC)
+- `app_name`/`window_name`: Filter by application or window
+- `include_frames`: Include frame data in results
+- And more...
+
+### 2. pixel-control
+Control mouse and keyboard at the pixel level. Cross-platform tool for typing text, pressing keys, moving mouse, and clicking buttons.
+
+### 3. find-elements (macOS)
+Find UI elements by accessibility role in applications. Useful for identifying interactive elements.
+
+### 4. click-element (macOS)
+Click an element in an application using its id.
+
+### 5. fill-element (macOS)
+Type text into an element in an application.
+
+### 6. scroll-element (macOS)
+Scroll an element in a specific direction.
+
+### 7. open-application
+Open an application by name.
+
+### 8. open-url
+Open a URL in a browser.
+
+## Port Configuration
+
+By default, cubby runs on port 3030. You can customize this:
+
+```bash
+cubby -p 8080  # Run on port 8080
+```
+
+Update your MCP client configurations accordingly if using a non-default port.
+
+## Troubleshooting
+
+### MCP Server Not Responding
+
+1. Ensure cubby is running:
+   ```bash
+   curl http://localhost:3030/health
+   ```
+
+2. Check the MCP endpoint is accessible:
+   ```bash
+   curl http://localhost:3030/mcp
+   ```
+
+3. Check cubby logs for errors
+
+### Claude Desktop Not Showing Tools
+
+1. Verify the configuration file is valid JSON
+2. Ensure the URL matches your cubby port
+3. Restart Claude Desktop completely
+4. Check Claude Desktop logs for MCP-related errors
+
+### Cursor IDE Not Detecting Server
+
+1. Refresh the MCP servers list in Cursor settings
+2. Verify the configuration syntax
+3. Restart Cursor IDE if needed
+
+## Advanced Usage
+
+### Custom Port Configuration
+
+```bash
+# Start cubby on custom port
+cubby -p 9000
+
+# Update MCP config to match
+{
+    "mcpServers": {
+        "cubby": {
+            "url": "http://localhost:9000/mcp",
+            "transport": "streamable-http"
+        }
+    }
+}
+```
+
+### Remote Access
+
+The MCP server can be accessed remotely if cubby is exposed:
+
+```json
+{
+    "mcpServers": {
+        "cubby": {
+            "url": "http://your-server-ip:3030/mcp",
+            "transport": "streamable-http"
+        }
+    }
+}
+```
+
+> **Security Note:** Ensure proper network security when exposing cubby remotely.
 
 ## Mintlify MCP (use our docs in Cursor, Claude, etc.)
+
+Access cubby documentation directly in your AI assistant:
 
 ```shellscript
 npx mint-mcp add monadoid
 ```
 
-## Important Note
+## Additional Resources
 
-For more detailed information, please refer to our [GitHub repository](https://github.com/monadoid/cubby/tree/main/cubby-integrations/cubby-mcp).
+For more information:
+- [MCP Specification](https://modelcontextprotocol.io/)
+- [cubby GitHub Repository](https://github.com/monadoid/cubby)
+- [RMCP (Rust MCP Library)](https://github.com/rkrishn7/rmcp)

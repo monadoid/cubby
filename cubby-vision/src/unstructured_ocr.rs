@@ -186,3 +186,4 @@ pub async fn unstructured_chunking(text: &str) -> Result<Vec<String>> {
         Err(anyhow!("Error: {}", response.status()))
     }
 }
+
