@@ -376,107 +376,109 @@ jobs:
           # Create release - will fail silently if it already exists (meaning macOS binaries were uploaded manually)
           gh release create v${{ env.VERSION }} --title ${{ env.VERSION }} --generate-notes || echo "Release already exists"
 
-  upload-macos-to-r2:
-    runs-on: ubuntu-latest
-    needs: [detect-changes]
-    # Only upload to R2 on releases
-    if: needs.detect-changes.outputs.is_release == 'true'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set version
-        run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION=$(git ls-remote --tags --refs --sort="version:refname" | tail -n1 | sed 's/.*\///' | sed 's/^v//')
-          fi
-          if [[ -z "$VERSION" ]]; then
-            VERSION="0.0.0"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "Set version to: $VERSION"
-
-      - name: Download macOS binaries from GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.PAT }}
-        run: |
-          mkdir -p release-assets
-          cd release-assets
-          
-          # Download macOS binaries from GitHub release
-          echo "Downloading macOS binaries from v${{ env.VERSION }} release..."
-          gh release download v${{ env.VERSION }} --pattern "cubby-${{ env.VERSION }}-*-apple-darwin.tar.gz" || echo "No macOS binaries found in release"
-          
-          ls -lh
-
-      - name: Install Rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
-
-      - name: Configure Rclone for R2
-        run: |
-          mkdir -p ~/.config/rclone
-          cat > ~/.config/rclone/rclone.conf << 'EOF'
-          [r2]
-          type = s3
-          provider = Cloudflare
-          access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
-          secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          endpoint = ${{ secrets.R2_ENDPOINT }}
-          EOF
-
-      - name: Extract and upload macOS binaries to R2
-        run: |
-          shopt -s globstar nullglob
-          mkdir -p binaries-extracted
-          
-          # Process macOS tar.gz files from release-assets
-          for f in release-assets/cubby-*.tar.gz; do
-            if [ -f "$f" ]; then
-              echo "Processing $f"
-              # Extract the tar.gz
-              tar -xzf "$f" -C binaries-extracted
-              
-              # Determine the target from filename
-              # cubby-0.1.3-x86_64-apple-darwin.tar.gz -> x86_64-apple-darwin
-              basename=$(basename "$f" .tar.gz)
-              target=$(echo "$basename" | sed -E 's/cubby-[0-9]+\.[0-9]+\.[0-9]+-//')
-              
-              # Map target triple to installer naming convention
-              case "$target" in
-                x86_64-apple-darwin)
-                  final_name="cubby-darwin-x86_64"
-                  ;;
-                aarch64-apple-darwin)
-                  final_name="cubby-darwin-aarch64"
-                  ;;
-                *)
-                  echo "Unknown macOS target: $target"
-                  continue
-                  ;;
-              esac
-              
-              # Rename and upload the binary to versioned path
-              if [ -f "binaries-extracted/bin/cubby" ]; then
-                versioned_name="${final_name}-${{ env.VERSION }}"
-                mv "binaries-extracted/bin/cubby" "binaries-extracted/$versioned_name"
-                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/${{ env.VERSION }}/"
-                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/${{ env.VERSION }}/ --s3-no-check-bucket --verbose
-                
-                # Also upload to latest/ for backwards compatibility
-                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/latest/$final_name"
-                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
-                rclone moveto r2:cubby-releases/latest/$versioned_name r2:cubby-releases/latest/$final_name --s3-no-check-bucket --verbose
-                
-                rm -f "binaries-extracted/$versioned_name"
-              fi
-              
-              # Clean up extracted files
-              rm -rf binaries-extracted/bin
-            fi
-          done
+  # Commented out - macOS binaries are manually uploaded via drag-and-drop to R2
+  # The justfile prepares binaries in dist/{VERSION}/r2-ready/ for easy upload
+  # upload-macos-to-r2:
+  #   runs-on: ubuntu-latest
+  #   needs: [detect-changes]
+  #   # Only upload to R2 on releases
+  #   if: needs.detect-changes.outputs.is_release == 'true'
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set version
+  #       run: |
+  #         if [[ $GITHUB_REF == refs/tags/* ]]; then
+  #           VERSION=${GITHUB_REF#refs/tags/v}
+  #         else
+  #           VERSION=$(git ls-remote --tags --refs --sort="version:refname" | tail -n1 | sed 's/.*\///' | sed 's/^v//')
+  #         fi
+  #         if [[ -z "$VERSION" ]]; then
+  #           VERSION="0.0.0"
+  #         fi
+  #         echo "VERSION=$VERSION" >> $GITHUB_ENV
+  #         echo "Set version to: $VERSION"
+  #
+  #     - name: Download macOS binaries from GitHub Release
+  #       env:
+  #         GH_TOKEN: ${{ secrets.PAT }}
+  #       run: |
+  #         mkdir -p release-assets
+  #         cd release-assets
+  #         
+  #         # Download macOS binaries from GitHub release
+  #         echo "Downloading macOS binaries from v${{ env.VERSION }} release..."
+  #         gh release download v${{ env.VERSION }} --pattern "cubby-${{ env.VERSION }}-*-apple-darwin.tar.gz" || echo "No macOS binaries found in release"
+  #         
+  #         ls -lh
+  #
+  #     - name: Install Rclone
+  #       run: |
+  #         curl https://rclone.org/install.sh | sudo bash
+  #
+  #     - name: Configure Rclone for R2
+  #       run: |
+  #         mkdir -p ~/.config/rclone
+  #         cat > ~/.config/rclone/rclone.conf << 'EOF'
+  #         [r2]
+  #         type = s3
+  #         provider = Cloudflare
+  #         access_key_id = ${{ secrets.R2_ACCESS_KEY_ID }}
+  #         secret_access_key = ${{ secrets.R2_SECRET_ACCESS_KEY }}
+  #         endpoint = ${{ secrets.R2_ENDPOINT }}
+  #         EOF
+  #
+  #     - name: Extract and upload macOS binaries to R2
+  #       run: |
+  #         shopt -s globstar nullglob
+  #         mkdir -p binaries-extracted
+  #         
+  #         # Process macOS tar.gz files from release-assets
+  #         for f in release-assets/cubby-*.tar.gz; do
+  #           if [ -f "$f" ]; then
+  #             echo "Processing $f"
+  #             # Extract the tar.gz
+  #             tar -xzf "$f" -C binaries-extracted
+  #             
+  #             # Determine the target from filename
+  #             # cubby-0.1.3-x86_64-apple-darwin.tar.gz -> x86_64-apple-darwin
+  #             basename=$(basename "$f" .tar.gz)
+  #             target=$(echo "$basename" | sed -E 's/cubby-[0-9]+\.[0-9]+\.[0-9]+-//')
+  #             
+  #             # Map target triple to installer naming convention
+  #             case "$target" in
+  #               x86_64-apple-darwin)
+  #                 final_name="cubby-darwin-x86_64"
+  #                 ;;
+  #               aarch64-apple-darwin)
+  #                 final_name="cubby-darwin-aarch64"
+  #                 ;;
+  #               *)
+  #                 echo "Unknown macOS target: $target"
+  #                 continue
+  #                 ;;
+  #             esac
+  #             
+  #             # Rename and upload the binary to versioned path
+  #             if [ -f "binaries-extracted/bin/cubby" ]; then
+  #               versioned_name="${final_name}-${{ env.VERSION }}"
+  #               mv "binaries-extracted/bin/cubby" "binaries-extracted/$versioned_name"
+  #               echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/${{ env.VERSION }}/"
+  #               rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/${{ env.VERSION }}/ --s3-no-check-bucket --verbose
+  #               
+  #               # Also upload to latest/ for backwards compatibility
+  #               echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/latest/$final_name"
+  #               rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
+  #               rclone moveto r2:cubby-releases/latest/$versioned_name r2:cubby-releases/latest/$final_name --s3-no-check-bucket --verbose
+  #               
+  #               rm -f "binaries-extracted/$versioned_name"
+  #             fi
+  #             
+  #             # Clean up extracted files
+  #             rm -rf binaries-extracted/bin
+  #           fi
+  #         done
 
   upload-linux-to-r2:
     runs-on: ubuntu-latest
@@ -552,19 +554,12 @@ jobs:
                   ;;
               esac
               
-              # Rename and upload the binary to versioned path
+              # Rename and upload the binary to latest/
               if [ -f "binaries-extracted/bin/cubby" ]; then
-                versioned_name="${final_name}-${{ env.VERSION }}"
-                mv "binaries-extracted/bin/cubby" "binaries-extracted/$versioned_name"
-                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/${{ env.VERSION }}/"
-                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/${{ env.VERSION }}/ --s3-no-check-bucket --verbose
-                
-                # Also upload to latest/ for backwards compatibility
-                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/latest/$final_name"
-                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
-                rclone moveto r2:cubby-releases/latest/$versioned_name r2:cubby-releases/latest/$final_name --s3-no-check-bucket --verbose
-                
-                rm -f "binaries-extracted/$versioned_name"
+                mv "binaries-extracted/bin/cubby" "binaries-extracted/$final_name"
+                echo "Uploading binaries-extracted/$final_name to r2:cubby-releases/latest/"
+                rclone copy "binaries-extracted/$final_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
+                rm -f "binaries-extracted/$final_name"
               fi
               
               # Clean up extracted files

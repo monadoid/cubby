@@ -134,14 +134,22 @@ build-x86_64: ensure-rust-targets
 	export PKG_CONFIG_PATH="/opt/homebrew/opt/ffmpeg/lib/pkgconfig:/usr/local/opt/ffmpeg/lib/pkgconfig:${PKG_CONFIG_PATH:-}" && \
 	cargo build --release --features metal --target x86_64-apple-darwin
 
-# Package both builds into dist/, produce checksums
+# Package both builds into dist/, produce checksums, and prepare for R2 upload
 package:
-	mkdir -p "dist/{{VERSION}}/aarch64-apple-darwin/bin" "dist/{{VERSION}}/x86_64-apple-darwin/bin"
+	mkdir -p "dist/{{VERSION}}/aarch64-apple-darwin/bin" "dist/{{VERSION}}/x86_64-apple-darwin/bin" "dist/{{VERSION}}/r2-ready"
 	cp "target/aarch64-apple-darwin/release/cubby" "dist/{{VERSION}}/aarch64-apple-darwin/bin/"
 	cp "target/x86_64-apple-darwin/release/cubby" "dist/{{VERSION}}/x86_64-apple-darwin/bin/"
 	( cd "dist/{{VERSION}}/aarch64-apple-darwin" && tar -czf "../../cubby-{{VERSION}}-aarch64-apple-darwin.tar.gz" . )
 	( cd "dist/{{VERSION}}/x86_64-apple-darwin" && tar -czf "../../cubby-{{VERSION}}-x86_64-apple-darwin.tar.gz" . )
 	( cd dist && shasum -a 256 cubby-{{VERSION}}-*.tar.gz | tee "cubby-{{VERSION}}-SHA256SUMS.txt" )
+	@echo ""
+	@echo "preparing binaries for r2 upload..."
+	cp "target/aarch64-apple-darwin/release/cubby" "dist/{{VERSION}}/r2-ready/cubby-darwin-aarch64"
+	cp "target/x86_64-apple-darwin/release/cubby" "dist/{{VERSION}}/r2-ready/cubby-darwin-x86_64"
+	@echo ""
+	@echo "📦 r2-ready binaries are in: dist/{{VERSION}}/r2-ready/"
+	@echo "   - cubby-darwin-aarch64"
+	@echo "   - cubby-darwin-x86_64"
 
 
 # ----- Top-level: what you asked for ----------------------------------------
@@ -162,5 +170,12 @@ release-tag NEW_VERSION:
 	gh release create v{{NEW_VERSION}} --title {{NEW_VERSION}} --generate-notes \
 		dist/cubby-{{NEW_VERSION}}-aarch64-apple-darwin.tar.gz \
 		dist/cubby-{{NEW_VERSION}}-x86_64-apple-darwin.tar.gz
-	@echo "✅ release v{{NEW_VERSION}} complete! workflow will upload to r2 automatically"
+	@echo ""
+	@echo "✅ release v{{NEW_VERSION}} complete!"
+	@echo ""
+	@echo "📤 next steps:"
+	@echo "   1. drag and drop these files to r2://cubby-releases/latest/"
+	@echo "      • dist/{{NEW_VERSION}}/r2-ready/cubby-darwin-aarch64"
+	@echo "      • dist/{{NEW_VERSION}}/r2-ready/cubby-darwin-x86_64"
+	@echo "   2. linux binaries will be uploaded automatically by github actions"
 
