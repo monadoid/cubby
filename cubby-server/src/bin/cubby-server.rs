@@ -808,7 +808,7 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         use cliclack::log;
 
         #[cfg(debug_assertions)]
-        println!("✅ Cloudflared tunnel service installed\n");
+        println!("tunnel service installed\n");
 
         // Install cubby service
         #[cfg(debug_assertions)]
@@ -836,10 +836,6 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
     #[cfg(debug_assertions)]
     println!("⏳ Waiting for service to become healthy...");
 
-    let service_manager_clone = service_manager.clone();
-    tokio::task::spawn_blocking(move || service_manager_clone.wait_for_health())
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn health check task: {}", e))??;
 
     use cliclack::log;
     let home_dir = dirs::home_dir()
@@ -848,7 +844,7 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         .to_string();
     log::success("cubby is running in the background!")?;
     log::success(&format!("Logs: {}/.cubby/cubby-*.log", home_dir))?;
-    log::success("Stop service: cubby --uninstall\n")?;
+    log::success("To fully uninstall: cubby --uninstall\n")?;
     Ok(())
 }
 
@@ -857,11 +853,9 @@ async fn handle_uninstall() -> anyhow::Result<()> {
     use cubby_server::cloudflared_manager::CloudflaredManager;
     use cubby_server::service_manager::cubbyServiceManager;
 
-    #[cfg(not(debug_assertions))]
-    cliclack::intro("Uninstalling cubby-sp...")?;
 
     #[cfg(debug_assertions)]
-    println!("🛑 Stopping and uninstalling cubby-sp service...");
+    cliclack::log::info("Stopping and uninstalling cubby service...")?;
 
     // Try to uninstall cloudflared service if it exists
     if let Some(cloudflared_path) = tokio::task::spawn_blocking(|| ensure_cloudflared())
@@ -894,14 +888,8 @@ async fn handle_uninstall() -> anyhow::Result<()> {
                     log::warning(format!("Failed to uninstall cloudflared service: {}", e))?;
                 }
             } else {
-                #[cfg(debug_assertions)]
-                println!("✅ Cloudflared tunnel service uninstalled");
-
-                #[cfg(not(debug_assertions))]
-                {
-                    use cliclack::log;
-                    log::success("Cloudflared tunnel service uninstalled")?;
-                }
+                use cliclack::log;
+                log::success("tunnel service uninstalled")?;
             }
         }
 
@@ -923,14 +911,7 @@ async fn handle_uninstall() -> anyhow::Result<()> {
 
     // Check if service exists first
     if !service_manager.is_installed() {
-        #[cfg(not(debug_assertions))]
-        {
-            use cliclack::log;
-            log::info("No cubby service found to uninstall")?;
-        }
-
-        #[cfg(debug_assertions)]
-        println!("ℹ️  No cubby service found to uninstall");
+        cliclack::outro("No cubby service found to uninstall")?;
         return Ok(());
     }
 

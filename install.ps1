@@ -2,7 +2,7 @@ Write-Host "installing cubby..."
 
 try {
     # Get latest version
-    $releases = Invoke-RestMethod "https://api.github.com/repos/monadoid/cubby-sp/releases"
+    $releases = Invoke-RestMethod "https://api.github.com/repos/monadoid/cubby/releases"
     $latestRelease = $releases | Where-Object { -not $_.prerelease } | Select-Object -First 1
     if (-not $latestRelease) {
         throw "no releases found"

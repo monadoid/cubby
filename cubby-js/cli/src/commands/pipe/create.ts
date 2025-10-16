@@ -41,7 +41,7 @@ async function downloadAndExtractSubdir(subdir: string, destPath: string) {
 
     // Use GitHub's API to download just the specific subdirectory as a tarball
     const repoOwner = "monadoid";
-    const repoName = "cubby-sp";
+    const repoName = "cubby";
     const branch = "main"; // or whatever branch you need
     const tarballUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/tarball/${branch}`;
 

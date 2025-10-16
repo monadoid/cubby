@@ -41,7 +41,7 @@ get_os_arch() {
 }
 
 echo "fetching latest version from github..."
-LATEST_RELEASE=$(curl -s https://api.github.com/repos/monadoid/cubby-sp/releases/latest)
+LATEST_RELEASE=$(curl -s https://api.github.com/repos/monadoid/cubby/releases/latest)
 # Extract version using grep and sed for cross-platform compatibility
 VERSION=$(echo "$LATEST_RELEASE" | grep -o '"tag_name": *"v[^"]*"' | sed 's/.*"v\([^"]*\)".*/\1/')
 if [ -z "$VERSION" ]; then
@@ -60,7 +60,7 @@ os=$(echo "$OS_ARCH" | cut -d' ' -f1)
 arch=$(echo "$OS_ARCH" | cut -d' ' -f2)
 
 FILENAME="cubby-${VERSION}-${arch}-${os}.tar.gz"
-URL="https://github.com/monadoid/cubby-sp/releases/download/v${VERSION}/${FILENAME}"
+URL="https://github.com/monadoid/cubby/releases/download/v${VERSION}/${FILENAME}"
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR" || exit 1

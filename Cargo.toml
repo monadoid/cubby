@@ -13,7 +13,7 @@ resolver = "2"
 version = "0.2.75"
 authors = ["louis030195 <hi@louis030195.com>"]
 description = ""
-repository = "https://github.com/monadoid/cubby-sp"
+repository = "https://github.com/monadoid/cubby"
 license = "MIT OR Apache-2.0"
 edition = "2021"
 

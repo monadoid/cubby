@@ -28,7 +28,7 @@ before you begin:
 
 3. **clone the repository**:
    ```bash
-   git clone https://github.com/monadoid/cubby-sp
+   git clone https://github.com/monadoid/cubby
    cd cubby
    ```
 
@@ -80,7 +80,7 @@ before you begin:
    ```
 5. **clone the project**:
    ```powershell
-      git clone https://github.com/monadoid/cubby-sp.git
+      git clone https://github.com/monadoid/cubby.git
       cd cubby
    ```
 6. **setup Intel OpenMP DLLs**:
@@ -145,7 +145,7 @@ before you begin:
 
 3. **clone and build**:
    ```bash
-   git clone https://github.com/monadoid/cubby-sp
+   git clone https://github.com/monadoid/cubby
    cd cubby
    cargo build --release
    ```
@@ -309,7 +309,7 @@ then open the file in `target/release/instruments` using xcode -> open developer
 cargo bench
 ```
 
-[check benchmark visuals](https://monadoid.github.io/cubby-sp/dev/bench/)
+[check benchmark visuals](https://monadoid.github.io/cubby/dev/bench/)
 
 ### creating new migrations
 

@@ -62,6 +62,7 @@ async fn run_authentication_flow() -> Result<AuthResult> {
     let signup_response = client.sign_up(email, pw).await?;
     cliclack::log::success("Account created!")?;
 
+    cliclack::log::step("Enrolling device...")?;
     let enroll_response = client.enroll_device(&signup_response.session_jwt).await?;
 
     cliclack::log::success("Device enrolled successfully!")?;

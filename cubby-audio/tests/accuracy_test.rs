@@ -40,7 +40,7 @@ async fn test_transcription_accuracy() {
         ),
         (
             "test_data/accuracy3.wav",
-            r#"again, cubby allows you to get meeting summaries, locally, without leaking data to openai, with any apps, like whatsapp, meet, zoom, etc. and it's open source at github.com/monadoid/cubby-sp"#,
+            r#"again, cubby allows you to get meeting summaries, locally, without leaking data to openai, with any apps, like whatsapp, meet, zoom, etc. and it's open source at github.com/monadoid/cubby"#,
         ),
         (
             "test_data/accuracy4.wav",

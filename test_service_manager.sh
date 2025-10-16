@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Service Manager Integration Test Script
-# Tests the cubby-sp service manager functionality
+# Tests the cubby service manager functionality
 
 set -e  # Exit on any error
 
@@ -573,7 +573,7 @@ main() {
     
     # Check if we're in the right directory
     if [[ ! -f "Cargo.toml" ]] || [[ ! -d "cubby-server" ]]; then
-        log_error "Please run this script from the cubby-sp root directory"
+        log_error "Please run this script from the cubby root directory"
         exit 1
     fi
     

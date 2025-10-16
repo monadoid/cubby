@@ -107,32 +107,6 @@ impl cubbyServiceManager {
         Ok(())
     }
 
-    pub fn wait_for_health(&self) -> Result<()> {
-        let start = Instant::now();
-        let mut delay = Duration::from_millis(200);
-        let health_url = self.health_url();
-
-        loop {
-            if start.elapsed() > self.health_timeout {
-                anyhow::bail!("Timed out waiting for health at {}", health_url);
-            }
-
-            match reqwest::blocking::get(&health_url) {
-                Ok(resp) if resp.status() == StatusCode::OK => {
-                    return Ok(());
-                }
-                _ => {
-                    thread::sleep(delay);
-                    // simple linear-ish backoff capped at 1s
-                    delay = std::cmp::min(
-                        delay + Duration::from_millis(100),
-                        Duration::from_millis(1000),
-                    );
-                }
-            }
-        }
-    }
-
     pub fn stop_and_uninstall(&self) -> Result<()> {
         let mut manager = <dyn ServiceManager>::native()?;
         manager.set_level(ServiceLevel::User)?;
