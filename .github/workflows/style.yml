@@ -1,6 +1,6 @@
 # name: Code Quality & Optimization
 
-# on: [push]
+on: [workflow_dispatch]
 
 env:
   CARGO_TERM_COLOR: always
