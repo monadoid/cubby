@@ -583,7 +583,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-cubby-installer:
-    needs: upload-to-r2
+    needs: detect-changes
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
