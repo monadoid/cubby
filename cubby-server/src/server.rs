@@ -23,12 +23,12 @@ use tokio_util::io::ReaderStream;
 
 use tokio::fs::File;
 
+use cubby_events::{send_event, subscribe_to_all_events, Event as cubbyEvent};
 use futures::{
     future::{try_join, try_join_all},
     SinkExt, StreamExt,
 };
 use image::ImageFormat::{self};
-use cubby_events::{send_event, subscribe_to_all_events, Event as cubbyEvent};
 
 use crate::{
     embedding::embedding_endpoint::create_embeddings,
@@ -978,7 +978,10 @@ impl SCServer {
             .route("/ws/health", get(ws_health_handler))
             .route("/frames/export", get(handle_video_export_ws))
             // MCP server endpoint
-            .nest_service("/mcp", crate::mcp::server::create_mcp_service(app_state.clone()))
+            .nest_service(
+                "/mcp",
+                crate::mcp::server::create_mcp_service(app_state.clone()),
+            )
             .with_state(app_state)
             .layer(cors)
             .layer(TraceLayer::new_for_http().make_span_with(DefaultMakeSpan::default()))

@@ -1,12 +1,12 @@
 use crate::VideoCapture;
 use anyhow::Result;
-use futures::future::join_all;
 use cubby_core::pii_removal::remove_pii;
 use cubby_core::Language;
 use cubby_db::{DatabaseManager, Speaker};
 use cubby_events::{poll_meetings_events, send_event};
 use cubby_vision::core::WindowOcr;
 use cubby_vision::OcrEngine;
+use futures::future::join_all;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Handle;
@@ -33,7 +33,7 @@ pub async fn start_continuous_recording(
         info!("no monitors to record (vision disabled or no permission)");
         return Ok(());
     }
-    
+
     info!("Starting video recording for monitors {:?}", monitor_ids);
     let video_tasks = if !vision_disabled {
         monitor_ids

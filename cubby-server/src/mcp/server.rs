@@ -33,9 +33,7 @@ impl ServerHandler for CubbyMcpServer {
         Ok(InitializeResult {
             protocol_version: ProtocolVersion::default(),
             capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability {
-                    list_changed: None,
-                }),
+                tools: Some(ToolsCapability { list_changed: None }),
                 ..Default::default()
             },
             server_info: Implementation {
@@ -75,27 +73,21 @@ impl ServerHandler for CubbyMcpServer {
         _ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let arguments = params.arguments.unwrap_or_default();
-        
+
         match params.name.as_ref() {
             "search-content" => handle_search_tool(self.state.clone(), arguments).await,
-            "pixel-control" => {
-                handle_pixel_control_tool(self.state.clone(), arguments).await
-            }
-            "find-elements" => {
-                handle_find_elements_tool(self.state.clone(), arguments).await
-            }
-            "click-element" => {
-                handle_click_element_tool(self.state.clone(), arguments).await
-            }
+            "pixel-control" => handle_pixel_control_tool(self.state.clone(), arguments).await,
+            "find-elements" => handle_find_elements_tool(self.state.clone(), arguments).await,
+            "click-element" => handle_click_element_tool(self.state.clone(), arguments).await,
             "fill-element" => handle_fill_element_tool(self.state.clone(), arguments).await,
-            "scroll-element" => {
-                handle_scroll_element_tool(self.state.clone(), arguments).await
-            }
-            "open-application" => {
-                handle_open_application_tool(self.state.clone(), arguments).await
-            }
+            "scroll-element" => handle_scroll_element_tool(self.state.clone(), arguments).await,
+            "open-application" => handle_open_application_tool(self.state.clone(), arguments).await,
             "open-url" => handle_open_url_tool(self.state.clone(), arguments).await,
-            _ => Err(ErrorData::new(ErrorCode::METHOD_NOT_FOUND, format!("unknown tool: {}", params.name), None)),
+            _ => Err(ErrorData::new(
+                ErrorCode::METHOD_NOT_FOUND,
+                format!("unknown tool: {}", params.name),
+                None,
+            )),
         }
     }
 }
@@ -258,10 +250,13 @@ fn create_search_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "search-content".into(),
         title: None,
@@ -280,10 +275,13 @@ fn create_pixel_control_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "pixel-control".into(),
         title: None,
@@ -302,10 +300,13 @@ fn create_find_elements_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "find-elements".into(),
         title: None,
@@ -324,10 +325,13 @@ fn create_click_element_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "click-element".into(),
         title: None,
@@ -346,10 +350,13 @@ fn create_fill_element_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "fill-element".into(),
         title: None,
@@ -368,10 +375,13 @@ fn create_scroll_element_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "scroll-element".into(),
         title: None,
@@ -390,10 +400,13 @@ fn create_open_application_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "open-application".into(),
         title: None,
@@ -412,10 +425,13 @@ fn create_open_url_tool() -> Tool {
         .as_object()
         .unwrap()
         .clone();
-    
+
     // Ensure type is set to "object" as a string (MCP requirement)
-    schema_obj.insert("type".to_string(), serde_json::Value::String("object".to_string()));
-    
+    schema_obj.insert(
+        "type".to_string(),
+        serde_json::Value::String("object".to_string()),
+    );
+
     Tool {
         name: "open-url".into(),
         title: None,
@@ -434,9 +450,8 @@ async fn handle_search_tool(
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
     // Deserialize MCP request with integer types
-    let mcp_args: McpSearchRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid search params: {}", e), None)
-    })?;
+    let mcp_args: McpSearchRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| ErrorData::invalid_params(format!("invalid search params: {}", e), None))?;
 
     // Convert to internal SearchQuery format by building a JSON object with string values
     // that will be properly deserialized by SearchQuery's deserialize_number_from_string
@@ -490,9 +505,10 @@ async fn handle_search_tool(
         .map_err(|e| ErrorData::internal_error(format!("search failed: {:?}", e), None))?;
 
     let response_text = format_search_results(result.0);
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(
-        response_text,
-    ), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(response_text),
+        None,
+    )]))
 }
 
 fn format_search_results(response: SearchResponse) -> String {
@@ -503,7 +519,10 @@ fn format_search_results(response: SearchResponse) -> String {
     let mut output = format!("found {} results:\n\n", response.data.len());
     for (i, item) in response.data.iter().take(10).enumerate() {
         output.push_str(&format!("result {}:\n", i + 1));
-        output.push_str(&format!("  {}\n", serde_json::to_string_pretty(item).unwrap_or_else(|_| format!("{:?}", item))));
+        output.push_str(&format!(
+            "  {}\n",
+            serde_json::to_string_pretty(item).unwrap_or_else(|_| format!("{:?}", item))
+        ));
         output.push_str("---\n");
     }
     output
@@ -513,9 +532,10 @@ async fn handle_pixel_control_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpPixelControlRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid pixel control params: {}", e), None)
-    })?;
+    let mcp_args: McpPixelControlRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| {
+            ErrorData::invalid_params(format!("invalid pixel control params: {}", e), None)
+        })?;
 
     let payload = serde_json::json!({
         "action": {
@@ -536,19 +556,20 @@ async fn handle_pixel_control_tool(
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(format!(
-        "pixel control executed: {}",
-        response_text
-    )), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(format!("pixel control executed: {}", response_text)),
+        None,
+    )]))
 }
 
 async fn handle_find_elements_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpFindElementsRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid find elements params: {}", e), None)
-    })?;
+    let mcp_args: McpFindElementsRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| {
+            ErrorData::invalid_params(format!("invalid find elements params: {}", e), None)
+        })?;
 
     let payload = serde_json::json!({
         "selector": {
@@ -567,27 +588,27 @@ async fn handle_find_elements_tool(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| {
-            ErrorData::internal_error(format!("find elements failed: {}", e), None)
-        })?;
+        .map_err(|e| ErrorData::internal_error(format!("find elements failed: {}", e), None))?;
 
     let response_text = result
         .text()
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(
-        response_text,
-    ), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(response_text),
+        None,
+    )]))
 }
 
 async fn handle_click_element_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpClickElementRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid click element params: {}", e), None)
-    })?;
+    let mcp_args: McpClickElementRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| {
+            ErrorData::invalid_params(format!("invalid click element params: {}", e), None)
+        })?;
 
     let payload = serde_json::json!({
         "selector": {
@@ -611,19 +632,20 @@ async fn handle_click_element_tool(
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(format!(
-        "clicked element: {}",
-        response_text
-    )), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(format!("clicked element: {}", response_text)),
+        None,
+    )]))
 }
 
 async fn handle_fill_element_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpFillElementRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid fill element params: {}", e), None)
-    })?;
+    let mcp_args: McpFillElementRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| {
+            ErrorData::invalid_params(format!("invalid fill element params: {}", e), None)
+        })?;
 
     let payload = serde_json::json!({
         "selector": {
@@ -648,19 +670,20 @@ async fn handle_fill_element_tool(
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(format!(
-        "filled element: {}",
-        response_text
-    )), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(format!("filled element: {}", response_text)),
+        None,
+    )]))
 }
 
 async fn handle_scroll_element_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpScrollElementRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid scroll element params: {}", e), None)
-    })?;
+    let mcp_args: McpScrollElementRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| {
+            ErrorData::invalid_params(format!("invalid scroll element params: {}", e), None)
+        })?;
 
     let payload = serde_json::json!({
         "selector": {
@@ -686,19 +709,20 @@ async fn handle_scroll_element_tool(
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(format!(
-        "scrolled element: {}",
-        response_text
-    )), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(format!("scrolled element: {}", response_text)),
+        None,
+    )]))
 }
 
 async fn handle_open_application_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpOpenApplicationRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid open application params: {}", e), None)
-    })?;
+    let mcp_args: McpOpenApplicationRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| {
+            ErrorData::invalid_params(format!("invalid open application params: {}", e), None)
+        })?;
 
     let payload = serde_json::json!({
         "app_name": mcp_args.app_name
@@ -709,28 +733,25 @@ async fn handle_open_application_tool(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| {
-            ErrorData::internal_error(format!("open application failed: {}", e), None)
-        })?;
+        .map_err(|e| ErrorData::internal_error(format!("open application failed: {}", e), None))?;
 
     let response_text = result
         .text()
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(format!(
-        "opened application: {}",
-        response_text
-    )), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(format!("opened application: {}", response_text)),
+        None,
+    )]))
 }
 
 async fn handle_open_url_tool(
     _state: Arc<AppState>,
     arguments: JsonObject,
 ) -> Result<CallToolResult, ErrorData> {
-    let mcp_args: McpOpenUrlRequest = serde_json::from_value(Value::Object(arguments)).map_err(|e| {
-        ErrorData::invalid_params(format!("invalid open url params: {}", e), None)
-    })?;
+    let mcp_args: McpOpenUrlRequest = serde_json::from_value(Value::Object(arguments))
+        .map_err(|e| ErrorData::invalid_params(format!("invalid open url params: {}", e), None))?;
 
     let payload = serde_json::json!({
         "url": mcp_args.url,
@@ -749,17 +770,17 @@ async fn handle_open_url_tool(
         .await
         .map_err(|e| ErrorData::internal_error(format!("failed to read response: {}", e), None))?;
 
-    Ok(CallToolResult::success(vec![Annotated::new(RawContent::text(format!(
-        "opened url: {}",
-        response_text
-    )), None)]))
+    Ok(CallToolResult::success(vec![Annotated::new(
+        RawContent::text(format!("opened url: {}", response_text)),
+        None,
+    )]))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-    
+
     /// verify that optional fields in our tool schemas follow MCP spec
     /// optional fields should have "type": ["string", "null"] (or ["integer", "null"], etc.)
     /// they should NOT have "default": null which causes MCP Inspector to lock them
@@ -770,7 +791,7 @@ mod tests {
         let properties = schema_value
             .get("properties")
             .expect("schema should have properties");
-        
+
         // test cases: (field_name, expected_type_array)
         let optional_string_fields = vec![
             "q",
@@ -783,21 +804,17 @@ mod tests {
             "speaker_ids",
             "browser_url",
         ];
-        
-        let optional_integer_fields = vec![
-            "min_length",
-            "max_length",
-        ];
-        
-        let optional_boolean_fields = vec![
-            "focused",
-        ];
-        
+
+        let optional_integer_fields = vec!["min_length", "max_length"];
+
+        let optional_boolean_fields = vec!["focused"];
+
         // verify optional string fields
         for field_name in optional_string_fields {
-            let field = properties.get(field_name)
+            let field = properties
+                .get(field_name)
                 .unwrap_or_else(|| panic!("field '{}' not found in schema", field_name));
-            
+
             // should NOT have "default": null
             assert!(
                 field.get("default").is_none(),
@@ -805,9 +822,10 @@ mod tests {
                 field_name,
                 field.get("default")
             );
-            
+
             // should have "type": ["string", "null"]
-            let field_type = field.get("type")
+            let field_type = field
+                .get("type")
                 .expect(&format!("field '{}' should have 'type'", field_name));
             let expected_type = json!(["string", "null"]);
             assert_eq!(
@@ -816,12 +834,13 @@ mod tests {
                 field_name, field_type
             );
         }
-        
+
         // verify optional integer fields
         for field_name in optional_integer_fields {
-            let field = properties.get(field_name)
+            let field = properties
+                .get(field_name)
                 .unwrap_or_else(|| panic!("field '{}' not found in schema", field_name));
-            
+
             // should NOT have "default": null
             assert!(
                 field.get("default").is_none(),
@@ -829,9 +848,10 @@ mod tests {
                 field_name,
                 field.get("default")
             );
-            
+
             // should have "type": ["integer", "null"]
-            let field_type = field.get("type")
+            let field_type = field
+                .get("type")
                 .expect(&format!("field '{}' should have 'type'", field_name));
             let expected_type = json!(["integer", "null"]);
             assert_eq!(
@@ -840,12 +860,13 @@ mod tests {
                 field_name, field_type
             );
         }
-        
+
         // verify optional boolean fields
         for field_name in optional_boolean_fields {
-            let field = properties.get(field_name)
+            let field = properties
+                .get(field_name)
                 .unwrap_or_else(|| panic!("field '{}' not found in schema", field_name));
-            
+
             // should NOT have "default": null
             assert!(
                 field.get("default").is_none(),
@@ -853,9 +874,10 @@ mod tests {
                 field_name,
                 field.get("default")
             );
-            
+
             // should have "type": ["boolean", "null"]
-            let field_type = field.get("type")
+            let field_type = field
+                .get("type")
                 .expect(&format!("field '{}' should have 'type'", field_name));
             let expected_type = json!(["boolean", "null"]);
             assert_eq!(
@@ -864,21 +886,47 @@ mod tests {
                 field_name, field_type
             );
         }
-        
+
         // verify required fields with defaults work correctly
         let limit = properties.get("limit").expect("limit should exist");
-        assert_eq!(limit.get("default"), Some(&json!(10)), "limit should have default: 10");
-        assert_eq!(limit.get("type"), Some(&json!("integer")), "limit should have type: integer");
-        
+        assert_eq!(
+            limit.get("default"),
+            Some(&json!(10)),
+            "limit should have default: 10"
+        );
+        assert_eq!(
+            limit.get("type"),
+            Some(&json!("integer")),
+            "limit should have type: integer"
+        );
+
         let offset = properties.get("offset").expect("offset should exist");
-        assert_eq!(offset.get("default"), Some(&json!(0)), "offset should have default: 0");
-        assert_eq!(offset.get("type"), Some(&json!("integer")), "offset should have type: integer");
-        
-        let include_frames = properties.get("include_frames").expect("include_frames should exist");
-        assert_eq!(include_frames.get("default"), Some(&json!(false)), "include_frames should have default: false");
-        assert_eq!(include_frames.get("type"), Some(&json!("boolean")), "include_frames should have type: boolean");
+        assert_eq!(
+            offset.get("default"),
+            Some(&json!(0)),
+            "offset should have default: 0"
+        );
+        assert_eq!(
+            offset.get("type"),
+            Some(&json!("integer")),
+            "offset should have type: integer"
+        );
+
+        let include_frames = properties
+            .get("include_frames")
+            .expect("include_frames should exist");
+        assert_eq!(
+            include_frames.get("default"),
+            Some(&json!(false)),
+            "include_frames should have default: false"
+        );
+        assert_eq!(
+            include_frames.get("type"),
+            Some(&json!("boolean")),
+            "include_frames should have type: boolean"
+        );
     }
-    
+
     /// test that other tool schemas also follow MCP spec for optional fields
     #[test]
     fn test_other_tools_mcp_compliance() {
@@ -888,8 +936,10 @@ mod tests {
         let selector_props = selector_value
             .get("properties")
             .expect("McpSelector should have properties");
-        
-        let window_name = selector_props.get("window_name").expect("window_name should exist");
+
+        let window_name = selector_props
+            .get("window_name")
+            .expect("window_name should exist");
         assert!(
             window_name.get("default").is_none(),
             "McpSelector.window_name should NOT have 'default': null"
@@ -899,15 +949,17 @@ mod tests {
             Some(&json!(["string", "null"])),
             "McpSelector.window_name should have type [\"string\", \"null\"]"
         );
-        
+
         // test McpFindElementsRequest
         let find_elements_schema = schema_for!(McpFindElementsRequest);
         let find_elements_value = serde_json::to_value(&find_elements_schema.schema).unwrap();
         let find_elements_props = find_elements_value
             .get("properties")
             .expect("McpFindElementsRequest should have properties");
-        
-        let max_depth = find_elements_props.get("max_depth").expect("max_depth should exist");
+
+        let max_depth = find_elements_props
+            .get("max_depth")
+            .expect("max_depth should exist");
         assert!(
             max_depth.get("default").is_none(),
             "McpFindElementsRequest.max_depth should NOT have 'default': null"
@@ -917,14 +969,14 @@ mod tests {
             Some(&json!(["integer", "null"])),
             "McpFindElementsRequest.max_depth should have type [\"integer\", \"null\"]"
         );
-        
+
         // test McpOpenUrlRequest
         let open_url_schema = schema_for!(McpOpenUrlRequest);
         let open_url_value = serde_json::to_value(&open_url_schema.schema).unwrap();
         let open_url_props = open_url_value
             .get("properties")
             .expect("McpOpenUrlRequest should have properties");
-        
+
         let browser = open_url_props.get("browser").expect("browser should exist");
         assert!(
             browser.get("default").is_none(),
@@ -937,4 +989,3 @@ mod tests {
         );
     }
 }
-

@@ -54,13 +54,7 @@ pub async fn watch_pid(pid: u32) -> bool {
                 .expect("failed to check pid");
 
             let app_output = Command::new("tasklist")
-                .args(&[
-                    "/FI",
-                    "IMAGENAME eq cubby-app.exe",
-                    "/NH",
-                    "/FO",
-                    "CSV",
-                ])
+                .args(&["/FI", "IMAGENAME eq cubby-app.exe", "/NH", "/FO", "CSV"])
                 .output()
                 .expect("failed to check app name");
 

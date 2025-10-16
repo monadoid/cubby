@@ -147,8 +147,12 @@ fn detect_platform() -> Result<(Os, Arch)> {
 
 fn get_cloudflared_asset(os: Os, arch: Arch) -> Result<(&'static str, Archive)> {
     match (os, arch) {
-        (Os::Mac, Arch::Aarch64) => Ok(("cloudflared-darwin-arm64.tgz", Archive::Tgz("cloudflared"))),
-        (Os::Mac, Arch::X86_64) => Ok(("cloudflared-darwin-amd64.tgz", Archive::Tgz("cloudflared"))),
+        (Os::Mac, Arch::Aarch64) => {
+            Ok(("cloudflared-darwin-arm64.tgz", Archive::Tgz("cloudflared")))
+        }
+        (Os::Mac, Arch::X86_64) => {
+            Ok(("cloudflared-darwin-amd64.tgz", Archive::Tgz("cloudflared")))
+        }
         (Os::Linux, Arch::X86_64) => Ok(("cloudflared-linux-amd64", Archive::Plain)),
         (Os::Linux, Arch::Aarch64) => Ok(("cloudflared-linux-arm64", Archive::Plain)),
         (Os::Windows, Arch::X86_64) => Ok(("cloudflared-windows-amd64.exe", Archive::Plain)),
@@ -238,4 +242,3 @@ fn now_s() -> u64 {
         .unwrap()
         .as_secs()
 }
-

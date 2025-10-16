@@ -1,7 +1,7 @@
 use axum::Json;
+use cubby_core::embedding::model::EmbeddingModel;
 use oasgen::{oasgen, OaSchema};
 use once_cell::sync::OnceCell;
-use cubby_core::embedding::model::EmbeddingModel;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;

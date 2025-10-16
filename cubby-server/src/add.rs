@@ -1,8 +1,8 @@
 use anyhow::Result;
-use image::DynamicImage;
-use regex::Regex;
 use cubby_db::DatabaseManager;
 use cubby_vision::utils::{compare_with_previous_image, OcrEngine};
+use image::DynamicImage;
+use regex::Regex;
 
 #[cfg(target_os = "macos")]
 use cubby_vision::perform_ocr_apple;

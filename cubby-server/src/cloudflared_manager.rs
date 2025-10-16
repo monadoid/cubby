@@ -88,4 +88,3 @@ impl CloudflaredManager {
         Ok(())
     }
 }
-

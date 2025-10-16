@@ -1,9 +1,6 @@
 use clap::Parser;
 #[allow(unused_imports)]
 use colored::Colorize;
-use dirs::home_dir;
-use futures::pin_mut;
-use port_check::is_local_ipv4_port_free;
 use cubby_audio::{
     audio_manager::AudioManagerBuilder,
     core::device::{
@@ -13,18 +10,24 @@ use cubby_audio::{
 use cubby_core::find_ffmpeg_path;
 use cubby_db::DatabaseManager;
 use cubby_server::{
-    cli::{
-        Cli, CliAudioTranscriptionEngine, CliOcrEngine, CliVadEngine, 
-        CliVadSensitivity,
-    },
+    cli::{Cli, CliAudioTranscriptionEngine, CliOcrEngine, CliVadEngine, CliVadSensitivity},
+    permission_checker::{trigger_and_check_microphone, trigger_and_check_screen_recording},
     start_continuous_recording, ResourceMonitor, SCServer,
 };
 use cubby_vision::monitor::list_monitors;
 #[cfg(target_os = "macos")]
 use cubby_vision::run_ui;
+use dirs::home_dir;
+use futures::pin_mut;
+use port_check::is_local_ipv4_port_free;
 use std::{
-    env, fs, net::SocketAddr, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
+    env, fs,
+    net::SocketAddr,
     net::{IpAddr, Ipv4Addr},
+    ops::Deref,
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
 };
 use tokio::{runtime::Runtime, signal, sync::broadcast};
 use tracing::{debug, error, info, warn};
@@ -145,7 +148,6 @@ async fn main() -> anyhow::Result<()> {
 
     // If not running with --no-service, handle service mode
     if !cli.no_service {
-        run_preflight_device_checks(&cli).await?;
         return handle_service_mode(&cli).await;
     }
 
@@ -363,9 +365,7 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "llm")]
     let _llm = {
         match cli.enable_llm {
-            true => Some(cubby_core::LLM::new(
-                cubby_core::ModelName::Llama,
-            )?),
+            true => Some(cubby_core::LLM::new(cubby_core::ModelName::Llama)?),
             false => None,
         }
     };
@@ -621,8 +621,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         println!(
             "{}",
-            "telemetry is disabled. no data will be sent to external services."
-                .bright_green()
+            "telemetry is disabled. no data will be sent to external services.".bright_green()
         );
     }
 
@@ -696,6 +695,33 @@ async fn main() -> anyhow::Result<()> {
 
 /// Probe default devices upfront to trigger permission prompts before the service starts.
 async fn run_preflight_device_checks(cli: &Cli) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        if !cli.disable_audio {
+            println!("Requesting microphone permission...");
+            println!("  A dialog may appear. Please click \"Allow\" to continue.");
+            if !trigger_and_check_microphone().await? {
+                println!("Microphone permission not granted.");
+                println!("Open System Settings -> Privacy & Security -> Microphone, enable access for this terminal, then rerun the command.");
+                anyhow::bail!("microphone permission required");
+            }
+            println!("✅ Microphone permission granted.\n");
+        }
+
+        if !cli.disable_vision {
+            println!("Requesting screen recording permission...");
+            println!(
+                "  A dialog may appear. Please click \"Open System Settings\" and enable access."
+            );
+            if !trigger_and_check_screen_recording().await? {
+                println!("Screen recording permission not granted.");
+                println!("Open System Settings -> Privacy & Security -> Screen Recording, enable access for this terminal, then rerun the command.");
+                anyhow::bail!("screen recording permission required");
+            }
+            println!("✅ Screen recording permission granted.\n");
+        }
+    }
+
     if !cli.disable_audio {
         let default_input = default_input_device()?;
         let default_output = default_output_device().await?;
@@ -738,63 +764,61 @@ async fn run_preflight_device_checks(cli: &Cli) -> anyhow::Result<()> {
 }
 
 async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
-    use cubby_server::service_manager::cubbyServiceManager;
     use cubby_server::cloudflared_downloader::ensure_cloudflared;
     use cubby_server::cloudflared_manager::CloudflaredManager;
     use cubby_server::run_onboarding_flow;
-    
+    use cubby_server::service_manager::cubbyServiceManager;
+
     let current_exe = std::env::current_exe()?;
-    let service_manager = cubbyServiceManager::new(
-        current_exe,
-        build_service_args(cli),
-        cli.port
-    )?;
-    
+    let service_manager = cubbyServiceManager::new(current_exe, build_service_args(cli), cli.port)?;
+
     // Check if this is first run (service not installed)
     let is_first_run = !service_manager.is_installed();
-    
+
     if is_first_run {
         // Run full onboarding flow
         let onboarding_result = run_onboarding_flow(cli).await?;
-        
+
         // Always install cloudflared with token from onboarding
-        let token = onboarding_result.tunnel_token
+        let token = onboarding_result
+            .tunnel_token
             .ok_or_else(|| anyhow::anyhow!("No tunnel token received from authentication"))?;
-        
+
         #[cfg(debug_assertions)]
         println!("📦 Setting up cloudflared tunnel...");
-        
+
         // Download cloudflared binary (blocking operation)
         let cloudflared_path = tokio::task::spawn_blocking(|| ensure_cloudflared())
             .await
             .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared download task: {}", e))??;
-        
+
         #[cfg(debug_assertions)]
         println!("✅ Cloudflared binary ready");
-        
+
         // Install cloudflared service
         let cloudflared_manager = CloudflaredManager::new(cloudflared_path)?;
         let token_clone = token.clone();
-        tokio::task::spawn_blocking(move || cloudflared_manager.install_with_overwrite(&token_clone))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared install task: {}", e))??;
-        
+        tokio::task::spawn_blocking(move || {
+            cloudflared_manager.install_with_overwrite(&token_clone)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared install task: {}", e))??;
+
         #[cfg(not(debug_assertions))]
         use cliclack::log;
-        
 
         #[cfg(debug_assertions)]
         println!("✅ Cloudflared tunnel service installed\n");
-        
+
         // Install cubby service
         #[cfg(debug_assertions)]
         println!("📦 Installing cubby as a background service...");
-        
+
         service_manager.install()?;
-        
+
         #[cfg(not(debug_assertions))]
         log::success("Service installed successfully")?;
-        
+
         #[cfg(debug_assertions)]
         println!("✅ Service installed successfully\n");
     } else {
@@ -802,21 +826,21 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         #[cfg(debug_assertions)]
         println!("📦 Service already installed");
     }
-    
+
     // Start the service
     println!("🚀 Starting cubby service...");
-    
+
     service_manager.start()?;
-    
+
     // Wait for health check
     #[cfg(debug_assertions)]
     println!("⏳ Waiting for service to become healthy...");
-    
+
     let service_manager_clone = service_manager.clone();
     tokio::task::spawn_blocking(move || service_manager_clone.wait_for_health())
         .await
         .map_err(|e| anyhow::anyhow!("Failed to spawn health check task: {}", e))??;
-    
+
     use cliclack::log;
     let home_dir = dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("~"))
@@ -829,31 +853,41 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
 }
 
 async fn handle_uninstall() -> anyhow::Result<()> {
-    use cubby_server::service_manager::cubbyServiceManager;
+    use cubby_server::cloudflared_downloader::{cleanup_cloudflared, ensure_cloudflared};
     use cubby_server::cloudflared_manager::CloudflaredManager;
-    use cubby_server::cloudflared_downloader::{ensure_cloudflared, cleanup_cloudflared};
-    
+    use cubby_server::service_manager::cubbyServiceManager;
+
     #[cfg(not(debug_assertions))]
     cliclack::intro("Uninstalling cubby-sp...")?;
-    
+
     #[cfg(debug_assertions)]
     println!("🛑 Stopping and uninstalling cubby-sp service...");
-    
+
     // Try to uninstall cloudflared service if it exists
-    if let Some(cloudflared_path) = tokio::task::spawn_blocking(|| ensure_cloudflared()).await.ok().and_then(|r| r.ok()) {
+    if let Some(cloudflared_path) = tokio::task::spawn_blocking(|| ensure_cloudflared())
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+    {
         let cloudflared_manager = CloudflaredManager::new(cloudflared_path)?;
         if cloudflared_manager.is_installed() {
             #[cfg(debug_assertions)]
             println!("🛑 Uninstalling cloudflared tunnel service...");
-            
-            let uninstall_result = tokio::task::spawn_blocking(move || cloudflared_manager.uninstall())
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared uninstall task: {}", e))?;
-            
+
+            let uninstall_result =
+                tokio::task::spawn_blocking(move || cloudflared_manager.uninstall())
+                    .await
+                    .map_err(|e| {
+                        anyhow::anyhow!("Failed to spawn cloudflared uninstall task: {}", e)
+                    })?;
+
             if let Err(e) = uninstall_result {
                 #[cfg(debug_assertions)]
-                println!("⚠️  Warning: Failed to uninstall cloudflared service: {}", e);
-                
+                println!(
+                    "⚠️  Warning: Failed to uninstall cloudflared service: {}",
+                    e
+                );
+
                 #[cfg(not(debug_assertions))]
                 {
                     use cliclack::log;
@@ -862,7 +896,7 @@ async fn handle_uninstall() -> anyhow::Result<()> {
             } else {
                 #[cfg(debug_assertions)]
                 println!("✅ Cloudflared tunnel service uninstalled");
-                
+
                 #[cfg(not(debug_assertions))]
                 {
                     use cliclack::log;
@@ -870,17 +904,23 @@ async fn handle_uninstall() -> anyhow::Result<()> {
                 }
             }
         }
-        
+
         // Clean up cloudflared binaries
-        if let Some(Err(e)) = tokio::task::spawn_blocking(|| cleanup_cloudflared()).await.ok() {
+        if let Some(Err(e)) = tokio::task::spawn_blocking(|| cleanup_cloudflared())
+            .await
+            .ok()
+        {
             #[cfg(debug_assertions)]
-            println!("⚠️  Warning: Failed to clean up cloudflared binaries: {}", e);
+            println!(
+                "⚠️  Warning: Failed to clean up cloudflared binaries: {}",
+                e
+            );
         }
     }
-    
+
     let current_exe = std::env::current_exe()?;
     let service_manager = cubbyServiceManager::new(current_exe, vec![], 3030)?;
-    
+
     // Check if service exists first
     if !service_manager.is_installed() {
         #[cfg(not(debug_assertions))]
@@ -888,12 +928,12 @@ async fn handle_uninstall() -> anyhow::Result<()> {
             use cliclack::log;
             log::info("No cubby service found to uninstall")?;
         }
-        
+
         #[cfg(debug_assertions)]
         println!("ℹ️  No cubby service found to uninstall");
         return Ok(());
     }
-    
+
     // Additional cleanup: kill any stray cubby processes
     #[cfg(target_os = "macos")]
     {
@@ -901,25 +941,25 @@ async fn handle_uninstall() -> anyhow::Result<()> {
             .args(["-f", "cubby.*--no-service"])
             .output();
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         let _ = std::process::Command::new("pkill")
             .args(["-f", "cubby.*--no-service"])
             .output();
     }
-    
+
     service_manager.stop_and_uninstall()?;
-    
+
     #[cfg(not(debug_assertions))]
     {
         use cliclack::log;
         log::success("cubby service uninstalled successfully")?;
     }
-    
+
     #[cfg(debug_assertions)]
     println!("✅ cubby service uninstalled successfully");
-    
+
     #[cfg(all(target_os = "macos", debug_assertions))]
     {
         println!("\n💡 To reset permissions for testing:");
@@ -927,45 +967,45 @@ async fn handle_uninstall() -> anyhow::Result<()> {
         println!("   tccutil reset Microphone");
         println!("   (Requires Terminal to have Full Disk Access in System Settings)\n");
     }
-    
+
     #[cfg(not(debug_assertions))]
     cliclack::outro("Uninstall complete!")?;
-    
+
     Ok(())
 }
 
 fn build_service_args(cli: &Cli) -> Vec<String> {
     let mut args = vec!["--no-service".to_string()];
-    
+
     // Port
     args.push("--port".to_string());
     args.push(cli.port.to_string());
-    
+
     // FPS
     args.push("--fps".to_string());
     args.push(cli.fps.to_string());
-    
+
     // Audio chunk duration
     args.push("--audio-chunk-duration".to_string());
     args.push(cli.audio_chunk_duration.to_string());
-    
+
     // Video chunk duration
     args.push("--video-chunk-duration".to_string());
     args.push(cli.video_chunk_duration.to_string());
-    
+
     // Boolean flags
     if cli.disable_audio {
         args.push("--disable-audio".to_string());
     }
-    
+
     if cli.disable_vision {
         args.push("--disable-vision".to_string());
     }
-    
+
     if cli.debug {
         args.push("--debug".to_string());
     }
-    
+
     if cli.use_pii_removal {
         args.push("--use-pii-removal".to_string());
     }
@@ -973,120 +1013,134 @@ fn build_service_args(cli: &Cli) -> Vec<String> {
     if cli.enable_llm {
         args.push("--enable-llm".to_string());
     }
-    
+
     if cli.enable_ui_monitoring {
         args.push("--enable-ui-monitoring".to_string());
     }
-    
+
     if cli.enable_frame_cache {
         args.push("--enable-frame-cache".to_string());
     }
-    
+
     if cli.capture_unfocused_windows {
         args.push("--capture-unfocused-windows".to_string());
     }
-    
+
     if cli.enable_realtime_audio_transcription {
         args.push("--enable-realtime-audio-transcription".to_string());
     }
-    
+
     if cli.enable_realtime_vision {
         args.push("--enable-realtime-vision".to_string());
     }
-    
+
     // Audio devices
     for device in &cli.audio_device {
         args.push("--audio-device".to_string());
         args.push(device.clone());
     }
-    
+
     // Realtime audio devices
     for device in &cli.realtime_audio_device {
         args.push("--realtime-audio-device".to_string());
         args.push(device.clone());
     }
-    
+
     // Monitor IDs
     for monitor in &cli.monitor_id {
         args.push("--monitor-id".to_string());
         args.push(monitor.to_string());
     }
-    
+
     // Languages
     for language in &cli.language {
         args.push("--language".to_string());
         args.push(format!("{:?}", language));
     }
-    
+
     // Ignored windows
     for window in &cli.ignored_windows {
         args.push("--ignored-windows".to_string());
         args.push(window.clone());
     }
-    
+
     // Included windows
     for window in &cli.included_windows {
         args.push("--included-windows".to_string());
         args.push(window.clone());
     }
-    
+
     // Audio transcription engine
     args.push("--audio-transcription-engine".to_string());
-    args.push(match cli.audio_transcription_engine {
-        CliAudioTranscriptionEngine::Deepgram => "deepgram",
-        CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny",
-        CliAudioTranscriptionEngine::WhisperTinyQuantized => "whisper-tiny-quantized",
-        CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
-        CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
-        CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
-        CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => "whisper-large-v3-turbo-quantized",
-    }.to_string());
-    
+    args.push(
+        match cli.audio_transcription_engine {
+            CliAudioTranscriptionEngine::Deepgram => "deepgram",
+            CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny",
+            CliAudioTranscriptionEngine::WhisperTinyQuantized => "whisper-tiny-quantized",
+            CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
+            CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
+            CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
+            CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
+                "whisper-large-v3-turbo-quantized"
+            }
+        }
+        .to_string(),
+    );
+
     // OCR engine
     args.push("--ocr-engine".to_string());
-    args.push(match cli.ocr_engine {
-        CliOcrEngine::Unstructured => "unstructured",
-        #[cfg(target_os = "macos")]
-        CliOcrEngine::AppleNative => "apple-native",
-        #[cfg(target_os = "linux")]
-        CliOcrEngine::Tesseract => "tesseract",
-        #[cfg(target_os = "windows")]
-        CliOcrEngine::WindowsNative => "windows-native",
-        CliOcrEngine::Custom => "custom",
-    }.to_string());
-    
+    args.push(
+        match cli.ocr_engine {
+            CliOcrEngine::Unstructured => "unstructured",
+            #[cfg(target_os = "macos")]
+            CliOcrEngine::AppleNative => "apple-native",
+            #[cfg(target_os = "linux")]
+            CliOcrEngine::Tesseract => "tesseract",
+            #[cfg(target_os = "windows")]
+            CliOcrEngine::WindowsNative => "windows-native",
+            CliOcrEngine::Custom => "custom",
+        }
+        .to_string(),
+    );
+
     // VAD engine
     args.push("--vad-engine".to_string());
-    args.push(match cli.vad_engine {
-        CliVadEngine::WebRtc => "webrtc",
-        CliVadEngine::Silero => "silero",
-    }.to_string());
-    
+    args.push(
+        match cli.vad_engine {
+            CliVadEngine::WebRtc => "webrtc",
+            CliVadEngine::Silero => "silero",
+        }
+        .to_string(),
+    );
+
     // VAD sensitivity
     args.push("--vad-sensitivity".to_string());
-    args.push(match cli.vad_sensitivity {
-        CliVadSensitivity::Low => "low",
-        CliVadSensitivity::Medium => "medium",
-        CliVadSensitivity::High => "high",
-    }.to_string());
-    
+    args.push(
+        match cli.vad_sensitivity {
+            CliVadSensitivity::Low => "low",
+            CliVadSensitivity::Medium => "medium",
+            CliVadSensitivity::High => "high",
+        }
+        .to_string(),
+    );
+
     // Data directory
     if let Some(ref data_dir) = cli.data_dir {
         args.push("--data-dir".to_string());
         args.push(data_dir.clone());
     }
-    
+
     // Deepgram API key
     if let Some(ref api_key) = cli.deepgram_api_key {
         args.push("--deepgram-api-key".to_string());
         args.push(api_key.clone());
     }
-    
+
     // Auto destruct PID
     if let Some(pid) = cli.auto_destruct_pid {
         args.push("--auto-destruct-pid".to_string());
         args.push(pid.to_string());
     }
-    
+
     args
 }

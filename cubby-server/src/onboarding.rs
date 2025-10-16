@@ -62,9 +62,7 @@ async fn run_authentication_flow() -> Result<AuthResult> {
     let signup_response = client.sign_up(email, pw).await?;
     cliclack::log::success("Account created!")?;
 
-    let enroll_response = client
-        .enroll_device(&signup_response.session_jwt)
-        .await?;
+    let enroll_response = client.enroll_device(&signup_response.session_jwt).await?;
 
     cliclack::log::success("Device enrolled successfully!")?;
     cliclack::log::info(format!("Hostname: {}", enroll_response.hostname))?;
@@ -77,14 +75,14 @@ async fn run_authentication_flow() -> Result<AuthResult> {
 
 /// Run permission checks for screen recording, microphone, and accessibility
 async fn run_permission_checks(cli: &Cli) -> Result<()> {
-    // Check screen recording (always needed unless vision disabled)
-    if !cli.disable_vision {
-        check_and_request_screen_recording().await?;
-    }
-
     // Check microphone (always needed unless audio disabled)
     if !cli.disable_audio {
         check_and_request_microphone().await?;
+    }
+
+    // Check screen recording (always needed unless vision disabled)
+    if !cli.disable_vision {
+        check_and_request_screen_recording().await?;
     }
 
     // Check accessibility (only if UI monitoring enabled)
@@ -99,7 +97,7 @@ async fn run_permission_checks(cli: &Cli) -> Result<()> {
 /// Check and request screen recording permission
 async fn check_and_request_screen_recording() -> Result<()> {
     cliclack::log::step("Checking Screen Recording permission...")?;
-    
+
     #[cfg(debug_assertions)]
     {
         println!("   A permission dialog will appear - please click 'Allow'");
@@ -107,7 +105,7 @@ async fn check_and_request_screen_recording() -> Result<()> {
     }
 
     let has_permission = trigger_and_check_screen_recording().await?;
-    
+
     if has_permission {
         cliclack::log::success("Screen Recording permission granted")?;
         return Ok(());
@@ -115,7 +113,7 @@ async fn check_and_request_screen_recording() -> Result<()> {
 
     // Timeout or denied
     cliclack::log::error("Screen Recording permission not granted")?;
-    
+
     #[cfg(debug_assertions)]
     {
         println!("To grant permission:");
@@ -124,14 +122,14 @@ async fn check_and_request_screen_recording() -> Result<()> {
         println!("   3. **Quit and restart your terminal**");
         println!("   4. Run setup again");
     }
-    
+
     bail!("Screen Recording permission required");
 }
 
 /// Check and request microphone permission
 async fn check_and_request_microphone() -> Result<()> {
     cliclack::log::step("Checking Microphone permission...")?;
-    
+
     #[cfg(debug_assertions)]
     {
         println!("   A permission dialog will appear - please click 'Allow'");
@@ -139,7 +137,7 @@ async fn check_and_request_microphone() -> Result<()> {
     }
 
     let has_permission = trigger_and_check_microphone().await?;
-    
+
     if has_permission {
         cliclack::log::success("Microphone permission granted")?;
         return Ok(());
@@ -147,7 +145,7 @@ async fn check_and_request_microphone() -> Result<()> {
 
     // Timeout or denied
     cliclack::log::error("Microphone permission not granted")?;
-    
+
     #[cfg(debug_assertions)]
     {
         println!("To grant permission:");
@@ -156,7 +154,7 @@ async fn check_and_request_microphone() -> Result<()> {
         println!("   3. **Quit and restart your terminal**");
         println!("   4. Run setup again");
     }
-    
+
     bail!("Microphone permission required");
 }
 
@@ -172,7 +170,7 @@ async fn check_and_request_accessibility() -> Result<()> {
     // For now, we'll skip the complex accessibility permission flow
     // since it's optional and only needed for UI monitoring
     cliclack::log::warning("Accessibility permission setup skipped (optional feature)")?;
-    
+
     #[cfg(debug_assertions)]
     {
         println!("   To enable UI monitoring later, you may need to grant accessibility permissions manually.");
@@ -180,4 +178,3 @@ async fn check_and_request_accessibility() -> Result<()> {
 
     Ok(())
 }
-
