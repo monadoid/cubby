@@ -24,11 +24,13 @@ export async function postMcp(
     sessionId?: string;
     userId?: string;
     gwSessionId?: string;
+    accept?: string; // override Accept header when needed
   },
 ): Promise<Response> {
   const origin = buildDeviceOrigin(env, deviceId);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    Accept: options?.accept || "application/json, text/event-stream",
     "CF-Access-Client-Id": env.ACCESS_CLIENT_ID,
     "CF-Access-Client-Secret": env.ACCESS_CLIENT_SECRET,
   };
@@ -62,10 +64,16 @@ export async function getMcpSse(
     sessionId?: string;
     userId?: string;
     gwSessionId?: string;
+    timeoutMs?: number;
   },
 ): Promise<Response> {
   const origin = buildDeviceOrigin(env, deviceId);
+  const params = new URLSearchParams(searchParams);
+  if (options?.sessionId && !params.has("sessionId")) {
+    params.set("sessionId", options.sessionId);
+  }
   const headers: Record<string, string> = {
+    Accept: "text/event-stream",
     "CF-Access-Client-Id": env.ACCESS_CLIENT_ID,
     "CF-Access-Client-Secret": env.ACCESS_CLIENT_SECRET,
   };
@@ -80,11 +88,11 @@ export async function getMcpSse(
     headers["X-Cubby-Session-Id"] = options.gwSessionId;
   }
 
-  const url = `${origin}/mcp?${searchParams.toString()}`;
+  const url = `${origin}/mcp?${params.toString()}`;
   return fetch(url, {
     method: "GET",
     headers,
-    signal: AbortSignal.timeout(10000), // 10 second timeout
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 10000),
   });
 }
 
@@ -129,6 +137,29 @@ export async function initializeDeviceSession(
   const deviceSessionId = response.headers.get("mcp-session-id");
   if (!deviceSessionId) {
     throw new Error("device did not return mcp-session-id header");
+  }
+
+  // Send initialized notification as required by MCP spec
+  const initializedNotification = {
+    jsonrpc: "2.0",
+    method: "notifications/initialized",
+  };
+
+  const initNotifyResponse = await postMcp(
+    env,
+    deviceId,
+    JSON.stringify(initializedNotification),
+    {
+      sessionId: deviceSessionId,
+      userId: options?.userId,
+      gwSessionId: options?.gwSessionId,
+    },
+  );
+
+  if (!initNotifyResponse.ok) {
+    console.warn(
+      `device initialized notification failed: ${initNotifyResponse.status}`,
+    );
   }
 
   return deviceSessionId;

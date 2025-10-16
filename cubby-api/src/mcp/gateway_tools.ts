@@ -55,8 +55,8 @@ export async function handleDevicesList(
       devices: devices.map((d) => ({
         id: d.id,
         userId: d.userId,
-        createdAt: d.createdAt.toISOString(),
-        updatedAt: d.updatedAt.toISOString(),
+        createdAt: new Date(d.createdAt as any).toISOString(),
+        updatedAt: new Date(d.updatedAt as any).toISOString(),
       })),
     },
   };

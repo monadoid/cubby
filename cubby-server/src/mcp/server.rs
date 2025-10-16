@@ -49,24 +49,6 @@ impl ServerHandler for CubbyMcpServer {
         })
     }
 
-    async fn list_tools(
-        &self,
-        _params: Option<PaginatedRequestParam>,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, ErrorData> {
-        let tools = vec![
-            create_search_tool(),
-            create_pixel_control_tool(),
-            create_find_elements_tool(),
-            create_click_element_tool(),
-            create_fill_element_tool(),
-            create_scroll_element_tool(),
-            create_open_application_tool(),
-            create_open_url_tool(),
-        ];
-        Ok(ListToolsResult::with_all_items(tools))
-    }
-
     async fn call_tool(
         &self,
         params: CallToolRequestParam,
@@ -89,6 +71,24 @@ impl ServerHandler for CubbyMcpServer {
                 None,
             )),
         }
+    }
+
+    async fn list_tools(
+        &self,
+        _params: Option<PaginatedRequestParam>,
+        _ctx: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        let tools = vec![
+            create_search_tool(),
+            create_pixel_control_tool(),
+            create_find_elements_tool(),
+            create_click_element_tool(),
+            create_fill_element_tool(),
+            create_scroll_element_tool(),
+            create_open_application_tool(),
+            create_open_url_tool(),
+        ];
+        Ok(ListToolsResult::with_all_items(tools))
     }
 }
 

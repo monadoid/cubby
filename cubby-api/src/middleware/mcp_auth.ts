@@ -93,12 +93,54 @@ export const mcpAuth = (): MiddlewareHandler<{
     // 2. Validate token only when required (avoid failing initialize/tools/list)
     if (token && requiresAuth) {
       try {
-        const jwksUrl = `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`;
-        const JWKS = createRemoteJWKSet(new URL(jwksUrl));
-        const result = await jwtVerify(token, JWKS, {
-          issuer: c.env.STYTCH_PROJECT_DOMAIN,
-          audience: c.env.STYTCH_PROJECT_ID,
-        });
+        // Inspect issuer from payload to choose correct JWKS and issuer expectation
+        let claimsIss: string | undefined;
+        try {
+          const parts = token.split(".");
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+          claimsIss = payload?.iss as string | undefined;
+        } catch {}
+
+        let result;
+        if (claimsIss && (claimsIss.startsWith("stytch.com/") || claimsIss.startsWith("https://stytch.com/"))) {
+          // Session JWT path (Stytch issues iss like "stytch.com/<project-id>")
+          const projectId = c.env.STYTCH_PROJECT_ID || "";
+          const isTest = projectId.startsWith("project-test-");
+          const jwksUrl = (isTest ? "https://test.stytch.com" : "https://stytch.com") + `/v1/sessions/jwks/${projectId}`;
+          console.log("[auth] token type: session_jwt");
+          console.log("[auth] iss:", claimsIss);
+          console.log("[auth] project_id:", projectId);
+          console.log("[auth] sessions jwks url:", jwksUrl);
+          const probe = await fetch(jwksUrl);
+          console.log("[auth] jwks probe status:", probe.status);
+          if (!probe.ok) {
+            const body = await probe.text();
+            console.log("[auth] jwks probe body:", body.slice(0, 200));
+          }
+          const JWKS = createRemoteJWKSet(new URL(jwksUrl));
+          result = await jwtVerify(token, JWKS, {
+            issuer: claimsIss,
+            audience: projectId,
+          });
+        } else {
+          // OAuth access token path (customers domain issuer)
+          const jwksUrl = `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`;
+          console.log("[auth] token type: oauth_access_token");
+          console.log("[auth] iss:", claimsIss);
+          console.log("[auth] project_domain:", c.env.STYTCH_PROJECT_DOMAIN);
+          console.log("[auth] oauth jwks url:", jwksUrl);
+          const probe = await fetch(jwksUrl);
+          console.log("[auth] jwks probe status:", probe.status);
+          if (!probe.ok) {
+            const body = await probe.text();
+            console.log("[auth] jwks probe body:", body.slice(0, 200));
+          }
+          const JWKS = createRemoteJWKSet(new URL(jwksUrl));
+          result = await jwtVerify(token, JWKS, {
+            issuer: c.env.STYTCH_PROJECT_DOMAIN,
+            audience: c.env.STYTCH_PROJECT_ID,
+          });
+        }
 
         const userId = (result.payload as any).user_id;
         const scopeString = (result.payload as any).scope as
