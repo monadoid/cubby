@@ -115,95 +115,95 @@ jobs:
 #          name: cubby-macos-${{ matrix.target }}
 #          path: cubby-*.tar.gz
 
-  build-windows:
-    runs-on: windows-2019
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        run: |
-          Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-gnu/rustup-init.exe -OutFile rustup-init.exe
-          .\rustup-init.exe -y
-
-      - name: Install 7zip
-        shell: powershell
-        run: |
-          $7zipUrl = "https://7-zip.org/a/7z2301-x64.exe"
-          $7zipInstaller = "7z-installer.exe"
-          Invoke-WebRequest -Uri $7zipUrl -OutFile $7zipInstaller
-          Start-Process -FilePath .\$7zipInstaller -Args "/S" -Wait
-          Remove-Item $7zipInstaller
-          # Add 7zip to PATH and make it persistent for subsequent steps
-          echo "C:\Program Files\7-Zip" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          # Verify installation
-          & "C:\Program Files\7-Zip\7z.exe" i
-
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "10.0"
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build CLI
-        env:
-          CARGO_PROFILE_RELEASE_STRIP: "symbols"
-          CARGO_PROFILE_RELEASE_PANIC: "abort"
-          CARGO_PROFILE_RELEASE_INCREMENTAL: "false"
-          RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=/LTCG"
-        run: |
-          cargo build --release --target x86_64-pc-windows-msvc
-
-      - name: Set version
-        shell: pwsh
-        run: |
-          $VERSION = if ($env:GITHUB_REF -match "refs/tags/*") {
-              $env:GITHUB_REF -replace "refs/tags/v", ""
-          } else {
-              $tags = git ls-remote --tags --refs --sort="version:refname"
-              if ($tags) {
-                  $latestTag = ($tags -split "`n")[-1] -replace ".*/v", ""
-                  $latestTag
-              } else {
-                  "0.0.0"
-              }
-          }
-          if ([string]::IsNullOrEmpty($VERSION)) {
-              $VERSION = "0.0.0"
-          }
-          "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "Set version to: $VERSION"
-
-      - name: Create deployment package
-        shell: pwsh
-        run: |
-          $packageDir = "cubby-${{ env.VERSION }}-x86_64-pc-windows-msvc"
-          New-Item -Path "$packageDir/bin" -ItemType Directory -Force
-          Copy-Item "target/x86_64-pc-windows-msvc/release/cubby.exe" "$packageDir/bin/"
-          Copy-Item "target/x86_64-pc-windows-msvc/release/onnxruntime.dll" "$packageDir/bin/"
-          7z a "$packageDir.zip" "./$packageDir/*"
-
-      - name: Calculate SHA256
-        shell: pwsh
-        run: |
-          $hash = Get-FileHash "cubby-${{ env.VERSION }}-x86_64-pc-windows-msvc.zip" -Algorithm SHA256
-          "WIN_SHA256=$($hash.Hash)" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cubby-windows
-          path: cubby-*.zip
+#  build-windows:
+#    runs-on: windows-2019
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v4
+#
+#      - name: Install Rust
+#        run: |
+#          Invoke-WebRequest https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-gnu/rustup-init.exe -OutFile rustup-init.exe
+#          .\rustup-init.exe -y
+#
+#      - name: Install 7zip
+#        shell: powershell
+#        run: |
+#          $7zipUrl = "https://7-zip.org/a/7z2301-x64.exe"
+#          $7zipInstaller = "7z-installer.exe"
+#          Invoke-WebRequest -Uri $7zipUrl -OutFile $7zipInstaller
+#          Start-Process -FilePath .\$7zipInstaller -Args "/S" -Wait
+#          Remove-Item $7zipInstaller
+#          # Add 7zip to PATH and make it persistent for subsequent steps
+#          echo "C:\Program Files\7-Zip" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+#          # Verify installation
+#          & "C:\Program Files\7-Zip\7z.exe" i
+#
+#      - name: Set up MSVC
+#        uses: ilammy/msvc-dev-cmd@v1
+#
+#      - name: Install LLVM and Clang
+#        uses: KyleMayes/install-llvm-action@v2
+#        with:
+#          version: "10.0"
+#
+#      - uses: actions/cache@v4
+#        with:
+#          path: |
+#            ~/.cargo/registry/index/
+#            ~/.cargo/registry/cache/
+#            ~/.cargo/git/db/
+#          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+#
+#      - name: Build CLI
+#        env:
+#          CARGO_PROFILE_RELEASE_STRIP: "symbols"
+#          CARGO_PROFILE_RELEASE_PANIC: "abort"
+#          CARGO_PROFILE_RELEASE_INCREMENTAL: "false"
+#          RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=/LTCG"
+#        run: |
+#          cargo build --release --target x86_64-pc-windows-msvc
+#
+#      - name: Set version
+#        shell: pwsh
+#        run: |
+#          $VERSION = if ($env:GITHUB_REF -match "refs/tags/*") {
+#              $env:GITHUB_REF -replace "refs/tags/v", ""
+#          } else {
+#              $tags = git ls-remote --tags --refs --sort="version:refname"
+#              if ($tags) {
+#                  $latestTag = ($tags -split "`n")[-1] -replace ".*/v", ""
+#                  $latestTag
+#              } else {
+#                  "0.0.0"
+#              }
+#          }
+#          if ([string]::IsNullOrEmpty($VERSION)) {
+#              $VERSION = "0.0.0"
+#          }
+#          "VERSION=$VERSION" | Out-File -FilePath $env:GITHUB_ENV -Append
+#          "Set version to: $VERSION"
+#
+#      - name: Create deployment package
+#        shell: pwsh
+#        run: |
+#          $packageDir = "cubby-${{ env.VERSION }}-x86_64-pc-windows-msvc"
+#          New-Item -Path "$packageDir/bin" -ItemType Directory -Force
+#          Copy-Item "target/x86_64-pc-windows-msvc/release/cubby.exe" "$packageDir/bin/"
+#          Copy-Item "target/x86_64-pc-windows-msvc/release/onnxruntime.dll" "$packageDir/bin/"
+#          7z a "$packageDir.zip" "./$packageDir/*"
+#
+#      - name: Calculate SHA256
+#        shell: pwsh
+#        run: |
+#          $hash = Get-FileHash "cubby-${{ env.VERSION }}-x86_64-pc-windows-msvc.zip" -Algorithm SHA256
+#          "WIN_SHA256=$($hash.Hash)" | Out-File -FilePath $env:GITHUB_ENV -Append
+#
+#      - name: Upload Artifact
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: cubby-windows
+#          path: cubby-*.zip
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -301,7 +301,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [build-windows, build-linux]
+    needs: [build-linux]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -342,7 +342,7 @@ jobs:
 
   upload-to-r2:
     runs-on: ubuntu-latest
-    needs: [build-windows, build-linux]
+    needs: [build-linux]
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
