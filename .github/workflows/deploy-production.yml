@@ -85,6 +85,12 @@ jobs:
           echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
           echo "RUSTFLAGS=-C link-arg=-Wl,-rpath,@executable_path/../lib -C link-arg=-Wl,-rpath,@loader_path/../lib" >> $GITHUB_ENV
 
+      - name: Disable ggml i8mm (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          echo "GGML_NO_I8MM=1" >> $GITHUB_ENV
+          echo "CMAKE_ARGS=-DGGML_CPU=ON -DGGML_CPU_USE_I8MM=OFF" >> $GITHUB_ENV
+
       - name: Install dependencies (Linux x86_64)
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
