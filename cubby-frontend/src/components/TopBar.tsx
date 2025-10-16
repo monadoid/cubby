@@ -1,6 +1,13 @@
 export function TopBar() {
   return (
-    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 48px; background-color: #000; border-bottom: 1px solid #333; z-index: 40; display: flex; align-items: center; justify-content: flex-end; padding: 0 1rem;">
+    <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 48px; background-color: #000; border-bottom: 1px solid #333; z-index: 40; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem;">
+      <div style="display: flex; align-items: center;">
+        <img 
+          src="/cubby_logo_white.png" 
+          alt="cubby logo" 
+          style="height: 24px; width: auto; image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges;"
+        />
+      </div>
       <div style="display: flex; gap: 1rem;">
         <a 
           href="/docs" 
