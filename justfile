@@ -151,16 +151,16 @@ release: info build-arm64 build-x86_64 package
 	@echo "Release artifacts are in ./dist/{{VERSION}} and ./dist/"
 
 # Release with git tagging and pushing
-release-tag VERSION:
-	@echo "🏗️  building release artifacts..."
-	just release
-	@echo "🏷️  creating tag v{{VERSION}}..."
-	git tag v{{VERSION}}
-	@echo "📤 pushing tag v{{VERSION}}..."
-	git push origin v{{VERSION}}
+release-tag NEW_VERSION:
+	@echo "🏷️  creating tag v{{NEW_VERSION}}..."
+	git tag v{{NEW_VERSION}}
+	@echo "🏗️  building release artifacts for v{{NEW_VERSION}}..."
+	just VERSION={{NEW_VERSION}} release
+	@echo "📤 pushing tag v{{NEW_VERSION}}..."
+	git push origin v{{NEW_VERSION}}
 	@echo "📦 creating github release and uploading macOS binaries..."
-	gh release create v{{VERSION}} --title {{VERSION}} --generate-notes \
-		dist/cubby-{{VERSION}}-aarch64-apple-darwin.tar.gz \
-		dist/cubby-{{VERSION}}-x86_64-apple-darwin.tar.gz
-	@echo "✅ release v{{VERSION}} complete! workflow will upload to r2 automatically"
+	gh release create v{{NEW_VERSION}} --title {{NEW_VERSION}} --generate-notes \
+		dist/cubby-{{NEW_VERSION}}-aarch64-apple-darwin.tar.gz \
+		dist/cubby-{{NEW_VERSION}}-x86_64-apple-darwin.tar.gz
+	@echo "✅ release v{{NEW_VERSION}} complete! workflow will upload to r2 automatically"
 
