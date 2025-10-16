@@ -3,7 +3,7 @@
 ## getting started
 
 before you begin:
-- try to run the [pre-built app](https://docs.screenpi.pe) to get familiar with the project
+- try to run the [pre-built app](https://cubby.sh/docs) to get familiar with the project
 - familiarize yourself with the project structure and architecture.
 
 ## installation and build guide

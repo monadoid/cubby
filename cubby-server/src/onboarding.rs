@@ -46,7 +46,7 @@ async fn run_authentication_flow() -> Result<AuthResult> {
         })
         .interact()?;
 
-    let pw: String = password("Choose a password")
+    let pw: String = password("Choose a password (atleast 8 characters):")
         .mask('▪')
         .validate(|value: &String| -> std::result::Result<(), &'static str> {
             if value.trim().is_empty() {

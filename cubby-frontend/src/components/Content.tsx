@@ -10,10 +10,10 @@ export function Content() {
           
           <div class="flex items-stretch gap-0 mx-auto mb-8" style="max-width: 400px; margin-top: 1.5rem;">
             <div style="background-color: #111; border: 1px solid #333; padding: 0.5rem 0.875rem; flex: 1; font-family: 'Courier New', monospace; font-size: 0.875rem; user-select: all;">
-              curl -fsSL cubby.sh/cli | sh
+              curl -fsSL https://get.cubby.sh/cli | sh
             </div>
             <button 
-              onclick="navigator.clipboard.writeText('curl cubby.sh/cli | sh'); this.style.backgroundColor='#fff'; this.style.color='#000'; setTimeout(() => { this.style.backgroundColor='#222'; this.style.color='#fff'; }, 75);"
+              onclick="navigator.clipboard.writeText('curl -fsSL https://get.cubby.sh/cli | sh'); this.style.backgroundColor='#fff'; this.style.color='#000'; setTimeout(() => { this.style.backgroundColor='#222'; this.style.color='#fff'; }, 75);"
               style="background-color: #222; color: #fff; border: 1px solid #333; border-left: none; padding: 0.5rem 1rem; cursor: pointer; font-family: 'Courier New', monospace; font-size: 0.875rem; transition: none;"
             >
               &#x2398;

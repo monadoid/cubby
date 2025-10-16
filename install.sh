@@ -295,7 +295,7 @@ echo "│  join our discord:                       │"
 echo "│  --> https://discord.gg/dU9EBuw7Uq       │"
 echo "│                                          │"
 echo "│  check the docs:                         │"
-echo "│  --> https://docs.screenpi.pe            │"
+echo "│  --> https://cubby.sh/docs            │"
 echo "╰──────────────────────────────────────────╯"
 
 curl -sL -X POST https://eu.i.posthog.com/capture/ \

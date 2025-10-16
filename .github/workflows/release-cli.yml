@@ -368,12 +368,54 @@ jobs:
           endpoint = ${{ secrets.R2_ENDPOINT }}
           EOF
 
-      - name: Upload binaries to R2
+      - name: Extract and upload binaries to R2
         run: |
           shopt -s globstar nullglob
-          for f in artifacts/**/cubby-*.tar.gz artifacts/**/cubby-*.zip; do
-            echo "Uploading $f"
-            rclone copy "$f" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
+          mkdir -p binaries-extracted
+          
+          # Extract binaries from tar.gz files and rename to match installer expectations
+          for f in artifacts/**/cubby-*.tar.gz; do
+            if [ -f "$f" ]; then
+              echo "Processing $f"
+              # Extract the tar.gz
+              tar -xzf "$f" -C binaries-extracted
+              
+              # Determine the target from filename
+              # cubby-0.1.3-x86_64-unknown-linux-gnu.tar.gz -> x86_64-unknown-linux-gnu
+              basename=$(basename "$f" .tar.gz)
+              target=$(echo "$basename" | sed -E 's/cubby-[0-9]+\.[0-9]+\.[0-9]+-//')
+              
+              # Map target triple to installer naming convention
+              case "$target" in
+                x86_64-unknown-linux-gnu)
+                  final_name="cubby-linux-x86_64"
+                  ;;
+                aarch64-unknown-linux-gnu)
+                  final_name="cubby-linux-aarch64"
+                  ;;
+                x86_64-apple-darwin)
+                  final_name="cubby-darwin-x86_64"
+                  ;;
+                aarch64-apple-darwin)
+                  final_name="cubby-darwin-aarch64"
+                  ;;
+                *)
+                  echo "Unknown target: $target"
+                  continue
+                  ;;
+              esac
+              
+              # Rename and upload the binary
+              if [ -f "binaries-extracted/bin/cubby" ]; then
+                mv "binaries-extracted/bin/cubby" "binaries-extracted/$final_name"
+                echo "Uploading binaries-extracted/$final_name to r2:cubby-releases/latest/"
+                rclone copy "binaries-extracted/$final_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
+                rm -f "binaries-extracted/$final_name"
+              fi
+              
+              # Clean up extracted files
+              rm -rf binaries-extracted/bin
+            fi
           done
 
   migrate-database:

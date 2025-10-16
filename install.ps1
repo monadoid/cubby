@@ -86,7 +86,7 @@ try {
     Write-Host "2. run: cubby"
     Write-Host ""
     Write-Host "join our discord: https://discord.gg/dU9EBuw7Uq"
-    Write-Host "check the docs: https://docs.screenpi.pe"
+    Write-Host "check the docs: https://cubby.sh/docs"
 
     try {
         $postHogData = @{

@@ -102,7 +102,7 @@
     "primary": {
       "type": "button",
       "label": "Get App",
-      "href": "https://screenpi.pe/onboarding"
+      "href": "https://cubby.sh/onboarding"
     }
   },
   "footer": {

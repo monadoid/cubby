@@ -88,7 +88,7 @@ help:
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # Default version: latest tag (without the v). Fallback to 0.0.0-local
-VERSION := `git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0.0.0-local`
+VERSION := `git tag --sort=-version:refname | head -1 | sed 's/^v//' || echo 0.0.0-local`
 
 # Compute macOS SDK path once
 SDKROOT := `xcrun --sdk macosx --show-sdk-path`
@@ -149,4 +149,14 @@ package:
 # Build both architectures sequentially, then package
 release: info build-arm64 build-x86_64 package
 	@echo "Release artifacts are in ./dist/{{VERSION}} and ./dist/"
+
+# Release with git tagging and pushing
+release-tag VERSION:
+	@echo "Creating tag v{{VERSION}}..."
+	git tag v{{VERSION}}
+	@echo "Pushing tag v{{VERSION}}..."
+	git push origin v{{VERSION}}
+	@echo "Building release artifacts..."
+	just release
+	@echo "Release v{{VERSION}} complete! Artifacts in ./dist/{{VERSION}} and ./dist/"
 
