@@ -2,7 +2,6 @@ use clap::Parser;
 #[allow(unused_imports)]
 use colored::Colorize;
 use dirs::home_dir;
-use reqwest::Client;
 use futures::pin_mut;
 use port_check::is_local_ipv4_port_free;
 use cubby_audio::{
@@ -12,24 +11,19 @@ use cubby_audio::{
     },
 };
 use cubby_core::find_ffmpeg_path;
-use cubby_db::{
-    create_migration_worker, DatabaseManager, MigrationCommand, MigrationConfig, MigrationStatus,
-};
+use cubby_db::DatabaseManager;
 use cubby_server::{
     cli::{
-        AudioCommand, Cli, CliAudioTranscriptionEngine, CliOcrEngine, CliVadEngine, 
-        CliVadSensitivity, Command, MigrationSubCommand,
-        OutputFormat, PipeCommand, VisionCommand, McpCommand,
+        Cli, CliAudioTranscriptionEngine, CliOcrEngine, CliVadEngine, 
+        CliVadSensitivity,
     },
-    handle_index_command,
-    start_continuous_recording, watch_pid, PipeManager, ResourceMonitor, SCServer,
+    start_continuous_recording, ResourceMonitor, SCServer,
 };
 use cubby_vision::monitor::list_monitors;
 #[cfg(target_os = "macos")]
 use cubby_vision::run_ui;
-use serde_json::{json, Value};
 use std::{
-    env, fs, io::Write, net::SocketAddr, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
+    env, fs, net::SocketAddr, ops::Deref, path::PathBuf, sync::Arc, time::Duration,
     net::{IpAddr, Ipv4Addr},
 };
 use tokio::{runtime::Runtime, signal, sync::broadcast};
@@ -39,19 +33,6 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, Layer};
-use serde::Deserialize;
-use std::path::Path;
-use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
-
-// Add the struct definition with proper derive attributes
-#[derive(Deserialize, Debug)]
-struct GitHubContent {
-    name: String,
-    path: String,
-    download_url: Option<String>,
-    #[serde(rename = "type")]
-    content_type: String,
-}
 
 fn get_base_dir(custom_path: &Option<String>) -> anyhow::Result<PathBuf> {
     let default_path = home_dir()
@@ -163,337 +144,18 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // If not running with --no-service, handle service mode
-    if !cli.no_service && cli.command.is_none() {
+    if !cli.no_service {
+        run_preflight_device_checks(&cli).await?;
         return handle_service_mode(&cli).await;
     }
 
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
 
-    // Only set up logging if we're not running a pipe command with JSON output
-    let should_log = match &cli.command {
-        Some(Command::Add {
-            output: OutputFormat::Text,
-            ..
-        }) => true,
-        Some(Command::Migrate {
-            output: OutputFormat::Text,
-            ..
-        }) => true,
-        _ => true,
-    };
-
     // Store the guard in a variable that lives for the entire main function
-    let _log_guard = if should_log {
-        Some(setup_logging(&local_data_dir, &cli)?)
-    } else {
-        None
-    };
+    let _log_guard = setup_logging(&local_data_dir, &cli)?;
 
-
-    if let Some(ref command) = cli.command {
-        match command {
-            Command::Audio { subcommand } => match subcommand {
-                AudioCommand::List { output } => {
-                    let default_input = default_input_device().unwrap();
-                    let default_output = default_output_device().await.unwrap();
-                    let devices = list_audio_devices().await?;
-                    match output {
-                        OutputFormat::Json => println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json!({
-                                "data": devices.iter().map(|d| {
-                                    json!({
-                                        "name": d.to_string(),
-                                        "is_default": d.name == default_input.name || d.name == default_output.name
-                                    })
-                                }).collect::<Vec<_>>(),
-                                "success": true
-                            }))?
-                        ),
-                        OutputFormat::Text => {
-                            println!("available audio devices:");
-                            for device in devices.iter() {
-                                println!("  {}", device);
-                            }
-                            #[cfg(target_os = "macos")]
-                            println!("note: on macos, output devices are your displays");
-                        }
-                    }
-                    return Ok(());
-                }
-            },
-            Command::Vision { subcommand } => match subcommand {
-                VisionCommand::List { output } => {
-                    let monitors = list_monitors().await;
-                    match output {
-                        OutputFormat::Json => println!(
-                            "{}",
-                            serde_json::to_string_pretty(&json!({
-                                "data": monitors.iter().map(|m| {
-                                    json!({
-                                        "id": m.id(),
-                                        "name": m.name(),
-                                        "width": m.width(),
-                                        "height": m.height(),
-                                        "is_default": m.is_primary(),
-                                    })
-                                }).collect::<Vec<_>>(),
-                                "success": true
-                            }))?
-                        ),
-                        OutputFormat::Text => {
-                            println!("available monitors:");
-                            for monitor in monitors.iter() {
-                                println!("  {}. {:?}", monitor.id(), monitor.name());
-                            }
-                        }
-                    }
-                    return Ok(());
-                }
-            },
-            Command::Completions { shell } => {
-                cli.handle_completions(*shell)?;
-                return Ok(());
-            }
-            Command::Migrate {
-                migration_name,
-                data_dir,
-                subcommand,
-                output,
-                batch_size,
-                batch_delay_ms,
-                continue_on_error,
-            } => {
-                // Initialize the database
-                let local_data_dir = get_base_dir(data_dir)?;
-                let db = Arc::new(
-                    DatabaseManager::new(&format!(
-                        "{}/db.sqlite",
-                        local_data_dir.to_string_lossy()
-                    ))
-                    .await
-                    .map_err(|e| {
-                        error!("failed to initialize database: {:?}", e);
-                        e
-                    })?,
-                );
-
-                // Create a migration worker config
-                let config = MigrationConfig::new(*batch_size, *batch_delay_ms, *continue_on_error);
-
-                // Start the migration worker
-                let (cmd_tx, mut status_rx, worker_handle) =
-                    create_migration_worker(db, Some(config));
-
-                // Process the specified subcommand or default to status
-                let cmd = match subcommand {
-                    Some(MigrationSubCommand::Start) => MigrationCommand::Start,
-                    Some(MigrationSubCommand::Pause) => MigrationCommand::Pause,
-                    Some(MigrationSubCommand::Stop) => MigrationCommand::Stop,
-                    Some(MigrationSubCommand::Status) | None => MigrationCommand::Status,
-                };
-
-                // Send the command to the worker
-                if let Err(e) = cmd_tx.send(cmd.clone()).await {
-                    error!("failed to send command to migration worker: {}", e);
-                    return Err(anyhow::anyhow!(
-                        "Failed to send command to migration worker"
-                    ));
-                }
-
-                // If the command is start, we need to track the progress
-                if matches!(cmd, MigrationCommand::Start) {
-                    // Send the start command and wait for the worker to acknowledge
-                    if let Some(response) = status_rx.recv().await {
-                        match output {
-                            OutputFormat::Json => {
-                                println!("{}", serde_json::to_string_pretty(&response.status)?);
-                            }
-                            OutputFormat::Text => {
-                                info!("Started migration: {}", migration_name);
-                                match response.status {
-                                    MigrationStatus::Running {
-                                        total_records,
-                                        processed_records,
-                                    } => {
-                                        info!(
-                                            "Processing records: {}/{} ({:.2}%)",
-                                            processed_records,
-                                            total_records,
-                                            if total_records > 0 {
-                                                (processed_records as f64 / total_records as f64)
-                                                    * 100.0
-                                            } else {
-                                                0.0
-                                            }
-                                        );
-                                    }
-                                    _ => {
-                                        info!("Migration status: {:?}", response.status);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Keep checking status periodically until migration completes, fails, or is stopped
-                    let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
-                    loop {
-                        interval.tick().await;
-
-                        // Send status command
-                        if let Err(e) = cmd_tx.send(MigrationCommand::Status).await {
-                            error!("failed to send status command: {}", e);
-                            break;
-                        }
-
-                        // Wait for response
-                        if let Some(response) = status_rx.recv().await {
-                            match output {
-                                OutputFormat::Json => {
-                                    println!("{}", serde_json::to_string_pretty(&response.status)?);
-                                }
-                                OutputFormat::Text => match &response.status {
-                                    MigrationStatus::Running {
-                                        total_records,
-                                        processed_records,
-                                    } => {
-                                        info!(
-                                            "Processing records: {}/{} ({:.2}%)",
-                                            processed_records,
-                                            total_records,
-                                            if *total_records > 0 {
-                                                (*processed_records as f64 / *total_records as f64)
-                                                    * 100.0
-                                            } else {
-                                                0.0
-                                            }
-                                        );
-                                    }
-                                    MigrationStatus::Completed {
-                                        total_records,
-                                        duration_secs,
-                                    } => {
-                                        info!(
-                                            "Migration completed: {} records processed in {} seconds",
-                                            total_records, duration_secs
-                                        );
-                                        break;
-                                    }
-                                    MigrationStatus::Paused {
-                                        total_records,
-                                        processed_records,
-                                    } => {
-                                        info!(
-                                            "Migration paused: {}/{} ({:.2}%)",
-                                            processed_records,
-                                            total_records,
-                                            if *total_records > 0 {
-                                                (*processed_records as f64 / *total_records as f64)
-                                                    * 100.0
-                                            } else {
-                                                0.0
-                                            }
-                                        );
-                                    }
-                                    MigrationStatus::Failed {
-                                        total_records,
-                                        processed_records,
-                                        error,
-                                    } => {
-                                        error!(
-                                            "Migration failed: {}/{} records processed. Error: {}",
-                                            processed_records, total_records, error
-                                        );
-                                        break;
-                                    }
-                                    _ => {
-                                        info!("Migration status: {:?}", response.status);
-                                    }
-                                },
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                } else {
-                    // For non-start commands, just get the status once
-                    if let Some(response) = status_rx.recv().await {
-                        match output {
-                            OutputFormat::Json => {
-                                println!("{}", serde_json::to_string_pretty(&response.status)?);
-                            }
-                            OutputFormat::Text => {
-                                info!("Migration status: {:?}", response.status);
-                            }
-                        }
-                    }
-                }
-
-                // If we explicitly stopped, wait for the worker to finish
-                if matches!(cmd, MigrationCommand::Stop) {
-                    if let Err(e) = worker_handle.await {
-                        error!("error waiting for worker to finish: {}", e);
-                    }
-                }
-
-                return Ok(());
-            }
-            Command::Add {
-                path,
-                output,
-                data_dir,
-                pattern,
-                ocr_engine,
-                metadata_override,
-                copy_videos,
-                debug,
-                use_embedding,
-            } => {
-                let local_data_dir = get_base_dir(data_dir)?;
-
-                // Update logging filter if debug is enabled
-                if *debug {
-                    tracing::subscriber::set_global_default(
-                        tracing_subscriber::registry()
-                            .with(
-                                EnvFilter::from_default_env()
-                                    .add_directive("cubby=debug".parse().unwrap()),
-                            )
-                            .with(fmt::layer().with_writer(std::io::stdout)),
-                    )
-                    .ok();
-                    debug!("debug logging enabled");
-                }
-
-                let db = Arc::new(
-                    DatabaseManager::new(&format!(
-                        "{}/db.sqlite",
-                        local_data_dir.to_string_lossy()
-                    ))
-                    .await
-                    .map_err(|e| {
-                        error!("failed to initialize database: {:?}", e);
-                        e
-                    })?,
-                );
-                handle_index_command(
-                    local_data_dir,
-                    path.to_string(),
-                    pattern.clone(),
-                    db,
-                    output.clone(),
-                    ocr_engine.clone(),
-                    metadata_override.clone(),
-                    *copy_videos,
-                    *use_embedding,
-                )
-                .await?;
-                return Ok(());
-            }
-        }
-    }
+    run_preflight_device_checks(&cli).await?;
 
     // Replace the current conditional check with:
     let ffmpeg_path = find_ffmpeg_path();
@@ -521,7 +183,7 @@ async fn main() -> anyhow::Result<()> {
         {
             use objc2_core_graphics::CGPreflightScreenCaptureAccess;
             // Silently check permission without triggering dialog
-            if unsafe { CGPreflightScreenCaptureAccess() } {
+            if CGPreflightScreenCaptureAccess() {
                 list_monitors().await
             } else {
                 // No permission - skip vision silently (onboarding should have handled this)
@@ -615,10 +277,7 @@ async fn main() -> anyhow::Result<()> {
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
     let vision_runtime = Runtime::new().unwrap();
-    let pipes_runtime = Runtime::new().unwrap();
-
     let vision_handle = vision_runtime.handle().clone();
-    let pipes_handle = pipes_runtime.handle().clone();
 
     let db_clone = Arc::clone(&db);
     let output_path_clone = Arc::new(local_data_dir.join("data").to_string_lossy().into_owned());
@@ -655,10 +314,7 @@ async fn main() -> anyhow::Result<()> {
             error!("continuing without audio functionality");
             // Create a dummy audio manager or handle this more gracefully
             // For now, we need to properly clean up and exit
-            tokio::task::block_in_place(|| {
-                drop(pipes_runtime);
-                drop(vision_runtime);
-            });
+            tokio::task::block_in_place(|| drop(vision_runtime));
             anyhow::bail!("audio manager initialization failed: {e}");
         }
     };
@@ -955,7 +611,6 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Add warning for telemetry
     if !cli.disable_telemetry {
         println!(
             "{}",
@@ -966,7 +621,8 @@ async fn main() -> anyhow::Result<()> {
     } else {
         println!(
             "{}",
-            "telemetry is disabled. no data will be sent to external services.".bright_green()
+            "telemetry is disabled. no data will be sent to external services."
+                .bright_green()
         );
     }
 
@@ -1029,12 +685,54 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tokio::task::block_in_place(|| {
-        drop(pipes_runtime);
         drop(vision_runtime);
         drop(audio_manager);
     });
 
     info!("shutdown complete");
+
+    Ok(())
+}
+
+/// Probe default devices upfront to trigger permission prompts before the service starts.
+async fn run_preflight_device_checks(cli: &Cli) -> anyhow::Result<()> {
+    if !cli.disable_audio {
+        let default_input = default_input_device()?;
+        let default_output = default_output_device().await?;
+        let devices = list_audio_devices().await?;
+
+        println!("available audio devices:");
+        for device in devices.iter() {
+            let mut label = format!("  {}", device);
+            if device.name == default_input.name || device.name == default_output.name {
+                label.push_str(" (default)");
+            }
+            println!("{label}");
+        }
+        #[cfg(target_os = "macos")]
+        println!("note: on macos, output devices are your displays");
+
+        println!("default input device: {}", default_input);
+        println!("default output device: {}", default_output);
+    }
+
+    if !cli.disable_vision {
+        let monitors = list_monitors().await;
+        if monitors.is_empty() {
+            println!("no monitors detected.");
+        } else {
+            println!("available monitors:");
+            for monitor in monitors.iter() {
+                println!(
+                    "  {}. {:?} ({}x{})",
+                    monitor.id(),
+                    monitor.name(),
+                    monitor.width(),
+                    monitor.height()
+                );
+            }
+        }
+    }
 
     Ok(())
 }
@@ -1084,15 +782,13 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         #[cfg(not(debug_assertions))]
         use cliclack::log;
         
-        #[cfg(not(debug_assertions))]
-        log::success("Cloudflared tunnel service installed")?;
-        
+
         #[cfg(debug_assertions)]
         println!("✅ Cloudflared tunnel service installed\n");
         
         // Install cubby service
         #[cfg(debug_assertions)]
-        println!("📦 Installing cubby-sp as a background service...");
+        println!("📦 Installing cubby as a background service...");
         
         service_manager.install()?;
         
@@ -1273,11 +969,7 @@ fn build_service_args(cli: &Cli) -> Vec<String> {
     if cli.use_pii_removal {
         args.push("--use-pii-removal".to_string());
     }
-    
-    if cli.disable_telemetry {
-        args.push("--disable-telemetry".to_string());
-    }
-    
+
     if cli.enable_llm {
         args.push("--enable-llm".to_string());
     }

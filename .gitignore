@@ -57,3 +57,5 @@ app.py
 *.py3z
 __pycache__/
 
+
+todos.md

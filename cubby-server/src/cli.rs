@@ -1,8 +1,6 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
-use clap::{Parser, Subcommand, ValueHint};
-use clap_complete::{generate, Shell};
-use clap::CommandFactory;
+use clap::{Parser, ValueHint};
 use cubby_audio::{vad::{VadSensitivity, VadEngineEnum}, core::engine::AudioTranscriptionEngine as CoreAudioTranscriptionEngine};
 use cubby_vision::{custom_ocr::CustomOcrConfig, utils::OcrEngine as CoreOcrEngine};
 use clap::ValueEnum;
@@ -281,10 +279,6 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub capture_unfocused_windows: bool,
 
-    /// Enable pipe functionality (default: false)
-    #[arg(long, default_value_t = false)]
-    pub enable_pipe_manager: bool,
-
     /// Run in foreground (don't use service manager)
     #[arg(long, default_value_t = false)]
     pub no_service: bool,
@@ -292,9 +286,6 @@ pub struct Cli {
     /// Uninstall the service and clean up
     #[arg(long, default_value_t = false)]
     pub uninstall: bool,
-
-    #[command(subcommand)]
-    pub command: Option<Command>,
 
 }
 
@@ -310,231 +301,6 @@ impl Cli {
         }
         Ok(unique_langs.into_iter().collect())
     }
-    pub fn handle_completions(&self, shell: Shell) -> anyhow::Result<()> {
-        let mut cmd = Self::command();
-        generate(shell, &mut cmd, "cubby", &mut std::io::stdout());
-        Ok(())
-    }
-}
-
-#[derive(Subcommand)]
-pub enum Command {
-    /// Audio device management commands
-    Audio {
-        #[command(subcommand)]
-        subcommand: AudioCommand,
-    },
-    /// Vision device management commands
-    Vision {
-        #[command(subcommand)]
-        subcommand: VisionCommand,
-    },
-    /// Add video files to existing cubby data (OCR only) - DOES NOT SUPPORT AUDIO
-    Add {
-        /// Path to folder containing video files
-        path: String,
-        /// Data directory. Default to $HOME/.cubby
-        #[arg(long, value_hint = ValueHint::DirPath)]
-        data_dir: Option<String>,
-        /// Output format
-        #[arg(short = 'o', long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Regex pattern to filter files (e.g. "monitor.*\.mp4$")
-        #[arg(long)]
-        pattern: Option<String>,
-        /// OCR engine to use
-        #[arg(short = 'o', long, value_enum)]
-        ocr_engine: Option<CliOcrEngine>,
-        /// Path to JSON file containing metadata overrides
-        #[arg(long, value_hint = ValueHint::FilePath)]
-        metadata_override: Option<PathBuf>,
-        /// Copy videos to cubby data directory
-        #[arg(long, default_value_t = true)]
-        copy_videos: bool,
-        /// Enable debug logging for cubby modules
-        #[arg(long)]
-        debug: bool,
-        /// Enable embedding generation for OCR text
-        #[arg(long, default_value_t = false)]
-        use_embedding: bool,
-    },
-    /// Run data migrations in the background
-    Migrate {
-        /// The name of the migration to run
-        #[arg(long, default_value = "ocr_text_to_frames")]
-        migration_name: String,
-        /// Data directory. Default to $HOME/.cubby
-        #[arg(long, value_hint = ValueHint::DirPath)]
-        data_dir: Option<String>,
-        /// The subcommand for data migration
-        #[command(subcommand)]
-        subcommand: Option<MigrationSubCommand>,
-        /// Output format
-        #[arg(short = 'o', long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Batch size for processing records
-        #[arg(long, default_value_t = 100_000)]
-        batch_size: i64,
-        /// Delay between batches in milliseconds
-        #[arg(long, default_value_t = 100)]
-        batch_delay_ms: u64,
-        /// Continue processing if errors occur
-        #[arg(long, default_value_t = true)]
-        continue_on_error: bool,
-    },
-    /// Generate shell completions
-    Completions {
-        /// The shell to generate completions for
-        #[arg(value_enum)]
-        shell: Shell,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum MigrationSubCommand {
-    /// Start or resume a migration
-    Start,
-    /// Pause a running migration
-    Pause,
-    /// Stop a running migration
-    Stop,
-    /// Get migration status
-    Status,
-}
-
-#[derive(Subcommand)]
-pub enum AudioCommand {
-    /// List available audio devices
-    List {
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum VisionCommand {
-    /// List available monitors and vision devices
-    List {
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum PipeCommand {
-    /// List all pipes
-    List {
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Download a new pipe (deprecated: use 'install' instead)
-    #[deprecated(since = "0.2.26", note = "please use `install` instead")]
-    Download {
-        /// URL of the pipe to download
-        url: String,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Install a new pipe
-    Install {
-        /// URL of the pipe to install
-        url: String,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Get info for a specific pipe
-    Info {
-        /// ID of the pipe
-        id: String,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Enable a pipe
-    Enable {
-        /// ID of the pipe to enable
-        id: String,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Disable a pipe
-    Disable {
-        /// ID of the pipe to disable
-        id: String,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Update pipe configuration
-    Update {
-        /// ID of the pipe to update
-        id: String,
-        /// New configuration as a JSON string
-        config: String,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Purge all pipes
-    Purge {
-        /// Automatically confirm purge without prompting
-        #[arg(short = 'y', long)]
-        yes: bool,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-    /// Delete a pipe
-    Delete {
-        /// ID of the pipe to delete
-        id: String,
-        /// Automatically confirm deletion without prompting
-        #[arg(short = 'y', long)]
-        yes: bool,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-    },
-}
-
-#[derive(Subcommand)]
-pub enum McpCommand {
-    /// Setup MCP server configuration
-    Setup {
-        /// Directory to save MCP files (default: $HOME/.cubby/mcp)
-        #[arg(long, value_hint = ValueHint::DirPath)]
-        directory: Option<String>,
-        /// Output format
-        #[arg(short, long, value_enum, default_value_t = OutputFormat::Text)]
-        output: OutputFormat,
-        /// Server port
-        #[arg(short = 'p', long, default_value_t = 3030)]
-        port: u16,
-        /// Force update existing files
-        #[arg(long)]
-        update: bool,
-        /// Purge existing MCP directory before setup
-        #[arg(long)]
-        purge: bool,
-    },
 }
 
 #[derive(Clone, Debug, ValueEnum, PartialEq)]
