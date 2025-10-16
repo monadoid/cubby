@@ -949,8 +949,74 @@ async fn handle_uninstall() -> anyhow::Result<()> {
         println!("   (Requires Terminal to have Full Disk Access in System Settings)\n");
     }
 
+    // Remove CLI binary/symlink so `cubby` is no longer available
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        use std::fs;
+        use std::path::PathBuf;
+        // remove ~/.local/bin/cubby (symlink or binary)
+        if let Some(home) = dirs::home_dir() {
+            let bin_link: PathBuf = home.join(".local").join("bin").join("cubby");
+            let _ = fs::remove_file(&bin_link);
+
+            // remove install dir ~/.local/cubby if present (used by install.sh)
+            let install_dir: PathBuf = home.join(".local").join("cubby");
+            let _ = fs::remove_dir_all(&install_dir);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::fs;
+        use std::io::Write;
+        use std::path::PathBuf;
+        use std::process::Command;
+
+        // current_exe typically is: %USERPROFILE%\cubby\bin\cubby.exe
+        let exe_path = std::env::current_exe()?;
+        let install_root: Option<PathBuf> = exe_path
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_path_buf());
+
+        // Create a temporary batch file to delete after this process exits
+        let mut bat_path = std::env::temp_dir();
+        bat_path.push("cubby_self_delete.bat");
+
+        let mut script = String::new();
+        script.push_str("@echo off\r\n");
+        // short delay to ensure current process has exited
+        script.push_str("timeout /t 2 /nobreak > NUL\r\n");
+        script.push_str(&format!(
+            "del /f /q \"{}\" > NUL 2>&1\r\n",
+            exe_path.to_string_lossy()
+        ));
+        if let Some(root) = install_root {
+            script.push_str(&format!(
+                "rmdir /s /q \"{}\" > NUL 2>&1\r\n",
+                root.to_string_lossy()
+            ));
+        }
+        // delete the bat itself
+        script.push_str("del /f /q \"%~f0\" > NUL 2>&1\r\n");
+
+        // Write batch file
+        if let Ok(mut f) = fs::File::create(&bat_path) {
+            let _ = f.write_all(script.as_bytes());
+        }
+
+        // Spawn detached cmd to run the batch (use 'start' to detach)
+        let _ = Command::new("cmd")
+            .args(["/C", "start", "", &bat_path.to_string_lossy()])
+            .spawn();
+    }
+
     #[cfg(not(debug_assertions))]
-    cliclack::outro("Uninstall complete!")?;
+    {
+        use cliclack::log;
+        log::info("if 'cubby' still appears, restart your terminal to refresh PATH cache")?;
+        cliclack::outro("Uninstall complete!")?;
+    }
 
     Ok(())
 }

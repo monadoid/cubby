@@ -364,9 +364,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
 
       - name: List artifacts
-        run: ls -R artifacts
+        run: ls -R artifacts || echo "no artifacts yet"
 
       - name: Create or update Release  
         env:
