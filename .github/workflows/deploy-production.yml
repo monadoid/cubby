@@ -43,8 +43,8 @@ jobs:
 
   build-binaries:
     name: Build Release Binaries
-    needs: detect-changes
-    if: needs.detect-changes.outputs.rust == 'true'
+    # needs: detect-changes
+    # if: needs.detect-changes.outputs.rust == 'true'
     strategy:
       matrix:
         include:
@@ -139,8 +139,9 @@ jobs:
 
   upload-to-r2:
     name: Upload Binaries to Cloudflare R2
-    needs: [detect-changes, build-binaries]
-    if: needs.detect-changes.outputs.rust == 'true'
+    needs: [build-binaries]
+    # needs: [detect-changes, build-binaries]
+    # if: needs.detect-changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -179,8 +180,8 @@ jobs:
 
   migrate-database:
     name: Run Database Migrations
-    needs: detect-changes
-    if: needs.detect-changes.outputs.cubby-api == 'true'
+    # needs: detect-changes
+    # if: needs.detect-changes.outputs.cubby-api == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -207,8 +208,9 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   deploy-cubby-api:
-    needs: [detect-changes, migrate-database]
-    if: ${{ !cancelled() && needs.detect-changes.outputs.cubby-api == 'true' && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') }}
+    needs: [migrate-database]
+    # needs: [detect-changes, migrate-database]
+    # if: ${{ !cancelled() && needs.detect-changes.outputs.cubby-api == 'true' && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped') }}
     name: Deploy cubby-api
     runs-on: ubuntu-latest
     steps:
@@ -249,8 +251,8 @@ jobs:
           MCP_AUTH_SECRET: ${{ secrets.MCP_AUTH_SECRET }}
 
   deploy-exampleco-website:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.exampleco-website == 'true'
+    # needs: detect-changes
+    # if: needs.detect-changes.outputs.exampleco-website == 'true'
     name: Deploy exampleco-website
     runs-on: ubuntu-latest
     steps:
@@ -279,8 +281,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-cubby-installer:
-    needs: [detect-changes, upload-to-r2]
-    if: ${{ !cancelled() && needs.detect-changes.outputs.cubby-installer == 'true' && (needs.upload-to-r2.result == 'success' || needs.upload-to-r2.result == 'skipped') }}
+    needs: [upload-to-r2]
+    # needs: [detect-changes, upload-to-r2]
+    # if: ${{ !cancelled() && needs.detect-changes.outputs.cubby-installer == 'true' && (needs.upload-to-r2.result == 'success' || needs.upload-to-r2.result == 'skipped') }}
     name: Deploy cubby-installer
     runs-on: ubuntu-latest
     steps:
