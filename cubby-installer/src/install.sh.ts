@@ -85,6 +85,6 @@ echo ""
 echo "\${GREEN}Starting Cubby...\${NC}"
 echo ""
 
-# Run cubby start with --force to always download fresh binaries
-"$INSTALL_DIR/$FINAL_NAME" start --force
+# Run cubby
+"$INSTALL_DIR/$FINAL_NAME"
 `;
