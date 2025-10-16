@@ -61,11 +61,11 @@ export const mcpAuth = (): MiddlewareHandler<{
     const bodyText = await c.req.text();
     c.set("bodyText", bodyText);
 
-    let body;
+    let body: any = undefined;
     try {
       body = JSON.parse(bodyText);
     } catch {
-      // Invalid JSON - let MCP handler deal with protocol errors
+      // Let upstream MCP handler return protocol parse errors
       await next();
       return;
     }
@@ -74,15 +74,27 @@ export const mcpAuth = (): MiddlewareHandler<{
     c.set("rpcMethod", method);
 
     const requiresAuth = AUTH_REQUIRED_METHODS.includes(method);
-    const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+    const authHeader = c.req.header("Authorization");
+    let token = authHeader?.replace(/^Bearer\s+/i, "");
+    if (token) token = token.trim().replace(/^"|"$/g, "");
 
-    // 2. Validate token if present OR if method requires auth
+    // Normalize JWT to base64url (header, payload, signature): replace +/ -> -_, strip '=' padding
     if (token) {
-      try {
-        const JWKS = createRemoteJWKSet(
-          new URL(`${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`),
-        );
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const normalize = (s: string) => s.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+        const [h, p, s] = parts;
+        token = `${normalize(h)}.${normalize(p)}.${normalize(s)}`;
+      }
+    }
 
+    // No session fallback: require header on auth-required methods (keep initialize/tools/list public)
+
+    // 2. Validate token only when required (avoid failing initialize/tools/list)
+    if (token && requiresAuth) {
+      try {
+        const jwksUrl = `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`;
+        const JWKS = createRemoteJWKSet(new URL(jwksUrl));
         const result = await jwtVerify(token, JWKS, {
           issuer: c.env.STYTCH_PROJECT_DOMAIN,
           audience: c.env.STYTCH_PROJECT_ID,
@@ -118,7 +130,8 @@ export const mcpAuth = (): MiddlewareHandler<{
           );
         }
       } catch (error) {
-        console.error("JWT verification failed for MCP request:", error);
+        // Log exact verification error for diagnostics (not from Stytch API, but useful)
+        console.error("jwt verification error:", error);
         if (requiresAuth) {
           // Invalid/expired token and method requires auth - fail
           return c.json(
@@ -127,7 +140,7 @@ export const mcpAuth = (): MiddlewareHandler<{
               id: body.id,
               error: {
                 code: -32001,
-                message: "Invalid or expired token",
+                message: "invalid or expired token",
               },
             },
             401,
@@ -136,18 +149,20 @@ export const mcpAuth = (): MiddlewareHandler<{
         // Invalid token but method doesn't require auth - continue without authInfo
       }
     } else if (requiresAuth) {
-      // No token provided but method requires auth
+      // No token provided and method requires auth
+      const origin = new URL(c.req.url).origin;
+      c.header("WWW-Authenticate", `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`);
       return c.json(
         {
           jsonrpc: "2.0",
           id: body.id,
           error: {
             code: -32001,
-            message: "Authentication required",
+            message: "authentication required",
             data: {
-              reason: "This method requires OAuth authentication",
-              oauth_info:
-                "See /.well-known/oauth-protected-resource for OAuth configuration",
+              reason: "this method requires oauth authentication",
+              oauth_info: "see /.well-known/oauth-protected-resource for oauth configuration",
+              hint: "pass header: authorization: bearer <token>",
             },
           },
         },

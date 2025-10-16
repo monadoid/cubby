@@ -33,8 +33,35 @@ import {
   DcrRegisterRequestSchema,
   DcrRegisterResponseSchema,
 } from "./schemas/dcr";
+import {
+  getSession,
+  getOrCreateSession,
+  getGwSessionId,
+  setSessionAuth,
+} from "./mcp/session_store";
+import { postMcp, getMcpSse } from "./mcp/device_client";
+import {
+  GATEWAY_TOOLS,
+  handleDevicesList,
+  handleDevicesSet,
+} from "./mcp/gateway_tools";
 
-type Bindings = CloudflareBindings;
+// Explicit bindings type for lints; wrangler will still provide runtime types
+type Bindings = {
+  STYTCH_PROJECT_ID: string;
+  STYTCH_PROJECT_SECRET: string;
+  STYTCH_PROJECT_DOMAIN: string;
+  CF_API_TOKEN: string;
+  CF_ACCOUNT_ID: string;
+  CF_ZONE_ID: string;
+  ACCESS_CLIENT_ID: string;
+  ACCESS_CLIENT_SECRET: string;
+  TUNNEL_DOMAIN: string;
+  DATABASE_URL: string;
+  STYTCH_BASE_URL?: string;
+  TEST_EMAIL: string;
+  TEST_PASSWORD: string;
+};
 
 type Variables = {
   auth: AuthUser;
@@ -679,23 +706,438 @@ app.all(
     },
     tags: ["MCP"],
   }),
-  mcpAuth(), // Middleware handles selective OAuth validation
+  mcpAuth(), // Middleware handles OAuth validation similar to the clerk example
   async (c) => {
+    const httpMethod = c.req.method;
+
+    // GET requests are for SSE streaming - proxy to device if selected
+    if (httpMethod === "GET") {
+      const gwSessionId = c.req.header("mcp-session-id");
+      const authInfo = c.get("authInfo");
+
+      if (gwSessionId && authInfo) {
+        const session = getSession(gwSessionId);
+
+        if (session?.deviceId && session?.deviceSessionId) {
+          // Proxy SSE to device
+          const url = new URL(c.req.url);
+          const searchParams = url.searchParams;
+
+          console.log(
+            `proxying sse to device ${session.deviceId} (device session: ${session.deviceSessionId})`,
+          );
+
+          const deviceResponse = await getMcpSse(
+            c.env,
+            session.deviceId,
+            searchParams,
+            {
+              sessionId: session.deviceSessionId,
+              userId: session.userId,
+              gwSessionId,
+            },
+          );
+
+          return deviceResponse;
+        }
+      }
+
+      // No device selected or not authenticated - use local handler
+      // Note: GET has no body. Call mcpHttpHandler directly like the example does
+      const localRequest = new Request(c.req.raw.url, {
+        method: "GET",
+        headers: c.req.raw.headers,
+      });
+      return mcpHttpHandler(localRequest, { authInfo });
+    }
+
+    // POST requests - handle JSON-RPC
     const bodyText = c.get("bodyText");
     const authInfo = c.get("authInfo");
  
-    // Reconstruct request for MCP handler (it needs to read the body)
-    const newRequest = new Request(c.req.raw.url, {
-      method: c.req.method,
+    let body: any;
+    try {
+      body = JSON.parse(bodyText || "{}");
+    } catch {
+      // Let the upstream MCP handler return the JSON-RPC parse error to match mcp-lite behavior closely
+      return mcpHttpHandler(new Request(c.req.raw.url, { method: c.req.raw.method, headers: c.req.raw.headers, body: bodyText }), { authInfo });
+    }
+
+    const rpcMethod = body.method as string | undefined;
+    const gwSessionId = c.req.header("mcp-session-id");
+
+    // Helper to reconstruct request with body (since mcpAuth consumed it)
+    const reconstructRequest = () =>
+      new Request(c.req.raw.url, {
+        method: c.req.raw.method,
       headers: c.req.raw.headers,
       body: bodyText,
     });
 
-    const response = await mcpHttpHandler(newRequest, {
-      authInfo,
-    });
+    // Helper: persist auth into session if authenticated and session exists
+    // Keep but simplify logs; this is a UX improvement over the example
+    const persistAuthIfNeeded = () => {
+      if (authInfo && gwSessionId) {
+        const session = getSession(gwSessionId);
+        if (session && !session.accessToken) {
+          if (session.userId === "anonymous") {
+            session.userId = authInfo.extra.userId;
+          }
+          setSessionAuth(gwSessionId, authInfo.token, authInfo.scopes);
+        }
+      }
+    };
 
-    return response;
+    // Handle different methods
+    switch (rpcMethod) {
+      case "initialize": {
+        // Forward to local handler and create session mapping if authenticated
+        const upstream = await mcpHttpHandler(reconstructRequest(), { authInfo });
+
+        // Capture upstream response
+        const status = upstream.status as any;
+        const headers = new Headers(upstream.headers);
+
+        let bodyJson: any;
+        try {
+          bodyJson = await upstream.json();
+        } catch {
+          // If body isn't JSON, just return upstream
+          return upstream;
+        }
+
+        // Ensure capabilities advertise tool support so inspectors know tools are available
+        if (bodyJson?.result) {
+          bodyJson.result.capabilities = {
+            ...(bodyJson.result.capabilities || {}),
+            tools: { ...(bodyJson.result.capabilities?.tools || {}) },
+            resources: {
+              ...(bodyJson.result.capabilities?.resources || {}),
+            },
+          };
+        }
+
+        // Always create session on initialize
+        const responseSessionId = headers.get("mcp-session-id");
+        if (responseSessionId) {
+          if (authInfo) {
+            // Authenticated initialize: create session with userId and store token
+            const userId = authInfo.extra.userId;
+            getOrCreateSession(responseSessionId, userId);
+            setSessionAuth(responseSessionId, authInfo.token, authInfo.scopes);
+            console.log(
+              `created gateway session ${responseSessionId} for user ${userId} with stored auth`,
+            );
+          } else {
+            // Unauthenticated initialize: create session with placeholder userId
+            // Auth can be added later via tools/call with Bearer token
+            getOrCreateSession(responseSessionId, "anonymous");
+            console.log(
+              `created anonymous gateway session ${responseSessionId}`,
+            );
+          }
+        }
+
+        // Return modified response with same headers (including Mcp-Session-Id)
+        return new Response(JSON.stringify(bodyJson), {
+          status,
+          headers,
+        });
+      }
+
+      case "tools/list": {
+        // Persist auth if provided (for future requests)
+        persistAuthIfNeeded();
+
+        // Build union of gateway tools + device tools (if device selected)
+        let tools = [...GATEWAY_TOOLS];
+
+        console.log(`tools/list called with gwSessionId: ${gwSessionId}`);
+
+        if (gwSessionId) {
+          const session = getSession(gwSessionId);
+          console.log(`session found:`, session);
+
+          if (session?.deviceId && session?.deviceSessionId) {
+            console.log(
+              `fetching tools from device ${session.deviceId} for union`,
+            );
+
+            try {
+              // Fetch device tools
+              const deviceRequest = {
+                jsonrpc: "2.0",
+                id: body.id || crypto.randomUUID(),
+                method: "tools/list",
+              };
+
+              const deviceResponse = await postMcp(
+                c.env,
+                session.deviceId,
+                JSON.stringify(deviceRequest),
+                {
+                  sessionId: session.deviceSessionId,
+                  userId: session.userId,
+                  gwSessionId,
+                },
+              );
+
+              if (deviceResponse.ok) {
+                const deviceData = await deviceResponse.json() as any;
+                if (deviceData.result?.tools) {
+                  const deviceTools = deviceData.result.tools;
+
+                  // Check for name collisions
+                  const gatewayNames = new Set(tools.map((t) => t.name));
+                  for (const dt of deviceTools) {
+                    if (gatewayNames.has(dt.name)) {
+                      return c.json(
+                        {
+                          jsonrpc: "2.0",
+                          id: body.id,
+                          error: {
+                            code: -32000,
+                            message: `tool name collision: ${dt.name}`,
+                          },
+                        },
+                        500,
+                      );
+                    }
+                  }
+
+                  tools = [...tools, ...deviceTools];
+                  console.log(
+                    `unioned ${deviceTools.length} device tools with ${GATEWAY_TOOLS.length} gateway tools`,
+                  );
+                }
+              } else {
+                console.warn(
+                  `failed to fetch device tools: ${deviceResponse.status}`,
+                );
+              }
+            } catch (error) {
+              console.error(`error fetching device tools:`, error);
+              // Continue with just gateway tools if device fetch fails
+            }
+          } else {
+            console.log(`no device selected for session ${gwSessionId}`);
+          }
+        } else {
+          console.log(`no gwSessionId provided`);
+        }
+
+        console.log(`returning ${tools.length} tools`);
+
+        return c.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: { tools },
+        });
+      }
+
+      case "tools/call": {
+        // Persist auth if provided (for future requests)
+        persistAuthIfNeeded();
+
+        const toolName = body.params?.name;
+
+        // Handle gateway tools
+        if (toolName?.startsWith("devices/")) {
+          if (!authInfo) {
+            return c.json(
+              {
+                jsonrpc: "2.0",
+                id: body.id,
+                error: {
+                  code: -32001,
+                  message: "authentication required for gateway tools",
+                },
+              },
+              401,
+            );
+          }
+
+          const userId = authInfo.extra.userId;
+
+          try {
+            let result;
+            if (toolName === "devices/list") {
+              result = await handleDevicesList(c.env, userId);
+            } else if (toolName === "devices/set") {
+              if (!gwSessionId) {
+                return c.json(
+                  {
+                    jsonrpc: "2.0",
+                    id: body.id,
+                    error: {
+                      code: -32000,
+                      message: "no gateway session found - call initialize first",
+                    },
+                  },
+                  400,
+                );
+              }
+              result = await handleDevicesSet(
+                c.env,
+                userId,
+                gwSessionId,
+                body.params?.arguments,
+              );
+            } else {
+              return c.json(
+                {
+                  jsonrpc: "2.0",
+                  id: body.id,
+                  error: {
+                    code: -32601,
+                    message: `unknown gateway tool: ${toolName}`,
+                  },
+                },
+                404,
+              );
+            }
+
+            return c.json({
+              jsonrpc: "2.0",
+              id: body.id,
+              result,
+            });
+          } catch (error) {
+            console.error(`gateway tool ${toolName} error:`, error);
+            return c.json(
+              {
+                jsonrpc: "2.0",
+                id: body.id,
+                error: {
+                  code: -32000,
+                  message:
+                    error instanceof Error ? error.message : "tool call failed",
+                },
+              },
+              500,
+            );
+          }
+        }
+
+        // Handle device tools - proxy to device
+        if (!gwSessionId) {
+          return c.json(
+            {
+              jsonrpc: "2.0",
+              id: body.id,
+              error: {
+                code: -32000,
+                message: "no gateway session - call initialize first",
+              },
+            },
+            400,
+          );
+        }
+
+        const session = getSession(gwSessionId);
+        if (!session?.deviceId || !session?.deviceSessionId) {
+          return c.json(
+            {
+              jsonrpc: "2.0",
+              id: body.id,
+              error: {
+                code: -32000,
+                message:
+                  "no device selected - call devices/set to select a device first",
+              },
+            },
+            400,
+          );
+        }
+
+        console.log(
+          `proxying tool call ${toolName} to device ${session.deviceId}`,
+        );
+
+        const deviceResponse = await postMcp(
+          c.env,
+          session.deviceId,
+          bodyText || "{}",
+          {
+            sessionId: session.deviceSessionId,
+            userId: session.userId,
+            gwSessionId,
+          },
+        );
+
+        if (!deviceResponse.ok) {
+          const errorText = await deviceResponse.text();
+          console.error(`device proxy error: ${deviceResponse.status} - ${errorText}`);
+          return c.json(
+            {
+              jsonrpc: "2.0",
+              id: body.id,
+              error: {
+                code: -32000,
+                message: `device request failed: ${deviceResponse.status}`,
+              },
+            },
+            502,
+          );
+        }
+
+        // Return device response verbatim
+        const deviceData = await deviceResponse.json();
+        return c.json(deviceData);
+      }
+
+      case "resources/list":
+      case "resources/read":
+      case "resources/templates/list": {
+        // Persist auth if provided (for future requests)
+        persistAuthIfNeeded();
+
+        // If device selected, proxy to device; otherwise return empty
+        if (gwSessionId) {
+          const session = getSession(gwSessionId);
+          if (session?.deviceId && session?.deviceSessionId) {
+            console.log(
+              `proxying ${rpcMethod} to device ${session.deviceId}`,
+            );
+
+            const deviceResponse = await postMcp(
+              c.env,
+              session.deviceId,
+              bodyText || "{}",
+              {
+                sessionId: session.deviceSessionId,
+                userId: session.userId,
+                gwSessionId,
+              },
+            );
+
+            if (deviceResponse.ok) {
+              const deviceData = await deviceResponse.json();
+              return c.json(deviceData);
+            }
+          }
+        }
+
+        // Default: return empty resources
+        const emptyResult =
+          rpcMethod === "resources/list"
+            ? { resources: [] }
+            : rpcMethod === "resources/templates/list"
+              ? { resourceTemplates: [] }
+              : null;
+
+        return c.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: emptyResult,
+        });
+      }
+
+      default: {
+        // Forward all other methods to local handler
+        return mcpHttpHandler(reconstructRequest(), { authInfo });
+      }
+    }
   },
 );
 
@@ -792,6 +1234,106 @@ app.post(
       token_type: "Bearer",
       note: "This is your session JWT which works as an OAuth token for testing",
     });
+  },
+);
+
+// Development helper: Login and get a Bearer token for MCP testing
+// Creates or authenticates a test user and returns a token you can use in MCP Inspector
+app.post(
+  "/dev/mcp-token",
+  describeRoute({
+    description:
+      "development endpoint to get a bearer token for mcp testing. creates/logs in a test user and returns the token.",
+    responses: {
+      200: {
+        description: "bearer token for mcp",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                access_token: { type: "string" },
+                token_type: { type: "string" },
+                user_id: { type: "string" },
+                instructions: { type: "string" },
+              },
+            },
+          },
+        },
+      },
+    },
+    tags: ["Development"],
+  }),
+  async (c) => {
+    // Only allow in dev environment
+    if (!isDevEnvironment(c.env)) {
+      return c.json({ error: "This endpoint is only available in dev" }, 403);
+    }
+
+    const testEmail = c.env.TEST_EMAIL;
+    const testPassword = c.env.TEST_PASSWORD;
+
+    try {
+      const client = new stytch.Client({
+        project_id: c.env.STYTCH_PROJECT_ID,
+        secret: c.env.STYTCH_PROJECT_SECRET,
+      });
+
+      let response;
+      const db = createDbClient(c.env.DATABASE_URL);
+
+      // Try to authenticate first
+      try {
+        response = await client.passwords.authenticate({
+          email: testEmail,
+          password: testPassword,
+          session_duration_minutes: 60,
+        });
+        console.log("authenticated existing test user");
+      } catch (error: any) {
+        // If auth fails, try to create the user
+        if (error?.error_type === "invalid_credentials") {
+          console.log("test user not found, creating...");
+          
+          const newUserId = crypto.randomUUID();
+          
+          response = await client.passwords.create({
+            email: testEmail,
+            password: testPassword,
+            session_duration_minutes: 60,
+            trusted_metadata: { user_id: newUserId },
+            session_custom_claims: { user_id: newUserId },
+          });
+
+          await createUser(db, {
+            id: newUserId,
+            authId: response.user_id,
+            email: testEmail,
+          });
+
+          console.log("created new test user");
+        } else {
+          throw error;
+        }
+      }
+
+      return c.json({
+        access_token: response.session_jwt,
+        token_type: "Bearer",
+        user_id: (response as any).user?.user_id || "unknown",
+        instructions:
+          "copy the access_token value and paste it into mcp inspector's authorization header as: Bearer <token>",
+      });
+    } catch (error) {
+      console.error("dev token generation error:", error);
+      return c.json(
+        {
+          error: "failed to generate token",
+          details: error instanceof Error ? error.message : "unknown error",
+        },
+        500,
+      );
+    }
   },
 );
 

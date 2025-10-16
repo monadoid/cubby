@@ -4,17 +4,16 @@
  * Binds the MCP server to HTTP transport for request/response handling.
  */
 
-import { StreamableHttpTransport } from "mcp-lite";
+import { StreamableHttpTransport, InMemorySessionAdapter } from "mcp-lite";
 import { mcpServer } from "./server";
-
-// Import tools to register them
-import "./tools/search";
 
 /**
  * HTTP transport for MCP server.
- * Uses stateless mode (no session adapter) for simplicity.
+ * Uses sessionful mode with in-memory adapter for SSE streaming.
  */
-const transport = new StreamableHttpTransport();
+const transport = new StreamableHttpTransport({
+  sessionAdapter: new InMemorySessionAdapter({ maxEventBufferSize: 1024 }),
+});
 
 /**
  * HTTP handler for MCP requests.
