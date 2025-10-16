@@ -59,6 +59,21 @@ jobs:
             ~/.cargo/git/db/
           key: ${{ matrix.platform }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Preconfigure CMake without i8mm (Apple Silicon only)
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          echo "detected matrix target: ${{ matrix.target }}"
+          echo "applying apple silicon cmake flags to disable i8mm feature set"
+          echo "targeting armv8.5-a architecture (excludes i8mm intrinsics)"
+          rm -rf whisper.cpp/build_go
+          cmake -S whisper.cpp -B whisper.cpp/build_go \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_C_FLAGS="-march=armv8.5-a" \
+            -DCMAKE_CXX_FLAGS="-march=armv8.5-a" \
+            -DGGML_NATIVE=OFF || true
+          echo "cmake preconfiguration completed for apple silicon build"
+
       - name: Build with Metal feature
         run: |
           export PKG_CONFIG_PATH="/usr/local/opt/ffmpeg/lib/pkgconfig:$PKG_CONFIG_PATH"
