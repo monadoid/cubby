@@ -458,12 +458,19 @@ jobs:
                   ;;
               esac
               
-              # Rename and upload the binary
+              # Rename and upload the binary to versioned path
               if [ -f "binaries-extracted/bin/cubby" ]; then
-                mv "binaries-extracted/bin/cubby" "binaries-extracted/$final_name"
-                echo "Uploading binaries-extracted/$final_name to r2:cubby-releases/latest/"
-                rclone copy "binaries-extracted/$final_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
-                rm -f "binaries-extracted/$final_name"
+                versioned_name="${final_name}-${{ env.VERSION }}"
+                mv "binaries-extracted/bin/cubby" "binaries-extracted/$versioned_name"
+                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/${{ env.VERSION }}/"
+                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/${{ env.VERSION }}/ --s3-no-check-bucket --verbose
+                
+                # Also upload to latest/ for backwards compatibility
+                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/latest/$final_name"
+                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
+                rclone moveto r2:cubby-releases/latest/$versioned_name r2:cubby-releases/latest/$final_name --s3-no-check-bucket --verbose
+                
+                rm -f "binaries-extracted/$versioned_name"
               fi
               
               # Clean up extracted files
@@ -545,12 +552,19 @@ jobs:
                   ;;
               esac
               
-              # Rename and upload the binary
+              # Rename and upload the binary to versioned path
               if [ -f "binaries-extracted/bin/cubby" ]; then
-                mv "binaries-extracted/bin/cubby" "binaries-extracted/$final_name"
-                echo "Uploading binaries-extracted/$final_name to r2:cubby-releases/latest/"
-                rclone copy "binaries-extracted/$final_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
-                rm -f "binaries-extracted/$final_name"
+                versioned_name="${final_name}-${{ env.VERSION }}"
+                mv "binaries-extracted/bin/cubby" "binaries-extracted/$versioned_name"
+                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/${{ env.VERSION }}/"
+                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/${{ env.VERSION }}/ --s3-no-check-bucket --verbose
+                
+                # Also upload to latest/ for backwards compatibility
+                echo "Uploading binaries-extracted/$versioned_name to r2:cubby-releases/latest/$final_name"
+                rclone copy "binaries-extracted/$versioned_name" r2:cubby-releases/latest/ --s3-no-check-bucket --verbose
+                rclone moveto r2:cubby-releases/latest/$versioned_name r2:cubby-releases/latest/$final_name --s3-no-check-bucket --verbose
+                
+                rm -f "binaries-extracted/$versioned_name"
               fi
               
               # Clean up extracted files

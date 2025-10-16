@@ -8,7 +8,21 @@ GREEN='\\033[0;32m'
 YELLOW='\\033[1;33m'
 NC='\\033[0m' # No Color
 
-echo "\${GREEN}Installing Cubby CLI...\${NC}"
+# Fetch the latest version
+VERSION_URL="https://get.cubby.sh/version/latest"
+VERSION=""
+
+if command -v curl >/dev/null 2>&1; then
+  VERSION="\$(curl -fsSL "$VERSION_URL" 2>/dev/null || echo "")"
+elif command -v wget >/dev/null 2>&1; then
+  VERSION="\$(wget -qO- "$VERSION_URL" 2>/dev/null || echo "")"
+fi
+
+if [ -n "$VERSION" ]; then
+  echo "\${GREEN}Installing Cubby CLI v$VERSION...\${NC}"
+else
+  echo "\${GREEN}Installing Cubby CLI...\${NC}"
+fi
 
 # Detect OS and architecture
 OS="$(uname -s)"
