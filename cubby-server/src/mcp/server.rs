@@ -128,40 +128,29 @@ struct McpSearchRequest {
     #[serde(default)]
     #[schemars(description = "Number of results to skip (for pagination)")]
     offset: u32,
-    #[serde(default)]
     #[schemars(description = "Type of content to search")]
     content_type: Option<String>,
-    #[serde(default)]
     #[schemars(description = "Start time in ISO format UTC")]
     start_time: Option<String>,
-    #[serde(default)]
     #[schemars(description = "End time in ISO format UTC")]
     end_time: Option<String>,
-    #[serde(default)]
     #[schemars(description = "Filter by application name")]
     app_name: Option<String>,
-    #[serde(default)]
     #[schemars(description = "Filter by window name or title")]
     window_name: Option<String>,
-    #[serde(default)]
     #[schemars(description = "Filter by frame name")]
     frame_name: Option<String>,
     #[serde(default)]
     #[schemars(description = "Include frame data in results")]
     include_frames: bool,
-    #[serde(default)]
     #[schemars(description = "Minimum content length in characters")]
     min_length: Option<u32>,
-    #[serde(default)]
     #[schemars(description = "Maximum content length in characters")]
     max_length: Option<u32>,
-    #[serde(default)]
     #[schemars(description = "Comma-separated list of speaker IDs to filter")]
     speaker_ids: Option<String>,
-    #[serde(default)]
     #[schemars(description = "Filter by focused window")]
     focused: Option<bool>,
-    #[serde(default)]
     #[schemars(description = "Filter by browser URL")]
     browser_url: Option<String>,
 }
@@ -185,7 +174,6 @@ struct McpPixelControlRequest {
 struct McpSelector {
     #[schemars(description = "The name of the application")]
     app_name: String,
-    #[serde(default)]
     #[schemars(description = "The window name or title (optional)")]
     window_name: Option<String>,
     #[schemars(description = "The role or element locator")]
@@ -214,7 +202,6 @@ struct McpFindElementsRequest {
     #[serde(default = "default_max_results")]
     #[schemars(description = "Maximum number of elements to return")]
     max_results: u32,
-    #[serde(default)]
     #[schemars(description = "Maximum depth of element tree to search")]
     max_depth: Option<u32>,
 }
@@ -258,7 +245,6 @@ struct McpOpenApplicationRequest {
 struct McpOpenUrlRequest {
     #[schemars(description = "The URL to open")]
     url: String,
-    #[serde(default)]
     #[schemars(description = "The browser to use (optional)")]
     browser: Option<String>,
 }
@@ -768,3 +754,187 @@ async fn handle_open_url_tool(
         response_text
     )), None)]))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    
+    /// verify that optional fields in our tool schemas follow MCP spec
+    /// optional fields should have "type": ["string", "null"] (or ["integer", "null"], etc.)
+    /// they should NOT have "default": null which causes MCP Inspector to lock them
+    #[test]
+    fn test_optional_fields_mcp_compliance() {
+        let schema = schema_for!(McpSearchRequest);
+        let schema_value = serde_json::to_value(&schema.schema).unwrap();
+        let properties = schema_value
+            .get("properties")
+            .expect("schema should have properties");
+        
+        // test cases: (field_name, expected_type_array)
+        let optional_string_fields = vec![
+            "q",
+            "content_type",
+            "start_time",
+            "end_time",
+            "app_name",
+            "window_name",
+            "frame_name",
+            "speaker_ids",
+            "browser_url",
+        ];
+        
+        let optional_integer_fields = vec![
+            "min_length",
+            "max_length",
+        ];
+        
+        let optional_boolean_fields = vec![
+            "focused",
+        ];
+        
+        // verify optional string fields
+        for field_name in optional_string_fields {
+            let field = properties.get(field_name)
+                .unwrap_or_else(|| panic!("field '{}' not found in schema", field_name));
+            
+            // should NOT have "default": null
+            assert!(
+                field.get("default").is_none(),
+                "field '{}' should NOT have a 'default' key (found: {:?})",
+                field_name,
+                field.get("default")
+            );
+            
+            // should have "type": ["string", "null"]
+            let field_type = field.get("type")
+                .expect(&format!("field '{}' should have 'type'", field_name));
+            let expected_type = json!(["string", "null"]);
+            assert_eq!(
+                field_type, &expected_type,
+                "field '{}' should have type [\"string\", \"null\"], got: {:?}",
+                field_name, field_type
+            );
+        }
+        
+        // verify optional integer fields
+        for field_name in optional_integer_fields {
+            let field = properties.get(field_name)
+                .unwrap_or_else(|| panic!("field '{}' not found in schema", field_name));
+            
+            // should NOT have "default": null
+            assert!(
+                field.get("default").is_none(),
+                "field '{}' should NOT have a 'default' key (found: {:?})",
+                field_name,
+                field.get("default")
+            );
+            
+            // should have "type": ["integer", "null"]
+            let field_type = field.get("type")
+                .expect(&format!("field '{}' should have 'type'", field_name));
+            let expected_type = json!(["integer", "null"]);
+            assert_eq!(
+                field_type, &expected_type,
+                "field '{}' should have type [\"integer\", \"null\"], got: {:?}",
+                field_name, field_type
+            );
+        }
+        
+        // verify optional boolean fields
+        for field_name in optional_boolean_fields {
+            let field = properties.get(field_name)
+                .unwrap_or_else(|| panic!("field '{}' not found in schema", field_name));
+            
+            // should NOT have "default": null
+            assert!(
+                field.get("default").is_none(),
+                "field '{}' should NOT have a 'default' key (found: {:?})",
+                field_name,
+                field.get("default")
+            );
+            
+            // should have "type": ["boolean", "null"]
+            let field_type = field.get("type")
+                .expect(&format!("field '{}' should have 'type'", field_name));
+            let expected_type = json!(["boolean", "null"]);
+            assert_eq!(
+                field_type, &expected_type,
+                "field '{}' should have type [\"boolean\", \"null\"], got: {:?}",
+                field_name, field_type
+            );
+        }
+        
+        // verify required fields with defaults work correctly
+        let limit = properties.get("limit").expect("limit should exist");
+        assert_eq!(limit.get("default"), Some(&json!(10)), "limit should have default: 10");
+        assert_eq!(limit.get("type"), Some(&json!("integer")), "limit should have type: integer");
+        
+        let offset = properties.get("offset").expect("offset should exist");
+        assert_eq!(offset.get("default"), Some(&json!(0)), "offset should have default: 0");
+        assert_eq!(offset.get("type"), Some(&json!("integer")), "offset should have type: integer");
+        
+        let include_frames = properties.get("include_frames").expect("include_frames should exist");
+        assert_eq!(include_frames.get("default"), Some(&json!(false)), "include_frames should have default: false");
+        assert_eq!(include_frames.get("type"), Some(&json!("boolean")), "include_frames should have type: boolean");
+    }
+    
+    /// test that other tool schemas also follow MCP spec for optional fields
+    #[test]
+    fn test_other_tools_mcp_compliance() {
+        // test McpSelector
+        let selector_schema = schema_for!(McpSelector);
+        let selector_value = serde_json::to_value(&selector_schema.schema).unwrap();
+        let selector_props = selector_value
+            .get("properties")
+            .expect("McpSelector should have properties");
+        
+        let window_name = selector_props.get("window_name").expect("window_name should exist");
+        assert!(
+            window_name.get("default").is_none(),
+            "McpSelector.window_name should NOT have 'default': null"
+        );
+        assert_eq!(
+            window_name.get("type"),
+            Some(&json!(["string", "null"])),
+            "McpSelector.window_name should have type [\"string\", \"null\"]"
+        );
+        
+        // test McpFindElementsRequest
+        let find_elements_schema = schema_for!(McpFindElementsRequest);
+        let find_elements_value = serde_json::to_value(&find_elements_schema.schema).unwrap();
+        let find_elements_props = find_elements_value
+            .get("properties")
+            .expect("McpFindElementsRequest should have properties");
+        
+        let max_depth = find_elements_props.get("max_depth").expect("max_depth should exist");
+        assert!(
+            max_depth.get("default").is_none(),
+            "McpFindElementsRequest.max_depth should NOT have 'default': null"
+        );
+        assert_eq!(
+            max_depth.get("type"),
+            Some(&json!(["integer", "null"])),
+            "McpFindElementsRequest.max_depth should have type [\"integer\", \"null\"]"
+        );
+        
+        // test McpOpenUrlRequest
+        let open_url_schema = schema_for!(McpOpenUrlRequest);
+        let open_url_value = serde_json::to_value(&open_url_schema.schema).unwrap();
+        let open_url_props = open_url_value
+            .get("properties")
+            .expect("McpOpenUrlRequest should have properties");
+        
+        let browser = open_url_props.get("browser").expect("browser should exist");
+        assert!(
+            browser.get("default").is_none(),
+            "McpOpenUrlRequest.browser should NOT have 'default': null"
+        );
+        assert_eq!(
+            browser.get("type"),
+            Some(&json!(["string", "null"])),
+            "McpOpenUrlRequest.browser should have type [\"string\", \"null\"]"
+        );
+    }
+}
+
