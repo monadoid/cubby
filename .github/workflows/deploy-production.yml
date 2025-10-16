@@ -1,9 +1,6 @@
-name: Deploy to Production
+name: Deploy to Production (disabled)
 
-on:
-  push:
-    branches:
-      - main
+on: [workflow_dispatch]
 
 env:
   RUST_TOOLCHAIN: stable
