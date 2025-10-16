@@ -1,0 +1,37 @@
+name: publish-prebuilt.yml
+
+on:
+  push:
+    tags: ["v*"]   # push a tag like v1.2.3 after you've run `just release`
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Attach files in dist/ to the GitHub Release created for the tag
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*SHA256SUMS*.txt
+          draft: false
+          prerelease: false
+
+      # Upload to Cloudflare R2 (S3-compatible)
+      - name: Upload to R2
+        uses: jakejarvis/s3-sync-action@v0.5.1
+        env:
+          AWS_S3_BUCKET: your-r2-bucket-name
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_S3_ENDPOINT: https://<your-account-id>.r2.cloudflarestorage.com
+          AWS_REGION: auto
+          SOURCE_DIR: dist
+          DEST_DIR: releases/${{ github.ref_name }}
+          S3_EXTRA_ARGS: --acl public-read
