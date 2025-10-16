@@ -476,17 +476,3 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          for file in artifacts/cubby-windows/cubby-*.zip; do
-            if [ -f "$file" ]; then
-              gh release upload v${{ env.VERSION }} "$file" --clobber
-            else
-              echo "Warning: $file not found"
-            fi
-          done
-          for file in artifacts/cubby-linux-*/cubby-*.tar.gz; do
-            if [ -f "$file" ]; then
-              gh release upload v${{ env.VERSION }} "$file" --clobber
-            else
-              echo "Warning: $file not found"
-            fi
-          done
