@@ -327,30 +327,57 @@ jobs:
       - name: List artifacts
         run: ls -R artifacts
 
-      - name: Create or update Release
+      - name: Create or update Release  
         env:
           GH_TOKEN: ${{ secrets.PAT }}
         run: |
-          gh release create v${{ env.VERSION }} --title ${{ env.VERSION }} --generate-notes || true
-          for file in artifacts/cubby-macos-*/cubby-*.tar.gz; do
-            if [ -f "$file" ]; then
-              gh release upload v${{ env.VERSION }} "$file" --clobber
-            else
-              echo "Warning: $file not found"
-            fi
-          done
+          # Create release - will fail silently if it already exists (meaning macOS binaries were uploaded manually)
+          gh release create v${{ env.VERSION }} --title ${{ env.VERSION }} --generate-notes || echo "Release already exists"
 
   upload-to-r2:
     runs-on: ubuntu-latest
     needs: [build-linux]
     steps:
-      - name: Download Artifacts
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(git ls-remote --tags --refs --sort="version:refname" | tail -n1 | sed 's/.*\///' | sed 's/^v//')
+          fi
+          if [[ -z "$VERSION" ]]; then
+            VERSION="0.0.0"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Set version to: $VERSION"
+
+      - name: Download Linux Artifacts from workflow
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: List artifacts
-        run: ls -R artifacts
+      - name: Download macOS binaries from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          mkdir -p release-assets
+          cd release-assets
+          
+          # Download macOS binaries from GitHub release
+          echo "Downloading macOS binaries from v${{ env.VERSION }} release..."
+          gh release download v${{ env.VERSION }} --pattern "cubby-${{ env.VERSION }}-*-apple-darwin.tar.gz" || echo "No macOS binaries found in release"
+          
+          ls -lh
+
+      - name: List all downloaded files
+        run: |
+          echo "=== Linux artifacts ==="
+          ls -R artifacts
+          echo "=== macOS release assets ==="
+          ls -R release-assets
 
       - name: Install Rclone
         run: |
@@ -373,8 +400,8 @@ jobs:
           shopt -s globstar nullglob
           mkdir -p binaries-extracted
           
-          # Extract binaries from tar.gz files and rename to match installer expectations
-          for f in artifacts/**/cubby-*.tar.gz; do
+          # Process all tar.gz files from both artifacts (Linux) and release-assets (macOS)
+          for f in artifacts/**/cubby-*.tar.gz release-assets/cubby-*.tar.gz; do
             if [ -f "$f" ]; then
               echo "Processing $f"
               # Extract the tar.gz
