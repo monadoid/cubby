@@ -101,17 +101,17 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
     description: "Open URL",
   },
 
-  // TODO: Streaming endpoints - require special WebSocket/SSE proxy handling
+  // Streaming endpoints
   // {
   //   pattern: /^\/stream\/frames$/,
   //   methods: ["GET"],
   //   description: "SSE stream for frames (needs streaming proxy support)",
   // },
-  // {
-  //   pattern: /^\/ws\/events$/,
-  //   methods: ["GET"],
-  //   description: "WebSocket for events (needs WebSocket proxy support)",
-  // },
+  {
+    pattern: /^\/ws\/events$/,
+    methods: ["GET"],
+    description: "WebSocket for events proxy",
+  },
 ];
 
 /**

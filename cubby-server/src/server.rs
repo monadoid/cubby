@@ -186,6 +186,18 @@ struct MarkAsHallucinationRequest {
 }
 
 #[derive(OaSchema, Serialize, Deserialize, Debug)]
+struct NotificationPayload {
+    title: String,
+    body: String,
+}
+
+#[derive(OaSchema, Serialize, Deserialize, Debug)]
+struct ApiResponse {
+    success: bool,
+    message: String,
+}
+
+#[derive(OaSchema, Serialize, Deserialize, Debug)]
 #[serde(tag = "type", content = "content")]
 pub enum ContentItem {
     OCR(OCRContent),
@@ -824,6 +836,64 @@ struct UpdatePipeVersionRequest {
     source: String,
 }
 
+#[oasgen]
+async fn send_notification(
+    Json(payload): Json<NotificationPayload>,
+) -> Result<Json<ApiResponse>, (StatusCode, String)> {
+    info!("received notification request: {:?}", payload);
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        use notify_rust::Notification;
+        match Notification::new()
+            .summary(&payload.title)
+            .body(&payload.body)
+            .show()
+        {
+            Ok(_) => {
+                info!("notification sent successfully");
+                Ok(Json(ApiResponse {
+                    success: true,
+                    message: "notification sent successfully".to_string(),
+                }))
+            }
+            Err(e) => {
+                error!("failed to send notification: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to send notification: {}", e),
+                ))
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // linux requires dbus which might not be available
+        use notify_rust::Notification;
+        match Notification::new()
+            .summary(&payload.title)
+            .body(&payload.body)
+            .show()
+        {
+            Ok(_) => {
+                info!("notification sent successfully");
+                Ok(Json(ApiResponse {
+                    success: true,
+                    message: "notification sent successfully".to_string(),
+                }))
+            }
+            Err(e) => {
+                error!("failed to send notification (dbus might not be available): {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to send notification: {}", e),
+                ))
+            }
+        }
+    }
+}
+
 pub struct SCServer {
     db: Arc<DatabaseManager>,
     addr: SocketAddr,
@@ -965,6 +1035,7 @@ impl SCServer {
             .post("/v1/embeddings", create_embeddings)
             .post("/audio/device/start", start_audio_device)
             .post("/audio/device/stop", stop_audio_device)
+            .post("/notify", send_notification)
             .route_yaml_spec("/openapi.yaml")
             .route_json_spec("/openapi.json")
             .freeze();

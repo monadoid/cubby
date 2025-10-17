@@ -202,6 +202,10 @@ pub struct Cli {
     #[arg(long, default_value_t = true)]
     pub enable_realtime_vision: bool,
 
+    /// Include base64-encoded screenshots in realtime vision events
+    #[arg(long, default_value_t = false)]
+    pub realtime_vision_include_image: bool,
+
     /// OCR engine to use.
     /// AppleNative is the default local OCR engine for macOS.
     /// WindowsNative is a local OCR engine for Windows.
@@ -287,10 +291,6 @@ pub struct Cli {
     /// Capture windows that are not focused (default: false)
     #[arg(long, default_value_t = false)]
     pub capture_unfocused_windows: bool,
-
-    /// Uninstall the service and clean up
-    #[arg(long, default_value_t = false)]
-    pub uninstall: bool,
 }
 
 impl Cli {
@@ -318,11 +318,13 @@ pub enum OutputFormat {
     about,
     long_about = None,
     name = "cubby",
-    disable_help_subcommand = true
+    disable_help_subcommand = true,
+    subcommand_required = true,
+    arg_required_else_help = true
 )]
 pub struct CliApp {
     #[command(subcommand)]
-    pub command: Option<CliCommand>,
+    pub command: CliCommand,
 }
 
 #[derive(Subcommand, Debug)]
@@ -331,4 +333,6 @@ pub enum CliCommand {
     Setup(Cli),
     /// Launch the long-running background service
     Service(Cli),
+    /// Uninstall cubby service and clean up all data
+    Uninstall,
 }

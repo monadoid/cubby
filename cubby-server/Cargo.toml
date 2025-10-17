@@ -132,6 +132,7 @@ once_cell = { workspace = true }
 schemars = "0.8"
 rmcp = { version = "0.8.1", features = ["server", "transport-streamable-http-server", "macros"] }
 confy = "0.6"
+notify-rust = "4.11.7"
 [dev-dependencies]
 env_logger = "0.10"
 tempfile = "3.3.0"

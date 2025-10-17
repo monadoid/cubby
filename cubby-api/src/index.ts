@@ -660,6 +660,62 @@ app.all(
       const url = new URL(c.req.url);
       const targetUrl = `https://${deviceId}.${c.env.TUNNEL_DOMAIN}${path}${url.search}`;
       const requestId = crypto.randomUUID();
+      const isWebSocketUpgrade =
+        method === "GET" &&
+        path === "/ws/events" &&
+        (c.req.header("upgrade") || "").toLowerCase() === "websocket";
+
+      if (isWebSocketUpgrade) {
+        console.log(
+          `Proxying WebSocket request to device ${deviceId}${path}${url.search} (request ID: ${requestId})`,
+        );
+        try {
+          const forwardedRequest = new Request(targetUrl, c.req.raw);
+          const headers = forwardedRequest.headers;
+
+          headers.delete("authorization");
+          headers.delete("host");
+          headers.delete("origin");
+          headers.delete("referer");
+          headers.delete("cf-connecting-ip");
+          headers.delete("x-forwarded-for");
+          headers.delete("x-real-ip");
+
+          headers.set("CF-Access-Client-Id", c.env.ACCESS_CLIENT_ID);
+          headers.set("CF-Access-Client-Secret", c.env.ACCESS_CLIENT_SECRET);
+          headers.set("X-Cubby-Request-Id", requestId);
+
+          const upstreamResponse = await fetch(forwardedRequest);
+
+          if (upstreamResponse.status !== 101) {
+            const snapshot = upstreamResponse.clone();
+            let bodyPreview = "";
+            try {
+              bodyPreview = (await snapshot.text()).slice(0, 500);
+            } catch {
+              // ignore preview issues
+            }
+            console.warn(
+              `WebSocket upgrade to device ${deviceId} failed`,
+              {
+                requestId,
+                status: upstreamResponse.status,
+                statusText: upstreamResponse.statusText,
+                upstreamHeaders: Array.from(snapshot.headers.entries()),
+                bodyPreview,
+              },
+            );
+          }
+
+          return upstreamResponse;
+        } catch (error) {
+          console.error("Device WebSocket proxy error:", error);
+          return c.json(
+            { error: "Failed to establish WebSocket to device" },
+            502,
+          );
+        }
+      }
 
       console.log(
         `Proxying ${method} request to device ${deviceId}${path}${url.search} (request ID: ${requestId})`,
@@ -1466,16 +1522,16 @@ app.post(
   },
 );
 
-// Development helper: Login and get a Bearer token for MCP testing
-// Creates or authenticates a test user and returns a token you can use in MCP Inspector
+// Development helper: Login and get a Bearer token for testing
+// Creates or authenticates a user and returns a token you can use for API testing
 app.post(
-  "/dev/mcp-token",
+  "/dev/token",
   describeRoute({
     description:
-      "development endpoint to get a bearer token for mcp testing. creates/logs in a test user and returns the token.",
+      "development endpoint to get a bearer token for testing. creates/logs in a user and returns the token.",
     responses: {
       200: {
-        description: "bearer token for mcp",
+        description: "bearer token for testing",
         content: {
           "application/json": {
             schema: {
@@ -1493,14 +1549,17 @@ app.post(
     },
     tags: ["Development"],
   }),
+  zValidator("json", z.object({
+    email: z.string().email(),
+    password: z.string().min(1),
+  })),
   async (c) => {
     // Only allow in dev environment
     if (!isDevEnvironment(c.env)) {
       return c.json({ error: "This endpoint is only available in dev" }, 403);
     }
 
-    const testEmail = c.env.TEST_EMAIL;
-    const testPassword = c.env.TEST_PASSWORD;
+    const { email, password } = c.req.valid("json");
 
     try {
       const client = new stytch.Client({
@@ -1514,21 +1573,21 @@ app.post(
       // Try to authenticate first
       try {
         response = await client.passwords.authenticate({
-          email: testEmail,
-          password: testPassword,
+          email: email,
+          password: password,
           session_duration_minutes: 60,
         });
-        console.log("authenticated existing test user");
+        console.log(`authenticated existing user: ${email}`);
       } catch (error: any) {
         // If auth fails, try to create the user
         if (error?.error_type === "invalid_credentials") {
-          console.log("test user not found, creating...");
+          console.log(`user not found, creating: ${email}`);
           
           const newUserId = crypto.randomUUID();
           
           response = await client.passwords.create({
-            email: testEmail,
-            password: testPassword,
+            email: email,
+            password: password,
             session_duration_minutes: 60,
             trusted_metadata: { user_id: newUserId },
             session_custom_claims: { user_id: newUserId },
@@ -1537,10 +1596,10 @@ app.post(
           await createUser(db, {
             id: newUserId,
             authId: response.user_id,
-            email: testEmail,
+            email: email,
           });
 
-          console.log("created new test user");
+          console.log(`created new user: ${email}`);
         } else {
           throw error;
         }
@@ -1551,7 +1610,7 @@ app.post(
         token_type: "Bearer",
         user_id: (response as any).user?.user_id || "unknown",
         instructions:
-          "copy the access_token value and paste it into mcp inspector's authorization header as: Bearer <token>",
+          "copy the access_token value and paste it into authorization header as: Bearer <token>",
       });
     } catch (error) {
       console.error("dev token generation error:", error);

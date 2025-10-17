@@ -42,4 +42,12 @@ impl SetupState {
         confy::store(Self::APP_NAME, Some(Self::CONFIG_NAME), self)?;
         Ok(())
     }
+
+    pub fn delete() -> Result<()> {
+        let config_path = confy::get_configuration_file_path(Self::APP_NAME, Some(Self::CONFIG_NAME))?;
+        if config_path.exists() {
+            std::fs::remove_file(&config_path)?;
+        }
+        Ok(())
+    }
 }

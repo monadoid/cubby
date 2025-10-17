@@ -1,19 +1,21 @@
 import type { MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { z } from "zod";
 import type { Bindings, Variables } from "../index";
 import { errors } from "../errors";
+import { validateToken } from "./token_validator";
 
 /**
  * OAuth Authentication Middleware
  *
- * For third-party Connected Apps (OAuth clients). Both token types include user_id claim.
+ * Supports both OAuth access tokens and Stytch session JWTs.
+ * Automatically detects token type based on issuer claim.
  *
- * Token Differences vs Session:
- * - Issuer: PROJECT_DOMAIN (e.g., https://login.cubby.sh) vs stytch.com/{PROJECT_ID}
- * - Source: Authorization header only vs header OR cookie
- * - Includes OAuth scopes (e.g., 'openid', 'read:devices')
+ * Token Types:
+ * - OAuth Access Token: Issuer is PROJECT_DOMAIN (e.g., https://login.cubby.sh)
+ * - Session JWT: Issuer is stytch.com/{PROJECT_ID}
+ *
+ * Both token types include user_id claim and optional scopes.
  *
  * @param opts.requiredScopes - Optional array of scopes required for this endpoint
  */
@@ -32,55 +34,27 @@ export const AuthUserSchema = z.object({
 
 export type AuthUser = z.infer<typeof AuthUserSchema>;
 
-const cloudflareCacheTtl = 3600;
-
 export const oauth = (
   opts: OAuthOptions = {},
 ): MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> => {
   return createMiddleware(async (c, next) => {
     // Extract token from Authorization header
-    const token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+    let token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
     if (!token) throw errors.auth.MISSING_TOKEN();
 
-    // Prime Cloudflare edge cache for the JWKS URL
-    const jwksURL = `${c.env.STYTCH_PROJECT_DOMAIN}/.well-known/jwks.json`;
-    try {
-      await fetch(jwksURL, {
-        cf: { cacheEverything: true, cacheTtl: cloudflareCacheTtl },
-      });
-    } catch (error) {
-      console.error(
-        `Failed to prime Cloudflare edge cache for ${jwksURL}:`,
-        error,
-      );
-    }
+    // Trim and remove any quotes
+    token = token.trim().replace(/^"|"$/g, "");
 
-    // Validate JWT using jose with custom domain issuer
-    // OAuth IDP tokens from Connected Apps use the PROJECT_DOMAIN as issuer
-    const JWKS = createRemoteJWKSet(new URL(jwksURL));
-
-    let payload;
+    // Validate token using shared validator
+    let validationResult;
     try {
-      const result = await jwtVerify(token, JWKS, {
-        issuer: c.env.STYTCH_PROJECT_DOMAIN,
-        audience: c.env.STYTCH_PROJECT_ID,
-      });
-      payload = result.payload;
+      validationResult = await validateToken(token, c.env);
     } catch (error) {
-      console.error("JWT verification failed:", error);
+      console.error("jwt verification failed:", error);
       throw errors.auth.INVALID_TOKEN();
     }
 
-    // Extract user_id from custom claims in the JWT payload
-    const userId = (payload as any).user_id;
-    if (!userId || typeof userId !== "string") {
-      console.error("No user_id in JWT payload:", payload);
-      throw errors.auth.INVALID_AUTH_DATA();
-    }
-
-    // Extract and parse scopes from space-separated string
-    const scopeString = (payload as any).scope as string | undefined;
-    const scopes = scopeString ? scopeString.split(" ").filter(Boolean) : [];
+    const { userId, scopes, payload } = validationResult;
 
     // Validate required scopes
     if (

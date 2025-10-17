@@ -57,5 +57,8 @@ app.py
 *.py3z
 __pycache__/
 
+
+temp/
 dist
 todos.md
+test*.sh

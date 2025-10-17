@@ -136,51 +136,30 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
     // Build the final registry
     tracing_registry.init();
 
-Ok(guard)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LaunchMode {
-    Setup,
-    Service,
+    Ok(guard)
 }
 
 #[tokio::main]
 #[tracing::instrument]
 async fn main() -> anyhow::Result<()> {
     debug!("starting cubby server");
-    let mut argv: Vec<String> = env::args().collect();
-    let needs_default = match argv.get(1).map(|s| s.as_str()) {
-        None => true,
-        Some("setup") | Some("service") => false,
-        Some("-h") | Some("--help") | Some("-V") | Some("--version") => false,
-        _ => true,
-    };
+    let app = CliApp::parse();
 
-    if needs_default {
-        argv.insert(1, "setup".to_string());
+    match app.command {
+        CliCommand::Setup(cli) => {
+            let setup_state = SetupState::load().unwrap_or_default();
+            run_setup_flow(&cli, setup_state).await
+        }
+        CliCommand::Service(cli) => {
+            let mut setup_state = SetupState::load().unwrap_or_default();
+            ensure_permissions_in_service(&cli, &mut setup_state).await?;
+            run_service(&cli, setup_state).await
+        }
+        CliCommand::Uninstall => handle_uninstall().await,
     }
+}
 
-    let app = CliApp::parse_from(&argv);
-
-    let (cli, mode) = match app.command {
-        Some(CliCommand::Setup(cli)) => (cli, LaunchMode::Setup),
-        Some(CliCommand::Service(cli)) => (cli, LaunchMode::Service),
-        None => unreachable!("subcommand should be set after preprocessing"),
-    };
-
-    let mut setup_state = SetupState::load().unwrap_or_default();
-
-    // Handle uninstall command first
-    if cli.uninstall {
-        return handle_uninstall().await;
-    }
-
-    if matches!(mode, LaunchMode::Setup) {
-        return run_setup_flow(&cli, setup_state).await;
-    }
-
-    ensure_permissions_in_service(&cli, &mut setup_state).await?;
+async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
 
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
@@ -317,6 +296,17 @@ async fn main() -> anyhow::Result<()> {
     let ignored_windows_clone = cli.ignored_windows.clone();
     let included_windows_clone = cli.included_windows.clone();
     let realtime_audio_devices_clone = realtime_audio_devices.clone();
+    
+    // Clone values needed in spawned task
+    let video_chunk_duration = cli.video_chunk_duration;
+    let ocr_engine_for_task = cli.ocr_engine.clone();
+    let use_pii_removal = cli.use_pii_removal;
+    let disable_vision_clone = cli.disable_vision;
+    let capture_unfocused_windows = cli.capture_unfocused_windows;
+    let enable_realtime_vision = cli.enable_realtime_vision;
+    let realtime_vision_include_image = cli.realtime_vision_include_image;
+    let ignored_windows_for_task = ignored_windows_clone.clone();
+    let included_windows_for_task = included_windows_clone.clone();
 
     let fps = if cli.fps.is_finite() && cli.fps > 0.0 {
         cli.fps
@@ -367,17 +357,18 @@ async fn main() -> anyhow::Result<()> {
                     db_clone.clone(),
                     output_path_clone.clone(),
                     fps,
-                    Duration::from_secs(cli.video_chunk_duration),
-                    Arc::new(cli.ocr_engine.clone().into()),
+                    Duration::from_secs(video_chunk_duration),
+                    Arc::new(ocr_engine_for_task.clone().into()),
                     monitor_ids_clone.clone(),
-                    cli.use_pii_removal,
-                    cli.disable_vision,
+                    use_pii_removal,
+                    disable_vision_clone,
                     &vision_handle,
-                    &cli.ignored_windows,
-                    &cli.included_windows,
+                    &ignored_windows_for_task,
+                    &included_windows_for_task,
                     languages_clone.clone(),
-                    cli.capture_unfocused_windows,
-                    cli.enable_realtime_audio_transcription,
+                    capture_unfocused_windows,
+                    enable_realtime_vision,
+                    realtime_vision_include_image,
                 );
 
                 let result = tokio::select! {
@@ -775,6 +766,43 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
         .wait_for_healthy(std::time::Duration::from_secs(30))
         .await?
     {
+        #[cfg(debug_assertions)]
+        {
+            use std::fs;
+            let home_dir = dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("~"))
+                .to_string_lossy()
+                .to_string();
+            
+            eprintln!("\n❌ Service failed to start. Recent logs:\n");
+            
+            // Show service-error.log (stderr - most important for crashes)
+            let error_log = format!("{}/.cubby/logs/service-error.log", home_dir);
+            if let Ok(contents) = fs::read_to_string(&error_log) {
+                let lines: Vec<&str> = contents.lines().collect();
+                let start = if lines.len() > 30 { lines.len() - 30 } else { 0 };
+                eprintln!("📋 Last 30 lines of service-error.log:");
+                for line in &lines[start..] {
+                    eprintln!("  {}", line);
+                }
+                eprintln!();
+            }
+            
+            // Show service.log (stdout)
+            let service_log = format!("{}/.cubby/logs/service.log", home_dir);
+            if let Ok(contents) = fs::read_to_string(&service_log) {
+                let lines: Vec<&str> = contents.lines().collect();
+                let start = if lines.len() > 30 { lines.len() - 30 } else { 0 };
+                eprintln!("📋 Last 30 lines of service.log:");
+                for line in &lines[start..] {
+                    eprintln!("  {}", line);
+                }
+                eprintln!();
+            }
+            
+            eprintln!("💡 Full logs at: {}/.cubby/logs/\n", home_dir);
+        }
+        
         anyhow::bail!("cubby service did not become healthy");
     }
 
@@ -785,7 +813,7 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
         .to_string();
     log::success("cubby is running in the background!")?;
     log::success(&format!("logs: {}/.cubby/cubby-*.log", home_dir))?;
-    log::success("to uninstall: cubby --uninstall\n")?;
+    log::success("to uninstall: cubby uninstall\n")?;
     Ok(())
 }
 
@@ -1091,9 +1119,8 @@ async fn handle_uninstall() -> anyhow::Result<()> {
         cliclack::outro("Uninstall complete!")?;
     }
 
-    let state = SetupState::default();
-    if let Err(e) = state.store() {
-        warn!("failed to reset setup state: {e}");
+    if let Err(e) = SetupState::delete() {
+        warn!("failed to delete setup state: {e}");
     }
 
     Ok(())
@@ -1160,6 +1187,10 @@ fn build_service_args(cli: &Cli, state: &SetupState) -> Vec<String> {
 
     if cli.enable_realtime_vision {
         args.push("--enable-realtime-vision".to_string());
+    }
+
+    if cli.realtime_vision_include_image {
+        args.push("--realtime-vision-include-image".to_string());
     }
 
     // Audio devices

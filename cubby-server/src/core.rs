@@ -28,6 +28,7 @@ pub async fn start_continuous_recording(
     languages: Vec<Language>,
     capture_unfocused_windows: bool,
     realtime_vision: bool,
+    realtime_vision_include_image: bool,
 ) -> Result<()> {
     if monitor_ids.is_empty() {
         info!("no monitors to record (vision disabled or no permission)");
@@ -70,6 +71,7 @@ pub async fn start_continuous_recording(
                             languages.clone(),
                             capture_unfocused_windows,
                             realtime_vision,
+                            realtime_vision_include_image,
                         )
                         .await
                         {
@@ -148,6 +150,7 @@ async fn record_video(
     languages: Vec<Language>,
     capture_unfocused_windows: bool,
     realtime_vision: bool,
+    realtime_vision_include_image: bool,
 ) -> Result<()> {
     info!("record_video: Starting for monitor {}", monitor_id);
     let device_name = Arc::new(format!("monitor_{}", monitor_id));
@@ -301,7 +304,11 @@ async fn record_video(
                             match send_event(
                                 "ocr_result",
                                 WindowOcr {
-                                    image: Some(frame.image.clone()),
+                                    image: if realtime_vision_include_image {
+                                        Some(frame.image.clone())
+                                    } else {
+                                        None
+                                    },
                                     text: text.clone(),
                                     text_json: window_result.text_json.clone(),
                                     app_name: window_result.app_name.clone(),
