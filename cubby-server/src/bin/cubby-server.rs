@@ -820,7 +820,7 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
         .to_string();
     log::success("cubby is running in the background!")?;
     log::success(&format!("logs: {}/.cubby/cubby-*.log", home_dir))?;
-    log::success("to uninstall: cubby uninstall\n")?;
+    cliclack::outro("to uninstall: cubby uninstall\n")?;
     Ok(())
 }
 

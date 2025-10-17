@@ -14,6 +14,17 @@ cubby-start:
 cubby-uninstall:
     cargo run -- uninstall
 
+# build notify-helper for both macOS architectures and copy to sidecars
+build-notify-helper: ensure-rust-targets
+    @echo "building notify-helper for aarch64..."
+    cargo build --release --package notify-helper --target aarch64-apple-darwin
+    @echo "building notify-helper for x86_64..."
+    cargo build --release --package notify-helper --target x86_64-apple-darwin
+    @echo "copying binaries to sidecars..."
+    cp target/aarch64-apple-darwin/release/notify-helper cubby-server/sidecars/macos-aarch64/notify-helper
+    cp target/x86_64-apple-darwin/release/notify-helper cubby-server/sidecars/macos-x86_64/notify-helper
+    @echo "✅ notify-helper binaries updated in cubby-server/sidecars/"
+
 api-dev:
     cd cubby-api && pnpm dev
 

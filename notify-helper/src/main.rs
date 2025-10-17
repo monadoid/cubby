@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use mac_notification_sys::Notification;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -15,7 +16,12 @@ fn main() -> Result<()> {
     mac_notification_sys::set_application("com.tabsandtabs.cubby")
         .context("set application bundle id")?;
 
-    mac_notification_sys::send_notification(&args.title, None, &args.body, None)
+    Notification::new()
+        .title(&args.title)
+        .message(&args.body)
+        .content_image("./cubby_logo_black.png")
+        .send()
         .context("send mac notification")?;
+    
     Ok(())
 }
