@@ -101,6 +101,13 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
     description: "Open URL",
   },
 
+  // Notifications
+  {
+    pattern: /^\/notify$/,
+    methods: ["POST"],
+    description: "Send desktop notification",
+  },
+
   // Streaming endpoints
   // {
   //   pattern: /^\/stream\/frames$/,

@@ -40,7 +40,7 @@ app.get('/', (c) => {
 	return c.json({
 		status: 'ok',
 		message: 'Cubby distribution server',
-		install: 'curl -fsSL https://get.cubby.sh/cli | sh',
+		install: ' curl -s https://get.cubby.sh/cli | sh',
 	});
 });
 

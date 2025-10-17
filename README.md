@@ -4,7 +4,7 @@
 ## quick start
 
 ```bash
-curl -fsSL https://get.cubby.sh/cli | sh
+ curl -s https://get.cubby.sh/cli | sh
 ```
 
 ## local server
