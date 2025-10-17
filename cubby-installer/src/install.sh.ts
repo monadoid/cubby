@@ -8,8 +8,6 @@ GREEN='\\033[0;32m'
 YELLOW='\\033[1;33m'
 NC='\\033[0m' # No Color
 
-echo "\${GREEN}installing cubby cli...\${NC}"
-
 # Detect OS and architecture
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -45,21 +43,38 @@ esac
 BINARY_NAME="cubby-\${OS_TYPE}-\${ARCH_TYPE}"
 FINAL_NAME="cubby"
 
-echo "Detected: $OS_TYPE ($ARCH_TYPE)"
-echo "Downloading: $BINARY_NAME"
-
 # Download binary
 DOWNLOAD_URL="https://get.cubby.sh/binaries/$BINARY_NAME"
 TMP_FILE="/tmp/cubby_install_$$"
 
+# Spinner function
+spin() {
+  local spin=("-" "\\\\" "|" "/")
+  local i=0
+  while kill -0 $1 2>/dev/null; do
+    printf "\b\${spin[i]}"
+    i=$(( (i+1) % 4 ))
+    sleep 0.1
+  done
+  printf "\b"
+}
+
+# Start download in background
 if command -v curl >/dev/null 2>&1; then
-  curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE"
+  curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE" &
 elif command -v wget >/dev/null 2>&1; then
-  wget -q "$DOWNLOAD_URL" -O "$TMP_FILE"
+  wget -q "$DOWNLOAD_URL" -O "$TMP_FILE" &
 else
   echo "\${RED}Error: curl or wget is required\${NC}"
   exit 1
 fi
+
+# Get the PID of the download process
+pid=$!
+
+# Show spinner while downloading
+echo "\${GREEN} downloading cubby cli... "
+spin $pid
 
 # Make binary executable
 chmod +x "$TMP_FILE"
@@ -69,22 +84,15 @@ INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
 mv "$TMP_FILE" "$INSTALL_DIR/$FINAL_NAME"
 
-echo "\${GREEN}✅ Installed to $INSTALL_DIR/$FINAL_NAME\${NC}"
-
 # Check if ~/.local/bin is in PATH
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-  echo "\${YELLOW}⚠️  $INSTALL_DIR is not in your PATH\${NC}"
+  echo "\${YELLOW} $INSTALL_DIR is not in your PATH\${NC}"
   echo "Add this to your ~/.bashrc or ~/.zshrc:"
   echo "  export PATH=\\"\\\$HOME/.local/bin:\\\$PATH\\""
   echo ""
 fi
 
-echo ""
-echo "\${GREEN}Installation complete!\${NC}"
-echo ""
-echo "\${GREEN}Starting Cubby...\${NC}"
-echo ""
 
-# Run cubby
-"$INSTALL_DIR/$FINAL_NAME"
+# Run cubby setup
+"$INSTALL_DIR/$FINAL_NAME" setup
 `;
