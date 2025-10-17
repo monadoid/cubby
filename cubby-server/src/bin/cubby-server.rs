@@ -4,7 +4,7 @@ use colored::Colorize;
 use cubby_audio::{
     audio_manager::AudioManagerBuilder,
     core::device::{
-        default_input_device, default_output_device, list_audio_devices, parse_audio_device,
+        default_input_device, default_output_device, parse_audio_device,
     },
 };
 use cubby_core::find_ffmpeg_path;
@@ -12,6 +12,7 @@ use cubby_db::DatabaseManager;
 use cubby_server::{
     cli::{Cli, CliAudioTranscriptionEngine, CliOcrEngine, CliVadEngine, CliVadSensitivity},
     permission_checker::{trigger_and_check_microphone, trigger_and_check_screen_recording},
+    setup_state::SetupState,
     start_continuous_recording, ResourceMonitor, SCServer,
 };
 use cubby_vision::monitor::list_monitors;
@@ -140,6 +141,7 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
 async fn main() -> anyhow::Result<()> {
     debug!("starting cubby server");
     let cli = Cli::parse();
+    let mut setup_state = SetupState::load().unwrap_or_default();
 
     // Handle uninstall command first
     if cli.uninstall {
@@ -148,16 +150,16 @@ async fn main() -> anyhow::Result<()> {
 
     // If not running with --no-service, handle service mode
     if !cli.no_service {
-        return handle_service_mode(&cli).await;
+        return run_setup_flow(&cli, setup_state).await;
     }
+
+    ensure_permissions_in_service(&cli, &mut setup_state).await?;
 
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
 
     // Store the guard in a variable that lives for the entire main function
     let _log_guard = setup_logging(&local_data_dir, &cli)?;
-
-    run_preflight_device_checks(&cli).await?;
 
     // Replace the current conditional check with:
     let ffmpeg_path = find_ffmpeg_path();
@@ -351,8 +353,17 @@ async fn main() -> anyhow::Result<()> {
                     }
                 };
 
-                if let Err(e) = result {
-                    error!("continuous recording error: {:?}", e);
+                match result {
+                    Ok(_) => {
+                        // Recording completed (likely no monitors available)
+                        // Sleep before retrying to avoid tight loop
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                    }
+                    Err(e) => {
+                        error!("continuous recording error: {:?}", e);
+                        // Also sleep on error to avoid tight loop
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
                 }
             }
         })
@@ -693,149 +704,31 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Probe default devices upfront to trigger permission prompts before the service starts.
-async fn run_preflight_device_checks(cli: &Cli) -> anyhow::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        if !cli.disable_audio {
-            println!("Requesting microphone permission...");
-            println!("  A dialog may appear. Please click \"Allow\" to continue.");
-            if !trigger_and_check_microphone().await? {
-                println!("Microphone permission not granted.");
-                println!("Open System Settings -> Privacy & Security -> Microphone, enable access for this terminal, then rerun the command.");
-                anyhow::bail!("microphone permission required");
-            }
-            println!("✅ Microphone permission granted.\n");
-        }
-
-        if !cli.disable_vision {
-            println!("Requesting screen recording permission...");
-            println!(
-                "  A dialog may appear. Please click \"Open System Settings\" and enable access."
-            );
-            if !trigger_and_check_screen_recording().await? {
-                println!("Screen recording permission not granted.");
-                println!("Open System Settings -> Privacy & Security -> Screen Recording, enable access for this terminal, then rerun the command.");
-                anyhow::bail!("screen recording permission required");
-            }
-            println!("✅ Screen recording permission granted.\n");
-        }
-    }
-
-    if !cli.disable_audio {
-        let default_input = default_input_device()?;
-        let default_output = default_output_device().await?;
-        let devices = list_audio_devices().await?;
-
-        println!("available audio devices:");
-        for device in devices.iter() {
-            let mut label = format!("  {}", device);
-            if device.name == default_input.name || device.name == default_output.name {
-                label.push_str(" (default)");
-            }
-            println!("{label}");
-        }
-        #[cfg(target_os = "macos")]
-        println!("note: on macos, output devices are your displays");
-
-        println!("default input device: {}", default_input);
-        println!("default output device: {}", default_output);
-    }
-
-    if !cli.disable_vision {
-        let monitors = list_monitors().await;
-        if monitors.is_empty() {
-            println!("no monitors detected.");
-        } else {
-            println!("available monitors:");
-            for monitor in monitors.iter() {
-                println!(
-                    "  {}. {:?} ({}x{})",
-                    monitor.id(),
-                    monitor.name(),
-                    monitor.width(),
-                    monitor.height()
-                );
-            }
-        }
-    }
-
-    Ok(())
-}
-
-async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
-    use cubby_server::cloudflared_downloader::ensure_cloudflared;
-    use cubby_server::cloudflared_manager::CloudflaredManager;
-    use cubby_server::run_onboarding_flow;
+async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
     use cubby_server::service_manager::cubbyServiceManager;
+
+    let mut setup_state = setup_state;
+
+    ensure_account(cli, &mut setup_state).await?;
+    ensure_cloudflared_installation(&mut setup_state).await?;
 
     let current_exe = std::env::current_exe()?;
     let service_manager = cubbyServiceManager::new(current_exe, build_service_args(cli), cli.port)?;
 
-    // Check if this is first run (service not installed)
-    let is_first_run = !service_manager.is_installed();
+    ensure_launch_agent(&service_manager, &mut setup_state)?;
 
-    if is_first_run {
-        // Run full onboarding flow
-        let onboarding_result = run_onboarding_flow(cli).await?;
-
-        // Always install cloudflared with token from onboarding
-        let token = onboarding_result
-            .tunnel_token
-            .ok_or_else(|| anyhow::anyhow!("No tunnel token received from authentication"))?;
-
-        #[cfg(debug_assertions)]
-        println!("📦 Setting up cloudflared tunnel...");
-
-        // Download cloudflared binary (blocking operation)
-        let cloudflared_path = tokio::task::spawn_blocking(|| ensure_cloudflared())
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared download task: {}", e))??;
-
-        #[cfg(debug_assertions)]
-        println!("✅ Cloudflared binary ready");
-
-        // Install cloudflared service
-        let cloudflared_manager = CloudflaredManager::new(cloudflared_path)?;
-        let token_clone = token.clone();
-        tokio::task::spawn_blocking(move || {
-            cloudflared_manager.install_with_overwrite(&token_clone)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn cloudflared install task: {}", e))??;
-
-        #[cfg(not(debug_assertions))]
-        use cliclack::log;
-
-        #[cfg(debug_assertions)]
-        println!("tunnel service installed\n");
-
-        // Install cubby service
-        #[cfg(debug_assertions)]
-        println!("📦 Installing cubby as a background service...");
-
-        service_manager.install()?;
-
-        #[cfg(not(debug_assertions))]
-        log::success("Service installed successfully")?;
-
-        #[cfg(debug_assertions)]
-        println!("✅ Service installed successfully\n");
-    } else {
-        // Service already installed, just ensure it's running
-        #[cfg(debug_assertions)]
-        println!("📦 Service already installed");
-    }
-
-    // Start the service
     println!("🚀 Starting cubby service...");
-
     service_manager.start()?;
 
-    // Wait for health check
     #[cfg(debug_assertions)]
-    println!("⏳ Waiting for service to become healthy...");
+    println!("⏳ waiting for service to become healthy...");
 
+    if !service_manager
+        .wait_for_healthy(std::time::Duration::from_secs(30))
+        .await?
+    {
+        anyhow::bail!("cubby service did not become healthy");
+    }
 
     use cliclack::log;
     let home_dir = dirs::home_dir()
@@ -843,8 +736,114 @@ async fn handle_service_mode(cli: &Cli) -> anyhow::Result<()> {
         .to_string_lossy()
         .to_string();
     log::success("cubby is running in the background!")?;
-    log::success(&format!("Logs: {}/.cubby/cubby-*.log", home_dir))?;
-    log::success("To fully uninstall: cubby --uninstall\n")?;
+    log::success(&format!("logs: {}/.cubby/cubby-*.log", home_dir))?;
+    log::success("to fully uninstall: cubby --uninstall\n")?;
+    Ok(())
+}
+
+async fn ensure_account(cli: &Cli, state: &mut SetupState) -> anyhow::Result<()> {
+    if state.account_created && state.tunnel_token.is_some() {
+        return Ok(());
+    }
+
+    let onboarding_result = cubby_server::run_onboarding_flow(cli).await?;
+    let tunnel_token = onboarding_result
+        .tunnel_token
+        .ok_or_else(|| anyhow::anyhow!("authentication succeeded but tunnel token missing"))?;
+
+    state.account_created = true;
+    state.tunnel_token = Some(tunnel_token);
+    state.session_jwt = onboarding_result.session_jwt;
+    state.store()?;
+    Ok(())
+}
+
+async fn ensure_cloudflared_installation(state: &mut SetupState) -> anyhow::Result<()> {
+    use cubby_server::cloudflared_downloader::ensure_cloudflared;
+    use cubby_server::cloudflared_manager::CloudflaredManager;
+
+    let token = state
+        .tunnel_token
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("missing tunnel token; run cubby again to authenticate"))?;
+
+    let cloudflared_path = tokio::task::spawn_blocking(|| ensure_cloudflared())
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to download cloudflared: {}", e))??;
+
+    let manager = CloudflaredManager::new(cloudflared_path.clone())?;
+    if manager.is_installed() && state.cloudflared_installed {
+        return Ok(());
+    }
+
+    cliclack::log::step("Installing cloudflared tunnel service...")?;
+
+    let path_clone = cloudflared_path.clone();
+    let token_clone = token.clone();
+    tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let mgr = CloudflaredManager::new(path_clone)?;
+        mgr.install_with_overwrite(&token_clone)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| anyhow::anyhow!("cloudflared install task failed: {}", e))??;
+
+    state.cloudflared_installed = true;
+    state.store()?;
+    Ok(())
+}
+
+fn ensure_launch_agent(
+    service_manager: &cubby_server::service_manager::cubbyServiceManager,
+    state: &mut SetupState,
+) -> anyhow::Result<()> {
+    if service_manager.is_installed() && state.service_installed {
+        return Ok(());
+    }
+
+    cliclack::log::step("Installing cubby as a background service...")?;
+    service_manager.install()?;
+    state.service_installed = true;
+    state.store()?;
+    Ok(())
+}
+
+async fn ensure_permissions_in_service(
+    cli: &Cli,
+    state: &mut SetupState,
+) -> anyhow::Result<()> {
+    let mut updated = false;
+
+    if !cli.disable_audio && !state.microphone_granted {
+        info!("requesting microphone permission from cubby service...");
+        let granted = trigger_and_check_microphone().await?;
+        if granted {
+            info!("microphone permission granted");
+            state.microphone_granted = true;
+            updated = true;
+        } else {
+            warn!("microphone permission not granted");
+            anyhow::bail!("microphone permission required");
+        }
+    }
+
+    if !cli.disable_vision && !state.screen_granted {
+        info!("requesting screen recording permission from cubby service...");
+        let granted = trigger_and_check_screen_recording().await?;
+        if granted {
+            info!("screen recording permission granted");
+            state.screen_granted = true;
+            updated = true;
+        } else {
+            warn!("screen recording permission not granted");
+            anyhow::bail!("screen recording permission required");
+        }
+    }
+
+    if updated {
+        state.store()?;
+    }
+
     Ok(())
 }
 
@@ -852,7 +851,6 @@ async fn handle_uninstall() -> anyhow::Result<()> {
     use cubby_server::cloudflared_downloader::{cleanup_cloudflared, ensure_cloudflared};
     use cubby_server::cloudflared_manager::CloudflaredManager;
     use cubby_server::service_manager::cubbyServiceManager;
-
 
     #[cfg(debug_assertions)]
     cliclack::log::info("Stopping and uninstalling cubby service...")?;
@@ -1016,6 +1014,11 @@ async fn handle_uninstall() -> anyhow::Result<()> {
         use cliclack::log;
         log::info("if 'cubby' still appears, restart your terminal to refresh PATH cache")?;
         cliclack::outro("Uninstall complete!")?;
+    }
+
+    let state = SetupState::default();
+    if let Err(e) = state.store() {
+        warn!("failed to reset setup state: {e}");
     }
 
     Ok(())

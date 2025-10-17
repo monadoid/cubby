@@ -14,6 +14,7 @@ pub mod pipe_manager;
 mod resource_monitor;
 mod server;
 pub mod service_manager;
+pub mod setup_state;
 pub mod text_embeds;
 mod video;
 pub mod video_cache;

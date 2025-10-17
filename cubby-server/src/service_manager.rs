@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use reqwest::StatusCode;
 use service_manager::{
     ServiceInstallCtx, ServiceLabel, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
@@ -36,6 +36,35 @@ impl cubbyServiceManager {
         format!("http://127.0.0.1:{}/health", self.port)
     }
 
+    pub fn stop(&self) -> Result<()> {
+        let mut manager = <dyn ServiceManager>::native()?;
+        manager.set_level(ServiceLevel::User)?;
+        let _ = manager.stop(ServiceStopCtx {
+            label: self.label.clone(),
+        });
+        Ok(())
+    }
+
+    pub fn restart(&self) -> Result<()> {
+        self.stop()?;
+        // brief pause to let process exit
+        thread::sleep(Duration::from_millis(500));
+        self.start()?;
+        Ok(())
+    }
+
+    pub async fn wait_for_healthy(&self, timeout: Duration) -> Result<bool> {
+        let start = Instant::now();
+        let client = reqwest::Client::new();
+        while start.elapsed() < timeout {
+            match client.get(self.health_url()).send().await {
+                Ok(resp) if resp.status() == StatusCode::OK => return Ok(true),
+                _ => tokio::time::sleep(Duration::from_millis(300)).await,
+            }
+        }
+        Ok(false)
+    }
+
     pub fn is_installed(&self) -> bool {
         let manager_result = <dyn ServiceManager>::native();
         if let Ok(mut manager) = manager_result {
@@ -49,10 +78,8 @@ impl cubbyServiceManager {
             {
                 // On macOS, check if the plist file exists
                 let home = std::env::var("HOME").unwrap_or_default();
-                let plist_path = format!(
-                    "{}/Library/LaunchAgents/{}.plist",
-                    home, SERVICE_LABEL_STR
-                );
+                let plist_path =
+                    format!("{}/Library/LaunchAgents/{}.plist", home, SERVICE_LABEL_STR);
                 std::path::Path::new(&plist_path).exists()
             }
             #[cfg(target_os = "linux")]
@@ -128,10 +155,7 @@ impl cubbyServiceManager {
         #[cfg(target_os = "macos")]
         {
             let home = std::env::var("HOME").unwrap_or_default();
-            let plist_path = format!(
-                "{}/Library/LaunchAgents/{}.plist",
-                home, SERVICE_LABEL_STR
-            );
+            let plist_path = format!("{}/Library/LaunchAgents/{}.plist", home, SERVICE_LABEL_STR);
             let _ = std::fs::remove_file(&plist_path);
         }
 
@@ -149,4 +173,3 @@ impl cubbyServiceManager {
         Ok(())
     }
 }
-

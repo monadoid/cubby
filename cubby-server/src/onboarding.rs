@@ -18,15 +18,12 @@ struct AuthResult {
     session_jwt: String,
 }
 
-/// Main onboarding flow - runs authentication and permission checks
-pub async fn run_onboarding_flow(cli: &Cli) -> Result<OnboardingResult> {
+/// Main onboarding flow - runs authentication and device enrollment
+pub async fn run_onboarding_flow(_cli: &Cli) -> Result<OnboardingResult> {
     cliclack::intro("Welcome to cubby!")?;
 
     // Step 1: Always run authentication flow
     let auth_result = run_authentication_flow().await?;
-
-    // Step 2: Permission checks (after authentication)
-    run_permission_checks(cli).await?;
 
     Ok(OnboardingResult {
         tunnel_token: Some(auth_result.tunnel_token),
@@ -75,7 +72,7 @@ async fn run_authentication_flow() -> Result<AuthResult> {
 }
 
 /// Run permission checks for screen recording, microphone, and accessibility
-async fn run_permission_checks(cli: &Cli) -> Result<()> {
+pub async fn run_permission_checks(cli: &Cli) -> Result<()> {
     // Check microphone (always needed unless audio disabled)
     if !cli.disable_audio {
         check_and_request_microphone().await?;
@@ -96,7 +93,7 @@ async fn run_permission_checks(cli: &Cli) -> Result<()> {
 }
 
 /// Check and request screen recording permission
-async fn check_and_request_screen_recording() -> Result<()> {
+pub async fn check_and_request_screen_recording() -> Result<()> {
     cliclack::log::step("Checking Screen Recording permission...")?;
 
     #[cfg(debug_assertions)]
@@ -128,7 +125,7 @@ async fn check_and_request_screen_recording() -> Result<()> {
 }
 
 /// Check and request microphone permission
-async fn check_and_request_microphone() -> Result<()> {
+pub async fn check_and_request_microphone() -> Result<()> {
     cliclack::log::step("Checking Microphone permission...")?;
 
     #[cfg(debug_assertions)]
@@ -160,7 +157,7 @@ async fn check_and_request_microphone() -> Result<()> {
 }
 
 /// Check and request accessibility permission (optional, for UI monitoring)
-async fn check_and_request_accessibility() -> Result<()> {
+pub async fn check_and_request_accessibility() -> Result<()> {
     cliclack::log::step("Checking Accessibility permission...")?;
 
     if check_accessibility_permission() {

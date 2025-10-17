@@ -54,16 +54,25 @@ pub async fn trigger_and_check_screen_recording() -> Result<bool> {
 }
 
 /// Check microphone permission using hybrid trigger + poll approach
-/// 1. Attempt listing devices to trigger dialog
-/// 2. Poll until devices are accessible
+/// 1. Check if already granted
+/// 2. Attempt listing devices to trigger dialog
+/// 3. Poll until devices are accessible
 #[cfg(target_os = "macos")]
 pub async fn trigger_and_check_microphone() -> Result<bool> {
     use cubby_audio::core::device::list_audio_devices;
     use tokio::time::{sleep, Duration};
 
+    // First check if already granted
+    if let Ok(devices) = list_audio_devices().await {
+        if !devices.is_empty() {
+            tracing::debug!("Microphone permission already granted");
+            return Ok(true);
+        }
+    }
+
     tracing::info!("Microphone permission needed - triggering dialog...");
 
-    // Trigger the dialog by attempting to list audio devices
+    // Trigger the dialog by attempting to list audio devices again
     let _ = list_audio_devices().await;
 
     // Poll until we can successfully list devices or timeout
