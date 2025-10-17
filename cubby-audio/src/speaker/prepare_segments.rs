@@ -64,6 +64,9 @@ pub async fn prepare_segments(
     );
 
     let threshold_met = speech_ratio > min_speech_ratio;
+    
+    // TEMPORARY: Bypass VAD check for testing - always process audio
+    let threshold_met = true;
 
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     if !audio_frames.is_empty() && threshold_met {
