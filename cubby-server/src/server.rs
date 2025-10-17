@@ -38,7 +38,6 @@ use crate::{
         extract_frame, extract_frame_from_video, extract_high_quality_frame, merge_videos,
         validate_media, MergeVideosRequest, MergeVideosResponse, ValidateMediaParams,
     },
-    PipeManager,
 };
 use chrono::{DateTime, Utc};
 use cubby_audio::{
@@ -62,6 +61,9 @@ use std::{
 };
 
 use lru::LruCache;
+
+#[cfg(target_os = "macos")]
+use crate::mac_notifications;
 
 use tokio::{
     net::TcpListener,
@@ -842,10 +844,30 @@ async fn send_notification(
 ) -> Result<Json<ApiResponse>, (StatusCode, String)> {
     info!("received notification request: {:?}", payload);
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
-        use notify_rust::Notification;
-        match Notification::new()
+        return match mac_notifications::send(&payload.title, &payload.body) {
+            Ok(_) => {
+                info!("notification sent successfully");
+                Ok(Json(ApiResponse {
+                    success: true,
+                    message: "notification sent successfully".to_string(),
+                }))
+            }
+            Err(e) => {
+                error!("failed to send notification: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to send notification: {}", e),
+                ))
+            }
+        };
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return match notify_rust::Notification::new()
+            .appname("cubby")
             .summary(&payload.title)
             .body(&payload.body)
             .show()
@@ -864,14 +886,13 @@ async fn send_notification(
                     format!("failed to send notification: {}", e),
                 ))
             }
-        }
+        };
     }
 
     #[cfg(target_os = "linux")]
     {
         // linux requires dbus which might not be available
-        use notify_rust::Notification;
-        match Notification::new()
+        return match notify_rust::Notification::new()
             .summary(&payload.title)
             .body(&payload.body)
             .show()
@@ -884,13 +905,16 @@ async fn send_notification(
                 }))
             }
             Err(e) => {
-                error!("failed to send notification (dbus might not be available): {}", e);
+                error!(
+                    "failed to send notification (dbus might not be available): {}",
+                    e
+                );
                 Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     format!("failed to send notification: {}", e),
                 ))
             }
-        }
+        };
     }
 }
 

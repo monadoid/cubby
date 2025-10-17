@@ -3,12 +3,11 @@ use clap::Parser;
 use colored::Colorize;
 use cubby_audio::{
     audio_manager::AudioManagerBuilder,
-    core::device::{
-        default_input_device, default_output_device, parse_audio_device,
-    },
+    core::device::{default_input_device, default_output_device, parse_audio_device},
 };
 use cubby_core::find_ffmpeg_path;
 use cubby_db::DatabaseManager;
+use cubby_server::mac_notifications;
 use cubby_server::{
     cli::{
         Cli, CliApp, CliAudioTranscriptionEngine, CliCommand, CliOcrEngine, CliVadEngine,
@@ -296,7 +295,7 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
     let ignored_windows_clone = cli.ignored_windows.clone();
     let included_windows_clone = cli.included_windows.clone();
     let realtime_audio_devices_clone = realtime_audio_devices.clone();
-    
+
     // Clone values needed in spawned task
     let video_chunk_duration = cli.video_chunk_duration;
     let ocr_engine_for_task = cli.ocr_engine.clone();
@@ -324,16 +323,19 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
 
     // Only set values if explicitly provided by user, otherwise use crate defaults
     if let Some(duration) = cli.audio_chunk_duration {
-        audio_manager_builder = audio_manager_builder.audio_chunk_duration(Duration::from_secs(duration));
+        audio_manager_builder =
+            audio_manager_builder.audio_chunk_duration(Duration::from_secs(duration));
     }
     if let Some(ref vad_engine_val) = cli.vad_engine {
         audio_manager_builder = audio_manager_builder.vad_engine(vad_engine_val.clone().into());
     }
     if let Some(ref vad_sensitivity) = cli.vad_sensitivity {
-        audio_manager_builder = audio_manager_builder.vad_sensitivity(vad_sensitivity.clone().into());
+        audio_manager_builder =
+            audio_manager_builder.vad_sensitivity(vad_sensitivity.clone().into());
     }
     if let Some(ref transcription_engine) = cli.audio_transcription_engine {
-        audio_manager_builder = audio_manager_builder.transcription_engine(transcription_engine.clone().into());
+        audio_manager_builder =
+            audio_manager_builder.transcription_engine(transcription_engine.clone().into());
     }
 
     let audio_manager = match audio_manager_builder.build(db.clone()).await {
@@ -748,11 +750,8 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
     ensure_cloudflared_installation(&mut setup_state).await?;
 
     let current_exe = std::env::current_exe()?;
-    let service_manager = cubbyServiceManager::new(
-        current_exe,
-        build_service_args(cli, &setup_state),
-        cli.port,
-    )?;
+    let service_manager =
+        cubbyServiceManager::new(current_exe, build_service_args(cli, &setup_state), cli.port)?;
 
     ensure_launch_agent(&service_manager, &mut setup_state)?;
 
@@ -773,36 +772,44 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
                 .unwrap_or_else(|| PathBuf::from("~"))
                 .to_string_lossy()
                 .to_string();
-            
+
             eprintln!("\n❌ Service failed to start. Recent logs:\n");
-            
+
             // Show service-error.log (stderr - most important for crashes)
             let error_log = format!("{}/.cubby/logs/service-error.log", home_dir);
             if let Ok(contents) = fs::read_to_string(&error_log) {
                 let lines: Vec<&str> = contents.lines().collect();
-                let start = if lines.len() > 30 { lines.len() - 30 } else { 0 };
+                let start = if lines.len() > 30 {
+                    lines.len() - 30
+                } else {
+                    0
+                };
                 eprintln!("📋 Last 30 lines of service-error.log:");
                 for line in &lines[start..] {
                     eprintln!("  {}", line);
                 }
                 eprintln!();
             }
-            
+
             // Show service.log (stdout)
             let service_log = format!("{}/.cubby/logs/service.log", home_dir);
             if let Ok(contents) = fs::read_to_string(&service_log) {
                 let lines: Vec<&str> = contents.lines().collect();
-                let start = if lines.len() > 30 { lines.len() - 30 } else { 0 };
+                let start = if lines.len() > 30 {
+                    lines.len() - 30
+                } else {
+                    0
+                };
                 eprintln!("📋 Last 30 lines of service.log:");
                 for line in &lines[start..] {
                     eprintln!("  {}", line);
                 }
                 eprintln!();
             }
-            
+
             eprintln!("💡 Full logs at: {}/.cubby/logs/\n", home_dir);
         }
-        
+
         anyhow::bail!("cubby service did not become healthy");
     }
 
@@ -901,9 +908,10 @@ fn ensure_audio_preference(cli: &Cli, state: &mut SetupState) -> anyhow::Result<
         return Ok(());
     }
 
-    let enable_audio = cliclack::confirm("enable audio recording? (screen capture enabled by default)")
-        .initial_value(false)
-        .interact()?;
+    let enable_audio =
+        cliclack::confirm("enable audio recording? (screen capture enabled by default)")
+            .initial_value(false)
+            .interact()?;
 
     state.audio_enabled = Some(enable_audio);
     state.store()?;
@@ -915,10 +923,7 @@ fn ensure_audio_preference(cli: &Cli, state: &mut SetupState) -> anyhow::Result<
     Ok(())
 }
 
-async fn ensure_permissions_in_service(
-    cli: &Cli,
-    state: &mut SetupState,
-) -> anyhow::Result<()> {
+async fn ensure_permissions_in_service(cli: &Cli, state: &mut SetupState) -> anyhow::Result<()> {
     let mut updated = false;
 
     if !cli.disable_audio && !state.microphone_granted {
@@ -1108,7 +1113,7 @@ async fn handle_uninstall() -> anyhow::Result<()> {
         }
 
         // Spawn detached cmd to run the batch (use 'start' to detach)
-        let _ = Command::new("cmd")
+        let _ = std::process::Command::new("cmd")
             .args(["/C", "start", "", &bat_path.to_string_lossy()])
             .spawn();
     }

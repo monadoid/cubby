@@ -5,7 +5,7 @@ members = [
     "cubby-audio",
     "cubby-server",
     "cubby-events",
-    "cubby-db",
+    "cubby-db", "notify-helper",
 ]
 resolver = "2"
 

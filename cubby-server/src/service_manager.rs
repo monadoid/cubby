@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use reqwest::StatusCode;
 use service_manager::{
     ServiceInstallCtx, ServiceLabel, ServiceLevel, ServiceManager, ServiceStartCtx, ServiceStopCtx,
@@ -10,6 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const SERVICE_LABEL_STR: &str = "com.tabsandtabs.cubby";
+#[cfg(target_os = "macos")]
+const APP_BUNDLE_IDENTIFIER: &str = "com.tabsandtabs.cubby";
 
 #[derive(Clone)]
 pub struct cubbyServiceManager {
@@ -107,59 +109,71 @@ impl cubbyServiceManager {
         let mut manager = <dyn ServiceManager>::native()?;
         manager.set_level(ServiceLevel::User)?;
 
+        let program_path = self.binary_path.clone();
+
         #[cfg(target_os = "macos")]
         let contents = {
             let home = std::env::var("HOME").unwrap_or_default();
             let log_dir = format!("{}/.cubby/logs", home);
-            
+
             // ensure log directory exists
             std::fs::create_dir_all(&log_dir).ok();
-            
+
             let stdout_path = format!("{}/service.log", log_dir);
             let stderr_path = format!("{}/service-error.log", log_dir);
-            
+
             // build argument strings for plist
             let mut args_xml = String::new();
-            args_xml.push_str(&format!("\t\t<string>{}</string>\n", self.binary_path.display()));
+            args_xml.push_str(&format!(
+                "\t\t<string>{}</string>\n",
+                program_path.display()
+            ));
             for arg in &self.args {
                 if let Some(arg_str) = arg.to_str() {
                     args_xml.push_str(&format!("\t\t<string>{}</string>\n", arg_str));
                 }
             }
-            
+
             Some(format!(
                 r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>{}</string>
+	<string>{label}</string>
+	<key>CFBundleIdentifier</key>
+	<string>{bundle_id}</string>
+	<key>CFBundleName</key>
+	<string>cubby</string>
 	<key>ProgramArguments</key>
 	<array>
-{}	</array>
+{args}	</array>
+	<key>LimitLoadToSessionType</key>
+	<string>Aqua</string>
 	<key>StandardOutPath</key>
-	<string>{}</string>
+	<string>{stdout}</string>
 	<key>StandardErrorPath</key>
-	<string>{}</string>
+	<string>{stderr}</string>
 	<key>KeepAlive</key>
-	<true/>
+	<false/>
 	<key>RunAtLoad</key>
 	<true/>
 </dict>
 </plist>"#,
-                SERVICE_LABEL_STR,
-                args_xml,
-                stdout_path,
-                stderr_path
+                label = SERVICE_LABEL_STR,
+                args = args_xml,
+                bundle_id = APP_BUNDLE_IDENTIFIER,
+                stdout = stdout_path,
+                stderr = stderr_path
             ))
         };
-        
+
         #[cfg(not(target_os = "macos"))]
         let contents = None;
 
         manager.install(ServiceInstallCtx {
             label: self.label.clone(),
-            program: self.binary_path.clone(),
+            program: program_path.clone(),
             args: self.args.clone(),
             contents,
             username: None,
