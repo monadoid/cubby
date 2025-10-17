@@ -10,6 +10,10 @@ keep_vars = true
 pattern = "cubby.sh"
 custom_domain = true
 
+[[routes]]
+pattern = "www.cubby.sh"
+custom_domain = true
+
 [observability]
 enabled = true
 head_sampling_rate = 1
