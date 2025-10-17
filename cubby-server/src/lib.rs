@@ -22,7 +22,7 @@ pub mod video_utils;
 pub use add::handle_index_command;
 pub use auto_destruct::watch_pid;
 pub use axum::Json as JsonResponse;
-pub use cli::Cli;
+pub use cli::{Cli, CliApp, CliCommand};
 pub use cloudflared_downloader::ensure_cloudflared;
 pub use cloudflared_manager::CloudflaredManager;
 pub use core::start_continuous_recording;

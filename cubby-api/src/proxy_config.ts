@@ -43,18 +43,6 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
     description: "Get specific frame by ID",
   },
 
-  // Pipes (read-only operations)
-  {
-    pattern: /^\/pipes\/list$/,
-    methods: ["GET"],
-    description: "List available pipes",
-  },
-  {
-    pattern: /^\/pipes\/info\/[a-zA-Z0-9-]+$/,
-    methods: ["GET"],
-    description: "Get pipe info by ID",
-  },
-
   // Tags
   {
     pattern: /^\/tags\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9-]+$/,
@@ -74,18 +62,6 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
     description: "Find similar speakers",
   },
 
-  // Experimental features (read-only)
-  {
-    pattern: /^\/experimental\/validate\/media$/,
-    methods: ["GET"],
-    description: "Validate media files",
-  },
-  {
-    pattern: /^\/experimental\/frames\/merge$/,
-    methods: ["GET"],
-    description: "Merge frames",
-  },
-
   // Embeddings API
   {
     pattern: /^\/v1\/embeddings$/,
@@ -98,6 +74,44 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
     methods: ["POST"],
     description: "Add content to cubby",
   },
+
+  // Semantic search
+  {
+    pattern: /^\/semantic-search$/,
+    methods: ["GET"],
+    description: "Semantic search",
+  },
+
+  // Additional speaker endpoints
+  {
+    pattern: /^\/speakers\/unnamed$/,
+    methods: ["GET"],
+    description: "Get unnamed speakers",
+  },
+
+  // Experimental operator - app/url launching only
+  {
+    pattern: /^\/experimental\/operator\/open-application$/,
+    methods: ["POST"],
+    description: "Open application",
+  },
+  {
+    pattern: /^\/experimental\/operator\/open-url$/,
+    methods: ["POST"],
+    description: "Open URL",
+  },
+
+  // TODO: Streaming endpoints - require special WebSocket/SSE proxy handling
+  // {
+  //   pattern: /^\/stream\/frames$/,
+  //   methods: ["GET"],
+  //   description: "SSE stream for frames (needs streaming proxy support)",
+  // },
+  // {
+  //   pattern: /^\/ws\/events$/,
+  //   methods: ["GET"],
+  //   description: "WebSocket for events (needs WebSocket proxy support)",
+  // },
 ];
 
 /**
@@ -114,11 +128,4 @@ export function isPathAllowed(path: string, method: string): boolean {
     (route) =>
       route.pattern.test(path) && route.methods.includes(upperMethod as any),
   );
-}
-
-/**
- * Get all allowed routes (useful for debugging or documentation).
- */
-export function getAllowedRoutes(): ReadonlyArray<AllowedRoute> {
-  return ALLOWED_ROUTES;
 }

@@ -1,11 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{Result};
 use cliclack::{input, password};
 
 use crate::cubby_api_client::CubbyApiClient;
-use crate::permission_checker::{
-    check_accessibility_permission, trigger_and_check_microphone,
-    trigger_and_check_screen_recording,
-};
 use crate::Cli;
 
 pub struct OnboardingResult {
@@ -69,110 +65,4 @@ async fn run_authentication_flow() -> Result<AuthResult> {
         tunnel_token: enroll_response.tunnel_token,
         session_jwt: signup_response.session_jwt,
     })
-}
-
-/// Run permission checks for screen recording, microphone, and accessibility
-pub async fn run_permission_checks(cli: &Cli) -> Result<()> {
-    // Check microphone (always needed unless audio disabled)
-    if !cli.disable_audio {
-        check_and_request_microphone().await?;
-    }
-
-    // Check screen recording (always needed unless vision disabled)
-    if !cli.disable_vision {
-        check_and_request_screen_recording().await?;
-    }
-
-    // Check accessibility (only if UI monitoring enabled)
-    if cli.enable_ui_monitoring {
-        check_and_request_accessibility().await?;
-    }
-
-    cliclack::log::success("All required permissions granted!")?;
-    Ok(())
-}
-
-/// Check and request screen recording permission
-pub async fn check_and_request_screen_recording() -> Result<()> {
-    cliclack::log::step("Checking Screen Recording permission...")?;
-
-    #[cfg(debug_assertions)]
-    {
-        println!("   A permission dialog will appear - please click 'Allow'");
-        println!("   (Waiting up to 60 seconds for your response...)");
-    }
-
-    let has_permission = trigger_and_check_screen_recording().await?;
-
-    if has_permission {
-        cliclack::log::success("Screen Recording permission granted")?;
-        return Ok(());
-    }
-
-    // Timeout or denied
-    cliclack::log::error("Screen Recording permission not granted")?;
-
-    #[cfg(debug_assertions)]
-    {
-        println!("To grant permission:");
-        println!("   1. Open System Settings > Privacy & Security > Screen Recording");
-        println!("   2. Enable your terminal");
-        println!("   3. **Quit and restart your terminal**");
-        println!("   4. Run setup again");
-    }
-
-    bail!("Screen Recording permission required");
-}
-
-/// Check and request microphone permission
-pub async fn check_and_request_microphone() -> Result<()> {
-    cliclack::log::step("Checking Microphone permission...")?;
-
-    #[cfg(debug_assertions)]
-    {
-        println!("   A permission dialog will appear - please click 'Allow'");
-        println!("   (Waiting up to 60 seconds for your response...)");
-    }
-
-    let has_permission = trigger_and_check_microphone().await?;
-
-    if has_permission {
-        cliclack::log::success("Microphone permission granted")?;
-        return Ok(());
-    }
-
-    // Timeout or denied
-    cliclack::log::error("Microphone permission not granted")?;
-
-    #[cfg(debug_assertions)]
-    {
-        println!("To grant permission:");
-        println!("   1. Open System Settings > Privacy & Security > Microphone");
-        println!("   2. Enable your terminal");
-        println!("   3. **Quit and restart your terminal**");
-        println!("   4. Run setup again");
-    }
-
-    bail!("Microphone permission required");
-}
-
-/// Check and request accessibility permission (optional, for UI monitoring)
-pub async fn check_and_request_accessibility() -> Result<()> {
-    cliclack::log::step("Checking Accessibility permission...")?;
-
-    if check_accessibility_permission() {
-        cliclack::log::success("Accessibility permission granted (or not required)")?;
-        return Ok(());
-    }
-
-    // For now, we'll skip the complex accessibility permission flow
-    // since it's optional and only needed for UI monitoring
-    cliclack::log::warning("Accessibility permission setup skipped (optional feature)")?;
-
-    #[cfg(debug_assertions)]
-    {
-        println!("   To enable UI monitoring later, you may need to grant accessibility permissions manually.");
-    }
-
-    Ok(())
 }

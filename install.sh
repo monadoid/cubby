@@ -287,7 +287,7 @@ echo "
 echo "installation complete! 🚀"
 echo "to get started:"
 echo "1. restart your terminal or run: source $SHELL_CONFIG"
-echo "2. run: cubby"
+echo "2. run: cubby setup"
 echo "3. allow permissions on macos (screen, mic) if needed"
 echo ""
 echo "╭──────────────────────────────────────────╮"
@@ -310,5 +310,4 @@ curl -sL -X POST https://eu.i.posthog.com/capture/ \
       "arch": "'$arch'"
     }
   }' >/dev/null 2>&1 || true
-
 

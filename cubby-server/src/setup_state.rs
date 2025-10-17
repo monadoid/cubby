@@ -11,6 +11,7 @@ pub struct SetupState {
     pub screen_granted: bool,
     pub tunnel_token: Option<String>,
     pub session_jwt: Option<String>,
+    pub audio_enabled: Option<bool>,
 }
 
 impl Default for SetupState {
@@ -23,6 +24,7 @@ impl Default for SetupState {
             screen_granted: false,
             tunnel_token: None,
             session_jwt: None,
+            audio_enabled: None,
         }
     }
 }

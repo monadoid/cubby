@@ -107,11 +107,61 @@ impl cubbyServiceManager {
         let mut manager = <dyn ServiceManager>::native()?;
         manager.set_level(ServiceLevel::User)?;
 
+        #[cfg(target_os = "macos")]
+        let contents = {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let log_dir = format!("{}/.cubby/logs", home);
+            
+            // ensure log directory exists
+            std::fs::create_dir_all(&log_dir).ok();
+            
+            let stdout_path = format!("{}/service.log", log_dir);
+            let stderr_path = format!("{}/service-error.log", log_dir);
+            
+            // build argument strings for plist
+            let mut args_xml = String::new();
+            args_xml.push_str(&format!("\t\t<string>{}</string>\n", self.binary_path.display()));
+            for arg in &self.args {
+                if let Some(arg_str) = arg.to_str() {
+                    args_xml.push_str(&format!("\t\t<string>{}</string>\n", arg_str));
+                }
+            }
+            
+            Some(format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>{}</string>
+	<key>ProgramArguments</key>
+	<array>
+{}	</array>
+	<key>StandardOutPath</key>
+	<string>{}</string>
+	<key>StandardErrorPath</key>
+	<string>{}</string>
+	<key>KeepAlive</key>
+	<true/>
+	<key>RunAtLoad</key>
+	<true/>
+</dict>
+</plist>"#,
+                SERVICE_LABEL_STR,
+                args_xml,
+                stdout_path,
+                stderr_path
+            ))
+        };
+        
+        #[cfg(not(target_os = "macos"))]
+        let contents = None;
+
         manager.install(ServiceInstallCtx {
             label: self.label.clone(),
             program: self.binary_path.clone(),
             args: self.args.clone(),
-            contents: None,
+            contents,
             username: None,
             working_directory: None,
             environment: None,

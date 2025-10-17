@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clap::ValueEnum;
-use clap::{Parser, ValueHint};
+use clap::{Args, Parser, Subcommand, ValueHint};
 use cubby_audio::{
     core::engine::AudioTranscriptionEngine as CoreAudioTranscriptionEngine,
     vad::{VadEngineEnum, VadSensitivity},
@@ -140,7 +140,7 @@ impl From<CliVadSensitivity> for VadSensitivity {
     }
 }
 
-#[derive(Parser)]
+#[derive(Args, Clone, Debug)]
 #[command(
     author, 
     version,
@@ -159,8 +159,8 @@ pub struct Cli {
     pub fps: f64, // ! not crazy about this (inconsistent behaviour across platforms) see https://github.com/mediar-ai/screenpipe/issues/173
 
     /// Audio chunk duration in seconds
-    #[arg(short = 'd', long, default_value_t = 30)]
-    pub audio_chunk_duration: u64,
+    #[arg(short = 'd', long)]
+    pub audio_chunk_duration: Option<u64>,
 
     /// Port to run the server on
     #[arg(short = 'p', long, default_value_t = 3030)]
@@ -191,8 +191,8 @@ pub struct Cli {
     /// WhisperTiny is a local, lightweight transcription model, recommended for high data privacy.
     /// WhisperDistilLargeV3 is a local, lightweight transcription model (-a whisper-large), recommended for higher quality audio than tiny.
     /// WhisperLargeV3Turbo is a local, lightweight transcription model (-a whisper-large-v3-turbo), recommended for higher quality audio than tiny.
-    #[arg(short = 'a', long, value_enum, default_value_t = CliAudioTranscriptionEngine::WhisperTinyQuantized)]
-    pub audio_transcription_engine: CliAudioTranscriptionEngine,
+    #[arg(short = 'a', long, value_enum)]
+    pub audio_transcription_engine: Option<CliAudioTranscriptionEngine>,
 
     /// Enable realtime audio transcription
     #[arg(long, default_value_t = false)]
@@ -237,8 +237,8 @@ pub struct Cli {
     pub disable_vision: bool,
 
     /// VAD engine to use for speech detection
-    #[arg(long, value_enum, default_value_t = CliVadEngine::Silero)] // Silero or WebRtc
-    pub vad_engine: CliVadEngine,
+    #[arg(long, value_enum)]
+    pub vad_engine: Option<CliVadEngine>,
 
     /// List of windows to ignore (by title) for screen recording - we use contains to match, example:
     /// --ignored-windows "Spotify" --ignored-windows "Bit" will ignore both "Bitwarden" and "Bittorrent"
@@ -265,8 +265,8 @@ pub struct Cli {
     pub auto_destruct_pid: Option<u32>,
 
     /// Voice activity detection sensitivity level
-    #[arg(long, value_enum, default_value_t = CliVadSensitivity::High)]
-    pub vad_sensitivity: CliVadSensitivity,
+    #[arg(long, value_enum)]
+    pub vad_sensitivity: Option<CliVadSensitivity>,
 
     /// Disable telemetry
     #[arg(long, default_value_t = false)]
@@ -287,10 +287,6 @@ pub struct Cli {
     /// Capture windows that are not focused (default: false)
     #[arg(long, default_value_t = false)]
     pub capture_unfocused_windows: bool,
-
-    /// Run in foreground (don't use service manager)
-    #[arg(long, default_value_t = false)]
-    pub no_service: bool,
 
     /// Uninstall the service and clean up
     #[arg(long, default_value_t = false)]
@@ -313,4 +309,26 @@ impl Cli {
 pub enum OutputFormat {
     Text,
     Json,
+}
+
+#[derive(Parser)]
+#[command(
+    author,
+    version,
+    about,
+    long_about = None,
+    name = "cubby",
+    disable_help_subcommand = true
+)]
+pub struct CliApp {
+    #[command(subcommand)]
+    pub command: Option<CliCommand>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CliCommand {
+    /// Run interactive setup (authentication, install services, etc.)
+    Setup(Cli),
+    /// Launch the long-running background service
+    Service(Cli),
 }

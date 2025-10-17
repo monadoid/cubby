@@ -10,7 +10,10 @@ use cubby_audio::{
 use cubby_core::find_ffmpeg_path;
 use cubby_db::DatabaseManager;
 use cubby_server::{
-    cli::{Cli, CliAudioTranscriptionEngine, CliOcrEngine, CliVadEngine, CliVadSensitivity},
+    cli::{
+        Cli, CliApp, CliAudioTranscriptionEngine, CliCommand, CliOcrEngine, CliVadEngine,
+        CliVadSensitivity,
+    },
     permission_checker::{trigger_and_check_microphone, trigger_and_check_screen_recording},
     setup_state::SetupState,
     start_continuous_recording, ResourceMonitor, SCServer,
@@ -133,14 +136,39 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
     // Build the final registry
     tracing_registry.init();
 
-    Ok(guard)
+Ok(guard)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchMode {
+    Setup,
+    Service,
 }
 
 #[tokio::main]
 #[tracing::instrument]
 async fn main() -> anyhow::Result<()> {
     debug!("starting cubby server");
-    let cli = Cli::parse();
+    let mut argv: Vec<String> = env::args().collect();
+    let needs_default = match argv.get(1).map(|s| s.as_str()) {
+        None => true,
+        Some("setup") | Some("service") => false,
+        Some("-h") | Some("--help") | Some("-V") | Some("--version") => false,
+        _ => true,
+    };
+
+    if needs_default {
+        argv.insert(1, "setup".to_string());
+    }
+
+    let app = CliApp::parse_from(&argv);
+
+    let (cli, mode) = match app.command {
+        Some(CliCommand::Setup(cli)) => (cli, LaunchMode::Setup),
+        Some(CliCommand::Service(cli)) => (cli, LaunchMode::Service),
+        None => unreachable!("subcommand should be set after preprocessing"),
+    };
+
     let mut setup_state = SetupState::load().unwrap_or_default();
 
     // Handle uninstall command first
@@ -148,8 +176,7 @@ async fn main() -> anyhow::Result<()> {
         return handle_uninstall().await;
     }
 
-    // If not running with --no-service, handle service mode
-    if !cli.no_service {
+    if matches!(mode, LaunchMode::Setup) {
         return run_setup_flow(&cli, setup_state).await;
     }
 
@@ -262,7 +289,7 @@ async fn main() -> anyhow::Result<()> {
     let db_server = db.clone();
 
     let warning_ocr_engine_clone = cli.ocr_engine.clone();
-    let warning_audio_transcription_engine_clone = cli.audio_transcription_engine.clone();
+    let warning_audio_transcription_engine_clone = cli.audio_transcription_engine.as_ref();
     let monitor_ids = if cli.disable_vision || all_monitors.is_empty() {
         Vec::new()
     } else if cli.monitor_id.is_empty() {
@@ -275,9 +302,9 @@ async fn main() -> anyhow::Result<()> {
     let languages_clone = languages.clone();
 
     let ocr_engine_clone = cli.ocr_engine.clone();
-    let vad_engine = cli.vad_engine.clone();
-    let vad_engine_clone = vad_engine.clone();
-    let vad_sensitivity_clone = cli.vad_sensitivity.clone();
+    let vad_engine = cli.vad_engine.as_ref();
+    let vad_engine_clone = cli.vad_engine.as_ref();
+    let vad_sensitivity_clone = cli.vad_sensitivity.as_ref();
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
     let vision_runtime = Runtime::new().unwrap();
@@ -298,18 +325,26 @@ async fn main() -> anyhow::Result<()> {
         1.0
     };
 
-    let audio_chunk_duration = Duration::from_secs(cli.audio_chunk_duration);
-
     let mut audio_manager_builder = AudioManagerBuilder::new()
-        .audio_chunk_duration(audio_chunk_duration)
-        .vad_engine(vad_engine.into())
-        .vad_sensitivity(cli.vad_sensitivity.into())
-        .languages(languages.clone())
-        .transcription_engine(cli.audio_transcription_engine.into())
         .realtime(cli.enable_realtime_audio_transcription)
         .enabled_devices(audio_devices)
         .deepgram_api_key(cli.deepgram_api_key.clone())
-        .output_path(PathBuf::from(output_path_clone.clone().to_string()));
+        .output_path(PathBuf::from(output_path_clone.clone().to_string()))
+        .languages(languages.clone());
+
+    // Only set values if explicitly provided by user, otherwise use crate defaults
+    if let Some(duration) = cli.audio_chunk_duration {
+        audio_manager_builder = audio_manager_builder.audio_chunk_duration(Duration::from_secs(duration));
+    }
+    if let Some(ref vad_engine_val) = cli.vad_engine {
+        audio_manager_builder = audio_manager_builder.vad_engine(vad_engine_val.clone().into());
+    }
+    if let Some(ref vad_sensitivity) = cli.vad_sensitivity {
+        audio_manager_builder = audio_manager_builder.vad_sensitivity(vad_sensitivity.clone().into());
+    }
+    if let Some(ref transcription_engine) = cli.audio_transcription_engine {
+        audio_manager_builder = audio_manager_builder.transcription_engine(transcription_engine.clone().into());
+    }
 
     let audio_manager = match audio_manager_builder.build(db.clone()).await {
         Ok(manager) => Arc::new(manager),
@@ -405,7 +440,9 @@ async fn main() -> anyhow::Result<()> {
     println!("│ fps                    │ {:<34} │", cli.fps);
     println!(
         "│ audio chunk duration   │ {:<34} │",
-        format!("{} seconds", cli.audio_chunk_duration)
+        cli.audio_chunk_duration
+            .map(|d| format!("{} seconds", d))
+            .unwrap_or_else(|| "default (30 seconds)".to_string())
     );
     println!(
         "│ video chunk duration   │ {:<34} │",
@@ -420,7 +457,9 @@ async fn main() -> anyhow::Result<()> {
     println!("│ vision disabled        │ {:<34} │", cli.disable_vision);
     println!(
         "│ audio engine           │ {:<34} │",
-        format!("{:?}", warning_audio_transcription_engine_clone)
+        warning_audio_transcription_engine_clone
+            .map(|e| format!("{:?}", e))
+            .unwrap_or_else(|| "default (WhisperTinyQuantized)".to_string())
     );
     println!(
         "│ ocr engine             │ {:<34} │",
@@ -428,11 +467,15 @@ async fn main() -> anyhow::Result<()> {
     );
     println!(
         "│ vad engine             │ {:<34} │",
-        format!("{:?}", vad_engine_clone)
+        vad_engine_clone
+            .map(|e| format!("{:?}", e))
+            .unwrap_or_else(|| "default (Silero)".to_string())
     );
     println!(
         "│ vad sensitivity        │ {:<34} │",
-        format!("{:?}", vad_sensitivity_clone)
+        vad_sensitivity_clone
+            .map(|s| format!("{:?}", s))
+            .unwrap_or_else(|| "default (Low)".to_string())
     );
     println!(
         "│ data directory         │ {:<34} │",
@@ -606,7 +649,7 @@ async fn main() -> anyhow::Result<()> {
     println!("└────────────────────────┴────────────────────────────────────┘");
 
     // Add warning for cloud arguments and telemetry
-    if warning_audio_transcription_engine_clone == CliAudioTranscriptionEngine::Deepgram
+    if warning_audio_transcription_engine_clone == Some(&CliAudioTranscriptionEngine::Deepgram)
         || warning_ocr_engine_clone == CliOcrEngine::Unstructured
     {
         println!(
@@ -710,14 +753,19 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
     let mut setup_state = setup_state;
 
     ensure_account(cli, &mut setup_state).await?;
+    ensure_audio_preference(cli, &mut setup_state)?;
     ensure_cloudflared_installation(&mut setup_state).await?;
 
     let current_exe = std::env::current_exe()?;
-    let service_manager = cubbyServiceManager::new(current_exe, build_service_args(cli), cli.port)?;
+    let service_manager = cubbyServiceManager::new(
+        current_exe,
+        build_service_args(cli, &setup_state),
+        cli.port,
+    )?;
 
     ensure_launch_agent(&service_manager, &mut setup_state)?;
 
-    println!("🚀 Starting cubby service...");
+    let _ = log::step("Starting cubby service...");
     service_manager.start()?;
 
     #[cfg(debug_assertions)]
@@ -737,7 +785,7 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
         .to_string();
     log::success("cubby is running in the background!")?;
     log::success(&format!("logs: {}/.cubby/cubby-*.log", home_dir))?;
-    log::success("to fully uninstall: cubby --uninstall\n")?;
+    log::success("to uninstall: cubby --uninstall\n")?;
     Ok(())
 }
 
@@ -776,7 +824,7 @@ async fn ensure_cloudflared_installation(state: &mut SetupState) -> anyhow::Resu
         return Ok(());
     }
 
-    cliclack::log::step("Installing cloudflared tunnel service...")?;
+    let _ = cliclack::log::step("Setting up...");
 
     let path_clone = cloudflared_path.clone();
     let token_clone = token.clone();
@@ -801,10 +849,41 @@ fn ensure_launch_agent(
         return Ok(());
     }
 
-    cliclack::log::step("Installing cubby as a background service...")?;
     service_manager.install()?;
     state.service_installed = true;
     state.store()?;
+    Ok(())
+}
+
+fn ensure_audio_preference(cli: &Cli, state: &mut SetupState) -> anyhow::Result<()> {
+    // If user supplied flag explicitly, respect it and persist
+    if cli.disable_audio {
+        if state.audio_enabled != Some(false) {
+            state.audio_enabled = Some(false);
+            state.store()?
+        }
+        return Ok(());
+    }
+
+    if let Some(choice) = state.audio_enabled {
+        // State already recorded - nothing to do
+        if !choice && !cli.disable_audio {
+            // user previously disabled audio but did not pass flag this time; keep state
+        }
+        return Ok(());
+    }
+
+    let enable_audio = cliclack::confirm("enable audio recording? (screen capture enabled by default)")
+        .initial_value(false)
+        .interact()?;
+
+    state.audio_enabled = Some(enable_audio);
+    state.store()?;
+    if enable_audio {
+        cliclack::log::info("audio recording will be enabled")?;
+    } else {
+        cliclack::log::info("audio recording will remain disabled")?;
+    }
     Ok(())
 }
 
@@ -885,9 +964,6 @@ async fn handle_uninstall() -> anyhow::Result<()> {
                     use cliclack::log;
                     log::warning(format!("Failed to uninstall cloudflared service: {}", e))?;
                 }
-            } else {
-                use cliclack::log;
-                log::success("tunnel service uninstalled")?;
             }
         }
 
@@ -1012,7 +1088,6 @@ async fn handle_uninstall() -> anyhow::Result<()> {
     #[cfg(not(debug_assertions))]
     {
         use cliclack::log;
-        log::info("if 'cubby' still appears, restart your terminal to refresh PATH cache")?;
         cliclack::outro("Uninstall complete!")?;
     }
 
@@ -1024,8 +1099,8 @@ async fn handle_uninstall() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_service_args(cli: &Cli) -> Vec<String> {
-    let mut args = vec!["--no-service".to_string()];
+fn build_service_args(cli: &Cli, state: &SetupState) -> Vec<String> {
+    let mut args = vec!["service".to_string()];
 
     // Port
     args.push("--port".to_string());
@@ -1035,16 +1110,19 @@ fn build_service_args(cli: &Cli) -> Vec<String> {
     args.push("--fps".to_string());
     args.push(cli.fps.to_string());
 
-    // Audio chunk duration
-    args.push("--audio-chunk-duration".to_string());
-    args.push(cli.audio_chunk_duration.to_string());
+    // Audio chunk duration (only if explicitly set)
+    if let Some(duration) = cli.audio_chunk_duration {
+        args.push("--audio-chunk-duration".to_string());
+        args.push(duration.to_string());
+    }
 
     // Video chunk duration
     args.push("--video-chunk-duration".to_string());
     args.push(cli.video_chunk_duration.to_string());
 
     // Boolean flags
-    if cli.disable_audio {
+    let audio_enabled = state.audio_enabled.unwrap_or(!cli.disable_audio);
+    if !audio_enabled {
         args.push("--disable-audio".to_string());
     }
 
@@ -1120,22 +1198,24 @@ fn build_service_args(cli: &Cli) -> Vec<String> {
         args.push(window.clone());
     }
 
-    // Audio transcription engine
-    args.push("--audio-transcription-engine".to_string());
-    args.push(
-        match cli.audio_transcription_engine {
-            CliAudioTranscriptionEngine::Deepgram => "deepgram",
-            CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny",
-            CliAudioTranscriptionEngine::WhisperTinyQuantized => "whisper-tiny-quantized",
-            CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
-            CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
-            CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
-            CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
-                "whisper-large-v3-turbo-quantized"
+    // Audio transcription engine (only if explicitly set)
+    if let Some(engine) = &cli.audio_transcription_engine {
+        args.push("--audio-transcription-engine".to_string());
+        args.push(
+            match engine {
+                CliAudioTranscriptionEngine::Deepgram => "deepgram",
+                CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny",
+                CliAudioTranscriptionEngine::WhisperTinyQuantized => "whisper-tiny-quantized",
+                CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
+                CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
+                CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
+                CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
+                    "whisper-large-v3-turbo-quantized"
+                }
             }
-        }
-        .to_string(),
-    );
+            .to_string(),
+        );
+    }
 
     // OCR engine
     args.push("--ocr-engine".to_string());
@@ -1153,26 +1233,30 @@ fn build_service_args(cli: &Cli) -> Vec<String> {
         .to_string(),
     );
 
-    // VAD engine
-    args.push("--vad-engine".to_string());
-    args.push(
-        match cli.vad_engine {
-            CliVadEngine::WebRtc => "webrtc",
-            CliVadEngine::Silero => "silero",
-        }
-        .to_string(),
-    );
+    // VAD engine (only if explicitly set)
+    if let Some(engine) = &cli.vad_engine {
+        args.push("--vad-engine".to_string());
+        args.push(
+            match engine {
+                CliVadEngine::WebRtc => "webrtc",
+                CliVadEngine::Silero => "silero",
+            }
+            .to_string(),
+        );
+    }
 
-    // VAD sensitivity
-    args.push("--vad-sensitivity".to_string());
-    args.push(
-        match cli.vad_sensitivity {
-            CliVadSensitivity::Low => "low",
-            CliVadSensitivity::Medium => "medium",
-            CliVadSensitivity::High => "high",
-        }
-        .to_string(),
-    );
+    // VAD sensitivity (only if explicitly set)
+    if let Some(sensitivity) = &cli.vad_sensitivity {
+        args.push("--vad-sensitivity".to_string());
+        args.push(
+            match sensitivity {
+                CliVadSensitivity::Low => "low",
+                CliVadSensitivity::Medium => "medium",
+                CliVadSensitivity::High => "high",
+            }
+            .to_string(),
+        );
+    }
 
     // Data directory
     if let Some(ref data_dir) = cli.data_dir {
