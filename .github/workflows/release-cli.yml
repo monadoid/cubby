@@ -655,10 +655,11 @@ jobs:
 
       - name: Deploy to Cloudflare Workers
         working-directory: cubby-frontend
-        run: pnpm exec wrangler deploy
+        run: pnpm exec wrangler deploy --compatibility-flag nodejs_compat
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: false
 
   deploy-exampleco-website:
     runs-on: ubuntu-latest

@@ -7,10 +7,6 @@ preview_urls = false
 keep_vars = true
 
 [[routes]]
-pattern = "cubby.sh"
-custom_domain = true
-
-[[routes]]
 pattern = "www.cubby.sh"
 custom_domain = true
 
