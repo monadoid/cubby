@@ -13,6 +13,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       cubby-api: ${{ steps.filter.outputs.cubby-api }}
+      cubby-frontend: ${{ steps.filter.outputs.cubby-frontend }}
       exampleco-website: ${{ steps.filter.outputs.exampleco-website }}
       cubby-installer: ${{ steps.filter.outputs.cubby-installer }}
     steps:
@@ -33,6 +34,8 @@ jobs:
               - 'Cargo.lock'
             cubby-api:
               - 'cubby-api/**'
+            cubby-frontend:
+              - 'cubby-frontend/**'
             exampleco-website:
               - 'exampleco-website/**'
             cubby-installer:
@@ -252,6 +255,36 @@ jobs:
           ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
           TUNNEL_DOMAIN: ${{ secrets.TUNNEL_DOMAIN }}
           MCP_AUTH_SECRET: ${{ secrets.MCP_AUTH_SECRET }}
+
+  deploy-cubby-frontend:
+    # needs: detect-changes
+    # if: needs.detect-changes.outputs.cubby-frontend == 'true'
+    name: Deploy cubby-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - name: Install dependencies
+        working-directory: cubby-frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy to Cloudflare Workers
+        working-directory: cubby-frontend
+        run: pnpm exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   deploy-exampleco-website:
     # needs: detect-changes
