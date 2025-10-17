@@ -1,4 +1,4 @@
-use anyhow::{Result};
+use anyhow::Result;
 use cliclack::{input, password};
 
 use crate::cubby_api_client::CubbyApiClient;

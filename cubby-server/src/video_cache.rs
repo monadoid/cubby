@@ -1,9 +1,9 @@
 use anyhow::Result;
 use bincode;
 use chrono::{DateTime, Duration, Utc};
-use dirs::cache_dir;
 use cubby_core::find_ffmpeg_path;
 use cubby_db::{DatabaseManager, FrameData, OCREntry};
+use dirs::cache_dir;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};

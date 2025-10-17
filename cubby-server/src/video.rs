@@ -1,11 +1,11 @@
 use chrono::Utc;
 use crossbeam::queue::ArrayQueue;
-use image::ImageFormat::{self};
 use cubby_core::{find_ffmpeg_path, Language};
 use cubby_vision::monitor::get_monitor_by_id;
 use cubby_vision::{
     capture_screenshot_by_window::WindowFilters, continuous_capture, CaptureResult, OcrEngine,
 };
+use image::ImageFormat::{self};
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -106,8 +106,12 @@ impl VideoCapture {
                     continue;
                 }
 
-                info!("Starting continuous_capture for monitor {} (attempt {}/{})", 
-                      monitor_id, retry_count + 1, MAX_RETRIES + 1);
+                info!(
+                    "Starting continuous_capture for monitor {} (attempt {}/{})",
+                    monitor_id,
+                    retry_count + 1,
+                    MAX_RETRIES + 1
+                );
 
                 match continuous_capture(
                     capture_result_sender.clone(),
@@ -134,15 +138,20 @@ impl VideoCapture {
                             monitor_id, e
                         );
                         retry_count += 1;
-                        
+
                         if retry_count >= MAX_RETRIES {
                             error!("Max retries ({}) reached for continuous_capture on monitor {}. Giving up.", 
                                    MAX_RETRIES, monitor_id);
                             break;
                         }
-                        
-                        warn!("Retry {}/{} for continuous_capture on monitor {} after {} seconds", 
-                              retry_count, MAX_RETRIES, monitor_id, RETRY_DELAY.as_secs());
+
+                        warn!(
+                            "Retry {}/{} for continuous_capture on monitor {} after {} seconds",
+                            retry_count,
+                            MAX_RETRIES,
+                            monitor_id,
+                            RETRY_DELAY.as_secs()
+                        );
                         tokio::time::sleep(RETRY_DELAY).await;
                         continue;
                     }
@@ -151,8 +160,11 @@ impl VideoCapture {
                 // If we get here after success, wait before restarting
                 tokio::time::sleep(Duration::from_secs(5)).await;
             }
-            
-            warn!("Continuous capture task for monitor {} has stopped", monitor_id);
+
+            warn!(
+                "Continuous capture task for monitor {} has stopped",
+                monitor_id
+            );
         });
 
         // In the _queue_thread
