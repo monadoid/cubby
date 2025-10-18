@@ -1,86 +1,181 @@
 # cubby 
 
+Turn your computer into a secure, remote MCP server.
+
+**local-first data with cloud access** - your screen and audio recordings stay on your device, but you control who can access them securely via oauth and mcp tools.
 
 ## quick start
+(macos + linux, windows incoming)
 
 ```bash
- curl -s https://get.cubby.sh/cli | sh
+curl -s https://get.cubby.sh/cli | sh
 ```
 
-## local server
+this installs the cubby binary and starts recording your screen and audio in the background. all data stays local in `~/.cubby/`, unless you grant OAuth access.
 
-when you run `cubby start`, the local rust server runs on `localhost:3030`
+## how it works
 
-**rest api documentation:** `http://localhost:3030/openapi.yaml` or `http://localhost:3030/openapi.json`
+cubby continuously records your screen (ocr + screenshots) and audio (transcriptions). everything is stored in a local database.
 
-**mcp server:** `http://localhost:3030/mcp`
+you can then access your data in three ways:
 
-### mcp tools available
+### 1. typescript sdk
 
-- **search-content** - search through ocr text, audio transcriptions, ui elements
+```bash
+pnpm i @cubby/js
+```
 
-[//]: # (- **pixel-control** - control mouse and keyboard &#40;cross-platform&#41;)
+common ways to use cubby:
 
-[//]: # (- **find-elements** - find ui elements by role &#40;macos only&#41;)
+**search** - query your history:
+```typescript
+import { createClient } from '@cubby/js';
 
-[//]: # (- **click-element** - click ui elements by id &#40;macos only&#41;)
+const client = createClient({ 
+  baseUrl: 'https://api.cubby.sh',
+  token: 'your-oauth-token'
+});
 
-[//]: # (- **fill-element** - type into ui elements &#40;macos only&#41;  )
+// list devices and select one (for remote usage)
+const { devices } = await client.listDevices();
+client.setDeviceId(devices[0].id);
 
-[//]: # (- **scroll-element** - scroll ui elements &#40;macos only&#41;)
-- **open-application** - open applications by name (macos only)
-- **open-url** - open urls in browser (cross-platform)
+// find that article about dolphins you read last week
+const results = await client.search({
+  q: 'find me that website about dolphins',
+  contentType: 'ocr',
+  limit: 5
+});
+```
 
-### mcp access patterns
+**watch** - process live events and trigger actions:
+```typescript
+// auto-create todoist tasks from spoken todos with ai
+for await (const event of client.streamTranscriptions()) {
+  if (event.text?.toLowerCase().includes('todo') || event.text?.toLowerCase().includes('remind me')) {
+    // extract structured task details with ai
+    const task = await ai.generateStructuredOutput({
+      prompt: `extract task from: "${event.text}"`,
+      schema: { title: 'string', priority: 'high|medium|low', dueDate: 'ISO date' }
+    });
+    
+    // add to todoist
+    await todoist.create(task);
+    await client.notify({ 
+      title: 'task added', 
+      body: `"${task.title}" - ${task.priority} priority` 
+    });
+  }
+}
+```
 
-**local usage (claude desktop, etc):**
-- configure mcp client to: `http://localhost:3030/mcp`
-- no authentication required
-- tools require no device_id parameter
+**contextualize** - power ai with your personal context:
+```typescript
+// smart email responses based on recent conversations
+const recentChats = await client.search({
+  q: 'slack messages project alpha',
+  contentType: 'ocr',
+  limit: 15
+});
 
-**remote usage (from anywhere):**
-- configure mcp client to: `https://api.cubby.sh/mcp`
-- oauth authentication required (configure once via cubby.sh)
-- tools require `deviceId` parameter to specify which device to control
-- get your device ids from: `https://api.cubby.sh/devices` (authenticated)
+// generate contextual reply
+const draft = await ai.chat.completions.create({
+  messages: [
+    { role: 'system', content: 'draft professional email responses' },
+    { role: 'user', content: `recent context: ${JSON.stringify(recentChats)}. draft reply to: "${emailContent}"` }
+  ]
+});
+
+// send via gmail
+await gmail.users.messages.send({ userId: 'me', raw: encodeDraft(draft) });
+```
+
+**automate** - build smart automations:
+```typescript
+// auto-log work hours when specific apps are active
+for await (const event of client.streamVision()) {
+  if (event.data.app_name === 'Linear' && event.data.text?.match(/ENG-\d+/)) {
+    const ticketId = event.data.text.match(/ENG-\d+/)[0];
+    await timeTracker.startTimer({ project: 'engineering', ticket: ticketId });
+    await client.notify({ title: 'timer started', body: `tracking time on ${ticketId}` });
+  }
+}
+```
+
+full sdk docs at [npmjs.com/package/@cubby/js](https://www.npmjs.com/package/@cubby/js)
+
+### 2. mcp server
+
+**local:** `http://localhost:3030/mcp` (no auth required)
+
+**remote:** `https://api.cubby.sh/mcp` (oauth via [cubby.sh](https://cubby.sh))
+
+**available tools:**
+- `devices/list` - list your enrolled devices
+- `devices/set` - select a device for subsequent calls
+- `device/search` - search content across screen + audio
+- `device/search-keyword` - fast keyword search
+- `device/speakers/search` - find speakers by name
+- `device/speakers/similar` - find similar voices
+- `device/speakers/unnamed` - get unidentified speakers
+- `device/audio/list` - list audio devices
+- `device/vision/list` - list monitors
+- `device/frames/get` - retrieve specific frame data
+- `device/tags/get` - get content tags
+- `device/embeddings` - generate text embeddings
+- `device/add` - add custom content to database
+- `device/open-application` - launch applications
+- `device/open-url` - open urls
+- `device/notify` - send notifications
+
+### 3. rest api
+
+full openapi spec at `http://cubby.sh/docs/api`
+
+**key endpoints:**
+- `GET /search` - search across screen captures, audio, and ui elements
+- `GET /search/keyword` - fast keyword search with fuzzy matching
+- `GET /speakers/search` - find speakers by name
+- `GET /audio/list` - list audio devices
+- `GET /vision/list` - list monitors
+- `POST /open-application` - launch apps
+- `POST /open-url` - open urls
+- `POST /notify` - send desktop notifications
+- `WS /events` - stream live events (transcriptions, ocr, screenshots)
+
+**remote usage:** `https://api.cubby.sh/devices/{deviceId}/search`
 
 ## architecture
 
 ```
-┌─────────────┐                    ┌──────────────┐
-│ local mcp   │──────────────────→ │ cubby-server │
-│ client      │  localhost:3030/mcp│ (rust)       │
-└─────────────┘                    └──────────────┘
-                                          │
-                                          │ local data access
-                                          ↓
-                                   ┌──────────────┐
-                                   │ sqlite db    │
-                                   │ ~/.cubby/    │
-                                   └──────────────┘
-
-┌─────────────┐                    ┌──────────────┐
-│ remote mcp  │──→ oauth ──────→   │ cubby-api    │
-│ client      │    api.cubby.sh/mcp│ (cloudflare) │
-└─────────────┘                    └──────────────┘
-                                          │
-                                          │ proxy with device_id
-                                          ↓
-                              ┌──────────────────────┐
-                              │ cloudflare tunnel    │
-                              │ {deviceId}.cubby.sh  │
-                              └──────────────────────┘
-                                          │
-                                          ↓
-                              ┌──────────────────────┐
-                              │ cubby-server (rust)  │
-                              │ localhost:3030       │
-                              └──────────────────────┘
+┌──────────────┐
+│  SQLite DB   │
+│  ~/.cubby/   │
+└──────────────┘
+        │
+        │ local data access
+        ↓
+┌────────────────────────────┐
+│        Cubby Server        │
+│        MCP / REST          │
+└────────────────────────────┘
+        │
+        ↓
+┌────────────────────────────┐
+│          Tunnel            │
+└────────────────────────────┘
+        │
+        ↓
+┌────────────────────────────┐           ┌────────────────────────────┐
+│       api.cubby.sh/mcp     │ ←───────  │     Remote MCP Client      │
+│          (Cubby API)       │           │     (OAuth)                │
+└────────────────────────────┘           │     JS SDK                 │
+                                         └────────────────────────────┘
 ```
 
 ## development
 
 cubby is written in rust + typescript:
-- **cubby-server** - rust binary recording, ocr, stt, database, rest api + mcp server
-- **cubby-api** - typescript cloudflare worker for remote oauth + mcp proxy
+- **cubby-server** - rust binary for recording, ocr, stt, database, rest api + mcp server
+- **cubby-api** - typescript cloudflare worker for oauth + remote mcp proxy
 - **cubby-js** - typescript sdk for building integrations
