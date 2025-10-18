@@ -21,6 +21,7 @@ export interface OpenAPISpec {
   components?: {
     schemas?: Record<string, any>;
     securitySchemes?: Record<string, any>;
+    parameters?: Record<string, any>;
   };
   security?: Array<Record<string, string[]>>;
 }

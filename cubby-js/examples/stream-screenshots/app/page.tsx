@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { pipe } from "@cubby/browser";
-import { VisionEvent } from "@cubby/browser";
+import { createClient } from "@cubby/js";
+import type { VisionEvent } from "@cubby/js";
 
 export default function Home() {
   const [visionEvent, setVisionEvent] = useState<VisionEvent | null>(null);
@@ -11,7 +11,8 @@ export default function Home() {
   useEffect(() => {
     const streamVision = async () => {
       try {
-        for await (const event of pipe.streamVision(true)) {
+        const client = createClient({ env: { CUBBY_API_BASE_URL: process.env.NEXT_PUBLIC_CUBBY_API_BASE_URL || "https://api.cubby.sh" } });
+        for await (const event of client.streamVision(true)) {
           setVisionEvent(event.data);
           console.log("vision event received");
         }
@@ -23,7 +24,7 @@ export default function Home() {
     streamVision();
 
     return () => {
-      pipe.disconnect();
+      // no persistent connection object; the generator closes the socket on exit
     };
   }, []);
 

@@ -25,6 +25,7 @@ import { session } from "./middleware/session";
 import { mcpAuth } from "./middleware/mcp_auth";
 import oauthRoutes from "./routes/oauth_routes";
 import authViews from "./routes/auth_views";
+import m2mRoutes from "./routes/m2m";
 import { strictJSONResponse } from "./helpers";
 import { isPathAllowed } from "./proxy_config";
 import { mcpHttpHandler } from "./mcp/handler";
@@ -247,6 +248,7 @@ app.post("/oauth/register", async (c) => {
 // Routes
 app.route("/oauth", oauthRoutes);
 app.route("/", authViews);
+app.route("/m2m", m2mRoutes);
 
 app.post(
   "/sign-up",
@@ -300,15 +302,6 @@ app.post(
     const newUserId = crypto.randomUUID();
 
     try {
-      // Diagnostic logging for production debugging
-      console.log("env keys available:", Object.keys(c.env || {}));
-      console.log("STYTCH_PROJECT_ID first 20 chars:", c.env.STYTCH_PROJECT_ID?.substring(0, 20));
-      console.log("STYTCH_PROJECT_ID type:", typeof c.env.STYTCH_PROJECT_ID);
-      console.log("STYTCH_PROJECT_ID first 20 chars:", c.env.STYTCH_PROJECT_ID?.substring(0, 20));
-      console.log("STYTCH_PROJECT_SECRET first 20 chars:", c.env.STYTCH_PROJECT_SECRET?.substring(0, 20));
-      console.log("STYTCH_PROJECT_DOMAIN first 20 chars:", c.env.STYTCH_PROJECT_DOMAIN?.substring(0, 20));
-      console.log("DATABASE_URL first 20 chars:", c.env.DATABASE_URL?.substring(0, 20));
-      
       const client = new stytch.Client({
         project_id: c.env.STYTCH_PROJECT_ID,
         secret: c.env.STYTCH_PROJECT_SECRET,

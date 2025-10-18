@@ -1,15 +1,10 @@
-import { pipe } from "@cubby/js";
+import { createClient } from "@cubby/js";
 
-async function startScreenRecorder() {
-  console.log("let's send events when our main feature is used ...");
-
-  await pipe.captureEvent("less_useful_feature", {
-    dog: "woof",
-  });
-
-  await pipe.captureMainFeatureEvent("very_useful_feature", {
-    cat: "meow",
-  });
+async function start() {
+  console.log("sending demo notifications via gateway...");
+  const client = createClient();
+  await client.notify({ title: "less useful feature", body: "dog: woof" } as any);
+  await client.notify({ title: "very useful feature", body: "cat: meow" } as any);
 }
 
-startScreenRecorder().catch(console.error);
+start().catch(console.error);

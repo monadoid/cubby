@@ -1,18 +1,12 @@
 {
-  "name": "capture-main-feature",
-  "module": "index.ts",
+  "name": "@cubby/example-capture-main-feature",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run index.ts"
+    "start": "node index.ts"
   },
   "dependencies": {
-    "@cubby/js": "workspace:*",
-    "@cubby/browser": "workspace:*"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
+    "@cubby/js": "workspace:*"
   }
 }

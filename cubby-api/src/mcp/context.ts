@@ -1,4 +1,4 @@
-import type { MCPServerContext } from "mcp-lite";
+import type { Ctx as MCPServerContext } from "mcp-lite";
 import type { Bindings } from "../index";
 
 export interface McpAuthContext {

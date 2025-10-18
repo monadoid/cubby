@@ -3,6 +3,7 @@ packages:
   - "cubby-frontend"
   - "cubby-installer"
   - "exampleco-website"
+  - "cubby-js"
   - "cubby-js/*"
   - "cubby-js/examples/*"
 

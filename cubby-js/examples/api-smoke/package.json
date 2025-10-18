@@ -1,5 +1,5 @@
 {
-  "name": "@cubby/example-basic-transcription",
+  "name": "@cubby/example-api-smoke",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,6 +10,6 @@
     "@cubby/js": "workspace:*"
   },
   "devDependencies": {
-    "dotenv": "^17.2.3"
+    "dotenv": "^16"
   }
 }

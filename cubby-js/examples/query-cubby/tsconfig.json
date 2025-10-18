@@ -10,6 +10,11 @@
 
     // Bundler mode
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@cubby/js": ["../../src/index.ts"],
+      "@cubby/js/*": ["../../src/*"]
+    },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,

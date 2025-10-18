@@ -1,4 +1,4 @@
-import { pipe } from "@cubby/js";
+import { createClient } from "@cubby/js";
 
 async function queryCubby() {
   console.log("starting query cubby...");
@@ -9,7 +9,8 @@ async function queryCubby() {
   // get content from last 5 minutes
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-  const results = await pipe.querycubby({
+  const client = createClient();
+  const results = await client.search({
     startTime: fiveMinutesAgo,
     limit: 10,
     contentType: "all", // can be "ocr", "audio", "ui", or "all"

@@ -1,13 +1,13 @@
 {
-  "name": "query-cubby",
-  "module": "index.ts",
+  "name": "@cubby/example-query-cubby",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run index.ts"
+    "start": "node index.ts"
   },
   "dependencies": {
-    "@cubby/js": "workspace:*",
-    "@cubby/browser": "workspace:*"
+    "@cubby/js": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest"
