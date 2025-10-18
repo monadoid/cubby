@@ -517,6 +517,7 @@ app.get("/docs", (c) => {
               <h2 class="text-lg font-bold mb-4 text-base-content">documentation</h2>
               <nav>
                 <a href="#getting-started" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">getting started</a>
+                <a href="#data-shape" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">what your data looks like</a>
                 <a href="#typescript-sdk" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">typescript sdk</a>
                 <a href="#mcp-integration" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">mcp server</a>
                 <a href="#rest-api" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">rest api</a>
@@ -548,9 +549,54 @@ app.get("/docs", (c) => {
                   <p class="text-base-content/80 mb-2">access your data in three ways:</p>
                   <ol class="list-decimal list-inside space-y-2 text-base-content/80 ml-4">
                     <li>typescript sdk - <code class="bg-base-100 px-1 rounded">npm i @cubby/js</code></li>
-                    <li>rest api - <code class="bg-base-100 px-1 rounded">localhost:3030/openapi.json</code></li>
+                    <li>rest api - <code class="bg-base-100 px-1 rounded">localhost:3030/openapi.json</code> or <code class="bg-base-100 px-1 rounded">api.cubby.sh/openapi.json</code></li>
                     <li>mcp server - configure ai assistants to use cubby tools</li>
                   </ol>
+                </div>
+              </div>
+
+              {/* Data Shape Section */}
+              <div id="data-shape" class="card bg-base-200 shadow-xl mb-6">
+                <div class="card-body">
+                  <h2 class="card-title text-2xl font-bold text-base-content">what your data looks like</h2>
+                  <p class="text-base-content/80 mb-4">concise examples of live events streamed over websockets</p>
+                  <div class="mockup-code w-full">
+                    <pre data-prefix="$"><code>{`// ocr event
+const ocrEvent = {
+  name: 'ocr_result',
+  data: {
+    text: 'design doc - project alpha',
+    timestamp: '2025-10-18T12:34:56Z',
+    app_name: 'chrome',
+    window_name: 'docs.google.com',
+    browser_url: 'https://docs.google.com/document/d/...',
+  }
+};
+
+// audio transcription event
+const transcriptionEvent = {
+  name: 'realtime_transcription',
+  data: {
+    transcription: 'let’s ship this today',
+    timestamp: '2025-10-18T12:35:10Z',
+    device: 'macbook-pro',
+    is_input: false,
+    is_final: true,
+    speaker: 'sam',
+  }
+};
+
+// ui frame event
+const uiFrameEvent = {
+  name: 'ui_frame',
+  data: {
+    window: 'zoom meeting',
+    app: 'zoom',
+    text_output: 'Recording… | Mute | Share Screen',
+    initial_traversal_at: '2025-10-18T12:35:20Z'
+  }
+};`}</code></pre>
+                  </div>
                 </div>
               </div>
 
