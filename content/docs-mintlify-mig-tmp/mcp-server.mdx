@@ -3,6 +3,10 @@ title: "MCP"
 icon: "server"
 ---
 
+<Note>
+  **Important:** The `user_id` custom claim in all cubby tokens (session & M2M) refers to the Cubby database user ID, not the Stytch authentication user ID.
+</Note>
+
 cubby offers robust MCP (Model Context Protocol) server capabilities, allowing integration with various AI clients like Claude Desktop and Cursor IDE. The MCP server is built directly into the cubby binary and runs as an HTTP service.
 
 ## Architecture
@@ -11,8 +15,9 @@ The cubby MCP server:
 - Runs natively in Rust for optimal performance
 - Uses HTTP Streamable transport (compatible with MCP Inspector)
 - Starts automatically with the cubby service
-- Available at `http://localhost:3030/mcp` by default
+- Available at `http://localhost:3030/mcp` by default (local) or `https://api.cubby.sh/mcp` (remote)
 - No separate installation or process required
+- Supports OAuth Bearer tokens for remote access
 
 ## Prerequisites
 
@@ -113,38 +118,79 @@ If the setup is successful, you'll see a **hammer icon** appear in the interface
 
 cubby MCP can be integrated with **Cursor IDE** to make it available across all your projects.
 
-### 1. Open Cursor Settings
+### Local Setup (No Authentication)
 
-- Launch **Cursor IDE**.
-- Click on the **gear icon** to open **Settings**.
-- In the left sidebar, select **MCP**.
+For local access to your own cubby instance:
 
-### 2. Add a Global MCP Server
+1. **Open Cursor Settings**
+   - Launch **Cursor IDE**
+   - Click on the **gear icon** to open **Settings**
+   - In the left sidebar, select **MCP**
 
-- Click on **"Add New Global MCP Server"**.
-- If the configuration file doesn't exist yet, click **"Create File"**.
-- Add the following configuration:
+2. **Add a Global MCP Server**
+   - Click on **"Add New Global MCP Server"**
+   - If the configuration file doesn't exist yet, click **"Create File"**
+   - Add the following configuration:
 
 ```json
 {
     "mcpServers": {
         "cubby": {
-            "url": "http://localhost:3030/mcp",
-            "transport": "streamable-http"
+            "url": "http://localhost:3030/mcp"
         }
     }
 }
 ```
 
-### 3. Restart MCP in Cursor
+3. **Restart MCP in Cursor**
+   - Navigate back to the **Cursor Settings** tab
+   - Click the **refresh icon** next to MCP servers
 
-- Navigate back to the **Cursor Settings** tab.
-- Click the **refresh icon** next to MCP servers.
+### Remote Setup (With Authentication)
 
-That's it! Now Cursor IDE should recognize and use the cubby MCP server.
+To access your cubby data remotely from anywhere:
 
-- Start by opening a new Composer and enable Agent mode
-- From there onwards you can use the cubby tools
+1. **Generate API Credentials**
+   - Go to [cubby.sh/dashboard](https://cubby.sh/dashboard)
+   - Log in with your account
+   - Click **"Generate New Credentials"**
+   - Save your **client_id**, **client_secret**, and **access_token** (shown once)
+
+2. **Configure Cursor**
+   - Open your Cursor MCP config at `~/.cursor/mcp.json`
+   - Add the following configuration with your access token:
+
+```json
+{
+    "mcpServers": {
+        "cubby": {
+            "url": "https://api.cubby.sh/mcp",
+            "headers": {
+                "Authorization": "Bearer YOUR_ACCESS_TOKEN_HERE"
+            }
+        }
+    }
+}
+```
+
+3. **Token Regeneration**
+   - Access tokens expire (typically after 60 minutes)
+   - When expired, use the client_credentials flow:
+
+```bash
+curl -X POST https://login.cubby.sh/v1/oauth2/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=YOUR_CLIENT_ID" \
+  -d "client_secret=YOUR_CLIENT_SECRET" \
+  -d "scope=read:cubby"
+```
+
+### Usage
+
+- Open a new Composer and enable Agent mode
+- Your cubby tools will be available
+- For remote access, specify which device to control using the `deviceId` parameter
 
 ## Available Tools
 

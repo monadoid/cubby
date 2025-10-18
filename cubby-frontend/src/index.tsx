@@ -1,12 +1,14 @@
 // cubby-frontend - simple hello world htmx frontend
 import { Hono } from "hono";
 import { Scalar } from "@scalar/hono-api-reference";
+import { setCookie, getCookie } from "hono/cookie";
 import { Content } from "./components/Content";
 import { Fluid } from "./components/Fluid";
 import { TopBar } from "./components/TopBar";
 
 type Bindings = {
   API_URL: string;
+  STYTCH_PROJECT_DOMAIN: string;
   // Add Cloudflare bindings here as needed
   // MY_KV: KVNamespace;
   // MY_D1: D1Database;
@@ -71,7 +73,7 @@ app.post("/posts", (c) => {
 // Login page
 app.get("/login", (c) => {
   return c.html(
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -80,13 +82,11 @@ app.get("/login", (c) => {
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
         <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="tailwind.css" />
+        <link rel="stylesheet" href="output.css" />
         <style>
           {`
             body {
               font-family: 'Courier New', monospace;
-              background-color: #000;
-              color: #fff;
             }
             .pixelated {
               image-rendering: pixelated;
@@ -102,7 +102,7 @@ app.get("/login", (c) => {
       <body hx-boost="true">
         <TopBar />
         <div style="position: fixed; top: 48px; left: 0; width: 100vw; height: calc(100vh - 48px); display: flex; align-items: center; justify-content: center;">
-          <div style="background-color: #000; padding: 2rem; max-width: 400px; width: 100%; border: 1px solid #fff;">
+          <div class="bg-base-300 p-8 max-w-md w-full rounded-box">
             <h1 class="text-3xl font-bold mb-8 pixelated">login</h1>
             <form 
               id="login-form"
@@ -120,8 +120,7 @@ app.get("/login", (c) => {
                   type="email" 
                   name="email" 
                   id="email"
-                  required
-                  class="w-full px-3 py-2 border border-gray-600 bg-black text-white rounded focus:outline-none focus:border-white"
+                  class="input input-bordered w-full"
                   placeholder="your@email.com"
                 />
               </div>
@@ -133,8 +132,7 @@ app.get("/login", (c) => {
                   type="password" 
                   name="password" 
                   id="password"
-                  required
-                  class="w-full px-3 py-2 border border-gray-600 bg-black text-white rounded focus:outline-none focus:border-white"
+                  class="input input-bordered w-full"
                   placeholder="••••••••"
                 />
               </div>
@@ -142,7 +140,7 @@ app.get("/login", (c) => {
               <button 
                 id="login-button"
                 type="submit"
-                class="w-full px-4 py-2 bg-white text-black font-bold rounded hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn w-full"
               >
                 <span class="htmx-indicator:hidden">login</span>
                 <span class="hidden htmx-indicator:inline">logging in...</span>
@@ -197,8 +195,14 @@ app.post("/api/login", async (c) => {
 
     const data = await response.json() as { session_jwt: string; user_id: string; session_token: string };
     
-    // Store token in a cookie for the dashboard to access
-    c.header("Set-Cookie", `cubby_token=${data.session_jwt}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`);
+    // Store session JWT in httpOnly cookie using Hono's cookie helper
+    setCookie(c, "stytch_session_jwt", data.session_jwt, {
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+      maxAge: 3600, // 1 hour
+    });
     
     // Trigger HTMX redirect to dashboard
     c.header("HX-Redirect", "/dashboard");
@@ -214,16 +218,14 @@ app.post("/api/login", async (c) => {
 
 // Dashboard page
 app.get("/dashboard", (c) => {
-  const cookies = c.req.header("cookie") || "";
-  const tokenMatch = cookies.match(/cubby_token=([^;]+)/);
-  const token = tokenMatch ? tokenMatch[1] : null;
+  const token = getCookie(c, "stytch_session_jwt");
 
   if (!token) {
     return c.redirect("/login");
   }
 
   return c.html(
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -232,52 +234,78 @@ app.get("/dashboard", (c) => {
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
         <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="tailwind.css" />
+        <link rel="stylesheet" href="output.css" />
         <style>
           {`
             body {
               font-family: 'Courier New', monospace;
-              background-color: #000;
-              color: #fff;
             }
             .pixelated {
               image-rendering: pixelated;
               image-rendering: -moz-crisp-edges;
               image-rendering: crisp-edges;
             }
-            .token-display {
+            .code-display {
               word-break: break-all;
-              background-color: #111;
-              padding: 1rem;
-              border: 1px solid #333;
-              border-radius: 4px;
               font-family: 'Courier New', monospace;
-              font-size: 0.875rem;
+              font-size: 0.75rem;
+              line-height: 1.4;
             }
           `}
         </style>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            function copyToClipboard(text) {
+              navigator.clipboard.writeText(text).then(function() {
+                alert('copied to clipboard!');
+              });
+            }
+            function closeModal() {
+              document.getElementById('credentials-modal').close();
+            }
+            function logout() {
+              document.cookie = 'stytch_session_jwt=; Path=/; Max-Age=0';
+              window.location.href = '/login';
+            }
+          `
+        }}></script>
       </head>
       <body hx-boost="true">
         <TopBar />
-        <div style="position: fixed; top: 48px; left: 0; width: 100vw; height: calc(100vh - 48px); overflow-y: auto;">
-          <div style="background-color: #000; padding: 2rem; max-width: 800px; margin: 0 auto;">
-            <h1 class="text-3xl font-bold mb-8 pixelated">dashboard</h1>
-            <div class="space-y-6">
-              <div>
-                <h2 class="text-xl font-bold mb-4">your session token</h2>
-                <div class="token-display">{token}</div>
+        <div class="fixed top-12 left-0 w-full h-[calc(100vh-48px)] overflow-y-auto bg-base-100">
+          <div class="bg-base-100 p-8 max-w-4xl mx-auto">
+            <h1 class="text-3xl font-bold mb-8 pixelated text-base-content">dashboard</h1>
+            <div class="space-y-8">
+              <div class="card bg-base-200 shadow-xl">
+                <div class="card-body">
+                  <h2 class="card-title text-xl font-bold text-base-content">api credentials</h2>
+                  <p class="text-base-content/70 mb-4 text-sm">
+                    generate client credentials to use with cursor, mcp clients, or the rest api
+                  </p>
+                  <button 
+                    hx-post="/api/m2m/create"
+                    hx-target="#credentials-result"
+                    hx-swap="innerHTML"
+                    class="btn btn-primary"
+                  >
+                    generate new credentials
+                  </button>
+                  <div id="credentials-result" class="mt-6"></div>
+                </div>
               </div>
-              <div>
-                <p class="text-gray-400 mb-4">
-                  you&apos;re logged in! use this token for api requests.
-                </p>
-                <a 
-                  href="/login" 
-                  class="inline-block px-4 py-2 bg-white text-black font-bold rounded hover:bg-gray-200 transition-colors"
-                  onclick="document.cookie = 'cubby_token=; Path=/; Max-Age=0'"
-                >
-                  logout
-                </a>
+
+              <div class="card bg-base-200 shadow-xl">
+                <div class="card-body">
+                  <p class="text-base-content/70 mb-4">
+                    you are logged in!
+                  </p>
+                  <button 
+                    onclick="logout()"
+                    class="btn btn-outline"
+                  >
+                    logout
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -285,6 +313,141 @@ app.get("/dashboard", (c) => {
       </body>
     </html>
   );
+});
+
+// Create M2M client and exchange for access token
+app.post("/api/m2m/create", async (c) => {
+  try {
+    const sessionJwt = getCookie(c, "stytch_session_jwt");
+    if (!sessionJwt) {
+      return c.html(<div class="text-red-500">not authenticated</div>, 401);
+    }
+
+    const apiUrl = c.env.API_URL || "https://api.cubby.sh";
+    
+    // Step 1: Create M2M client
+    const createResponse = await fetch(`${apiUrl}/m2m/clients`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionJwt}`,
+      },
+      body: JSON.stringify({ name: `cubby-client-${Date.now()}` }),
+    });
+
+    if (!createResponse.ok) {
+      const error = await createResponse.json() as { error?: string };
+      return c.html(
+        <div class="text-red-500">{error.error || "failed to create credentials"}</div>,
+        createResponse.status as any
+      );
+    }
+
+    const clientData = await createResponse.json() as { 
+      client_id: string; 
+      client_secret: string; 
+      name?: string;
+      created_at: string;
+    };
+
+    // Step 2: Exchange for access token using Stytch's client_credentials flow
+    const stytchDomain = c.env.STYTCH_PROJECT_DOMAIN || "https://login.cubby.sh";
+    const tokenResponse = await fetch(`${stytchDomain}/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientData.client_id,
+        client_secret: clientData.client_secret,
+        scope: "read:cubby",
+      }).toString(),
+    });
+
+    let accessToken = "";
+    let expiresIn = 0;
+    if (tokenResponse.ok) {
+      const tokenData = await tokenResponse.json() as { 
+        access_token: string; 
+        expires_in: number;
+        token_type: string;
+      };
+      accessToken = tokenData.access_token;
+      expiresIn = tokenData.expires_in;
+    } else {
+      console.error("failed to exchange token:", await tokenResponse.text());
+    }
+
+    const cursorConfig = JSON.stringify({
+      mcpServers: {
+        cubby: {
+          url: "https://api.cubby.sh/mcp",
+          headers: {
+            Authorization: `Bearer ${accessToken}`
+          }
+        }
+      }
+    }, null, 2);
+
+    return c.html(
+      <div class="card bg-base-300 shadow-xl">
+        <div class="card-body">
+          <h2 class="card-title text-xl font-bold text-base-content">credentials created!</h2>
+          <div class="alert alert-warning">
+            <span>⚠️ save these now! the client secret and access token will not be shown again.</span>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <h3 class="text-sm font-bold mb-2 text-base-content">client id</h3>
+              <div class="mockup-code w-full">
+                <pre data-prefix=""><code class="code-display">{clientData.client_id}</code></pre>
+              </div>
+              <button onclick={`navigator.clipboard.writeText('${clientData.client_id}')`} class="btn btn-sm btn-outline mt-2">copy</button>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold mb-2 text-base-content">client secret</h3>
+              <div class="mockup-code w-full">
+                <pre data-prefix=""><code class="code-display">{clientData.client_secret}</code></pre>
+              </div>
+              <button onclick={`navigator.clipboard.writeText('${clientData.client_secret}')`} class="btn btn-sm btn-outline mt-2">copy</button>
+            </div>
+            {accessToken ? (
+              <>
+                <div>
+                  <h3 class="text-sm font-bold mb-2 text-base-content">access token (expires in {Math.floor(expiresIn / 60)} minutes)</h3>
+                  <div class="mockup-code w-full">
+                    <pre data-prefix=""><code class="code-display text-xs">{accessToken}</code></pre>
+                  </div>
+                  <button onclick={`navigator.clipboard.writeText('${accessToken}')`} class="btn btn-sm btn-outline mt-2">copy</button>
+                </div>
+                <div class="card bg-base-200">
+                  <div class="card-body">
+                    <h3 class="text-sm font-bold mb-2 text-base-content">use in cursor mcp.json</h3>
+                    <div class="mockup-code w-full">
+                      <pre data-prefix=""><code class="code-display text-xs">{cursorConfig}</code></pre>
+                    </div>
+                    <button onclick={`navigator.clipboard.writeText(\`${cursorConfig}\`)`} class="btn btn-sm btn-outline mt-2">copy config</button>
+                    <p class="text-xs text-base-content/60 mt-2">regenerate token when expired</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div class="alert alert-warning">
+                <span>token exchange failed. use client_id and client_secret to get a token manually.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  } catch (error) {
+    console.error("m2m creation error:", error);
+    return c.html(
+      <div class="text-red-500">an error occurred</div>,
+      500
+    );
+  }
 });
 
 // Docs page

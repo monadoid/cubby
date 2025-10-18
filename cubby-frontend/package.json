@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
+    "dev": "pnpm run css:watch & wrangler dev",
     "start": "wrangler dev",
+    "css:build": "./tailwindcss -i public/input.css -o public/output.css",
+    "css:watch": "./tailwindcss -i public/input.css -o public/output.css --watch",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx}\"",
