@@ -539,19 +539,81 @@ app.get("/docs", (c) => {
               {/* Getting Started Section */}
               <div id="getting-started" class="card bg-base-200 shadow-xl mb-6">
                 <div class="card-body">
-                  <h2 class="card-title text-2xl font-bold text-base-content">getting started</h2>
-                  <p class="text-base-content/80 mb-4">install cubby to start capturing everything. works on macos & linux.</p>
-                  <div class="mockup-code w-full mb-4">
-                    <pre data-prefix="$"><code>curl -s https://get.cubby.sh/cli | sh</code></pre>
+                  <h2 class="card-title text-3xl font-bold text-base-content mb-6">getting started</h2>
+                  
+                  <div class="space-y-8">
+                    {/* Step 1 */}
+                    <div>
+                      <div class="flex items-center gap-3 mb-3">
+                        <span class="badge badge-lg badge-primary font-bold">step 1</span>
+                        <h3 class="text-xl font-bold text-base-content">install cubby</h3>
+                      </div>
+                      <p class="text-base-content/80 mb-3">run the install script to get your credentials and start capturing. works on macos & linux.</p>
+                      <div class="mockup-code w-full mb-3">
+                        <pre data-prefix="$"><code>curl -fsSL https://cubby.sh/install.sh | sh</code></pre>
+                      </div>
+                      <div class="bg-base-300 rounded-lg p-4 space-y-2 text-sm">
+                        <p class="text-base-content/80">✓ installs cubby binary and starts background recording</p>
+                        <p class="text-base-content/80">✓ provides your <code class="bg-base-100 px-1 rounded">CLIENT_ID</code> and <code class="bg-base-100 px-1 rounded">CLIENT_SECRET</code></p>
+                        <p class="text-base-content/80">✓ stores all data locally in <code class="bg-base-100 px-1 rounded">~/.cubby/</code></p>
+                        <p class="text-base-content/80">✓ starts local server on <code class="bg-base-100 px-1 rounded">localhost:3030</code></p>
+                        <p class="text-base-content/80">✓ creates secure tunnel at <code class="bg-base-100 px-1 rounded">api.cubby.sh</code></p>
+                      </div>
+                      <p class="text-base-content/70 text-sm mt-3">save your credentials - you'll need them for step 2</p>
+                    </div>
+
+                    {/* Step 2 */}
+                    <div>
+                      <div class="flex items-center gap-3 mb-3">
+                        <span class="badge badge-lg badge-secondary font-bold">step 2</span>
+                        <h3 class="text-xl font-bold text-base-content">deploy ai agent with memory</h3>
+                      </div>
+                      <p class="text-base-content/80 mb-3">use the cloudflare starter to build an ai agent with access to your personal memory. it includes:</p>
+                      <div class="bg-base-300 rounded-lg p-4 mb-3">
+                        <ul class="space-y-1 text-sm text-base-content/80">
+                          <li>→ search your screen and audio history</li>
+                          <li>→ send desktop notifications to your devices</li>
+                          <li>→ open applications and urls on your devices</li>
+                          <li>→ human-in-the-loop confirmations for sensitive actions</li>
+                        </ul>
+                      </div>
+                      <div class="flex flex-col gap-3">
+                        <a href="https://github.com/monadoid/cubby-starter" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-block">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                          view cubby-starter on github
+                        </a>
+                        <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/monadoid/cubby-starter" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-block">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 16 16 12 12 8"></polyline><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                          deploy to cloudflare (one-click)
+                        </a>
+                      </div>
+                      <p class="text-base-content/70 text-sm mt-3">you'll use the credentials from step 1 to configure the agent</p>
+                    </div>
+
+                    {/* Alternative: Build Your Own */}
+                    <div class="divider text-base-content/50">or build your own</div>
+                    
+                    <div>
+                      <p class="text-base-content/80 mb-3">access your data using:</p>
+                      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div class="bg-base-300 p-4 rounded-lg">
+                          <h4 class="font-bold text-base-content mb-2">typescript sdk</h4>
+                          <code class="text-xs bg-base-100 px-2 py-1 rounded">npm i @cubby/js</code>
+                          <p class="text-xs text-base-content/70 mt-2">node, cloudflare, browser</p>
+                        </div>
+                        <div class="bg-base-300 p-4 rounded-lg">
+                          <h4 class="font-bold text-base-content mb-2">rest api</h4>
+                          <code class="text-xs bg-base-100 px-2 py-1 rounded">api.cubby.sh</code>
+                          <p class="text-xs text-base-content/70 mt-2">openapi spec available</p>
+                        </div>
+                        <div class="bg-base-300 p-4 rounded-lg">
+                          <h4 class="font-bold text-base-content mb-2">mcp server</h4>
+                          <code class="text-xs bg-base-100 px-2 py-1 rounded">localhost:3030/mcp</code>
+                          <p class="text-xs text-base-content/70 mt-2">claude, cursor, etc</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p class="text-base-content/80 mb-4">this installs the cubby binary and starts recording your screen and audio in the background. all data stays local in <code class="bg-base-100 px-1 rounded">~/.cubby/</code></p>
-                  <p class="text-base-content/80 mb-4">a local rust server runs on <code class="bg-base-100 px-1 rounded">localhost:3030</code> that continuously records screen (ocr + screenshots) and audio (transcriptions + speaker identification). everything is stored in sqlite.</p>
-                  <p class="text-base-content/80 mb-2">access your data in three ways:</p>
-                  <ol class="list-decimal list-inside space-y-2 text-base-content/80 ml-4">
-                    <li>typescript sdk - <code class="bg-base-100 px-1 rounded">npm i @cubby/js</code></li>
-                    <li>rest api - <code class="bg-base-100 px-1 rounded">localhost:3030/openapi.json</code> or <code class="bg-base-100 px-1 rounded">api.cubby.sh/openapi.json</code></li>
-                    <li>mcp server - configure ai assistants to use cubby tools</li>
-                  </ol>
                 </div>
               </div>
 
