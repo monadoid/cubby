@@ -37,7 +37,8 @@ export class TokenManager {
     this.clientId = options.clientId ?? null;
     this.clientSecret = options.clientSecret ?? null;
     this.baseUrl = options.baseUrl || getDefaultBaseUrlSync();
-    this.fetchImpl = options.fetchImpl || (globalThis.fetch as FetchLike);
+    // bind fetch to globalThis to avoid Illegal invocation in Cloudflare Workers
+    this.fetchImpl = options.fetchImpl || ((globalThis.fetch as unknown as FetchLike).bind(globalThis) as FetchLike);
   }
 
   /**
