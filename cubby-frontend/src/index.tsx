@@ -299,122 +299,82 @@ app.get("/docs", (c) => {
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
         <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="tailwind.css" />
+        <link rel="stylesheet" href="output.css" />
         <style>
           {`
             body {
               font-family: 'Courier New', monospace;
-              background-color: #0a0a0a;
-              color: #fff;
             }
             .pixelated {
               image-rendering: pixelated;
               image-rendering: -moz-crisp-edges;
               image-rendering: crisp-edges;
             }
-            .docs-sidebar {
-              background-color: #111;
-              border-right: 1px solid #333;
-            }
-            .docs-nav-item {
-              display: block;
-              padding: 0.75rem 1rem;
-              color: #ccc;
-              text-decoration: none;
-              border-left: 3px solid transparent;
-              transition: all 0.2s;
-            }
-            .docs-nav-item:hover {
-              color: #fff;
-              background-color: #1a1a1a;
-              border-left-color: #666;
-            }
-            .docs-nav-item.active {
-              color: #fff;
-              background-color: #1a1a1a;
-              border-left-color: #fff;
-            }
-            .docs-content {
-              background-color: #0a0a0a;
-            }
-            .docs-card {
-              background-color: #111;
-              border: 1px solid #333;
-              border-radius: 8px;
-              padding: 1.5rem;
-              margin-bottom: 1.5rem;
-            }
-            .docs-code-block {
-              background-color: #1a1a1a;
-              border: 1px solid #333;
-              border-radius: 6px;
-              padding: 1rem;
-              font-family: 'Courier New', monospace;
-              font-size: 0.875rem;
-              overflow-x: auto;
-            }
           `}
         </style>
       </head>
-      <body hx-boost="true">
+      <body hx-boost="true" data-theme="dark">
         <TopBar />
-        <div class="fixed top-12 left-0 w-full h-[calc(100vh-48px)] flex">
+        <div class="fixed top-12 left-0 w-full h-[calc(100vh-48px)] flex bg-base-100">
           {/* Sidebar */}
-          <div class="docs-sidebar w-64 overflow-y-auto">
+          <div class="w-64 bg-base-200 border-r border-base-300 overflow-y-auto">
             <div class="p-4 pt-8">
-              <h2 class="text-lg font-bold mb-4">documentation</h2>
-              <nav class="space-y-1">
-                <a href="#getting-started" class="docs-nav-item active">getting started</a>
-                <a href="#typescript-sdk" class="docs-nav-item">typescript sdk</a>
-                <a href="#mcp-integration" class="docs-nav-item">mcp integration</a>
-                <a href="#rest-api" class="docs-nav-item">rest api</a>
-                <a href="#local-vs-remote" class="docs-nav-item">local vs remote</a>
-                <div class="border-t border-gray-700 my-4"></div>
-                <a href="/docs/api" class="docs-nav-item text-blue-400 hover:text-blue-300">api reference →</a>
+              <h2 class="text-lg font-bold mb-4 text-base-content">documentation</h2>
+              <nav>
+                <a href="#getting-started" class="block p-3 rounded-lg bg-primary text-primary-content font-medium mb-1">getting started</a>
+                <a href="#typescript-sdk" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">typescript sdk</a>
+                <a href="#mcp-integration" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">mcp integration</a>
+                <a href="#rest-api" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">rest api</a>
+                <a href="#local-vs-remote" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">local vs remote</a>
+                <div class="divider my-4"></div>
+                <a href="/docs/api" class="block p-3 rounded-lg bg-accent text-accent-content font-medium">api reference →</a>
               </nav>
             </div>
           </div>
           
           {/* Main Content */}
-          <div class="docs-content flex-1 overflow-y-auto">
+          <div class="flex-1 overflow-y-auto bg-base-100">
             <div class="max-w-4xl mx-auto p-8 pt-16">
               <div class="mb-8">
-                <h1 class="text-4xl font-bold pixelated mb-2">cubby documentation</h1>
-                <p class="text-gray-400 text-lg">comprehensive guide to using cubby</p>
+                <h1 class="text-4xl font-bold pixelated mb-2 text-base-content">cubby documentation</h1>
+                <p class="text-base-content/70 text-lg">comprehensive guide to using cubby</p>
               </div>
               
               {/* Getting Started Section */}
-              <div id="getting-started" class="docs-card">
-                <h2 class="text-2xl font-bold mb-4">getting started</h2>
-                <p class="text-gray-300 mb-4">cubby works on macos & linux, windows is coming soon.</p>
-                <div class="docs-code-block mb-4">
-                  <code>curl -s https://get.cubby.sh/cli | sh</code>
+              <div id="getting-started" class="card bg-base-200 shadow-xl mb-6">
+                <div class="card-body">
+                  <h2 class="card-title text-2xl font-bold text-base-content">getting started</h2>
+                  <p class="text-base-content/80 mb-4">cubby works on macos & linux, windows is coming soon.</p>
+                  <div class="mockup-code w-full mb-4">
+                    <pre data-prefix="$"><code>curl -s https://get.cubby.sh/cli | sh</code></pre>
+                  </div>
+                  <p class="text-base-content/80 mb-4">once you&apos;ve installed it, you can view your data a few ways:</p>
+                  <ol class="list-decimal list-inside space-y-2 text-base-content/80 ml-4">
+                    <li>connect to your cubby via mcp tool</li>
+                    <li>connect to your cubby via rest api</li>
+                    <li>connect to your cubby via ts sdk</li>
+                  </ol>
                 </div>
-                <p class="text-gray-300 mb-4">once you&apos;ve installed it, you can view your data a few ways:</p>
-                <ol class="list-decimal list-inside space-y-2 text-gray-300 ml-4">
-                  <li>connect to your cubby via mcp tool</li>
-                  <li>connect to your cubby via rest api</li>
-                  <li>connect to your cubby via ts sdk</li>
-                </ol>
               </div>
 
               {/* TypeScript SDK Section */}
-              <div id="typescript-sdk" class="docs-card">
-                <h2 class="text-2xl font-bold mb-4">typescript sdk</h2>
-                <p class="text-gray-300 mb-6">the cubby js sdk works in node, cloudflare workers, and in the browser.</p>
-                
-                <div class="space-y-6">
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">installation</h3>
-                    <div class="docs-code-block">
-                      <code>npm install @cubby/js</code>
-                    </div>
-                  </div>
+              <div id="typescript-sdk" class="card bg-base-200 shadow-xl mb-6">
+                <div class="card-body">
+                  <h2 class="card-title text-2xl font-bold text-base-content">typescript sdk</h2>
+                  <p class="text-base-content/80 mb-6">the cubby js sdk works in node, cloudflare workers, and in the browser.</p>
                   
                   <div>
-                    <h3 class="text-xl font-bold mb-3">basic usage</h3>
-                    <div class="docs-code-block">
-                      <code>{`import { createClient } from "@cubby/js";
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">installation</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>npm install @cubby/js</code></pre>
+                      </div>
+                    </div>
+                    
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">basic usage</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`import { createClient } from "@cubby/js";
 
 const client = createClient({
   baseUrl: "https://api.cubby.sh", // or http://localhost:3030 for local
@@ -431,42 +391,42 @@ const results = await client.search({
 console.log(\`found \${results.pagination.total} items\`);
 for (const item of results.data) {
   console.log(\`[\${item.type}] \${item.content.timestamp}\`);
-}`}</code>
+}`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">streaming transcriptions</h3>
-                    <div class="docs-code-block">
-                      <code>{`// stream real-time audio transcriptions
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">streaming transcriptions</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`// stream real-time audio transcriptions
 for await (const chunk of client.streamTranscriptions()) {
   const text = chunk.choices[0].text;
   const isFinal = chunk.choices[0].finish_reason === "stop";
   const device = chunk.metadata?.device;
   
   console.log(\`[\${device}] \${isFinal ? "final:" : "partial:"} \${text}\`);
-}`}</code>
+}`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">streaming vision data</h3>
-                    <div class="docs-code-block">
-                      <code>{`// stream ocr and ui frame data
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">streaming vision data</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`// stream ocr and ui frame data
 for await (const event of client.streamVision(true)) { // true = include images
   if (event.name === "ocr_result") {
     console.log("ocr:", event.data.text);
   } else if (event.name === "ui_frame") {
     console.log("ui frame:", event.data);
   }
-}`}</code>
+}`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">device control</h3>
-                    <div class="docs-code-block">
-                      <code>{`// open applications and urls
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">device control</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`// open applications and urls
 await client.device.openApplication("Visual Studio Code");
 await client.device.openUrl("https://github.com", "Safari");
 
@@ -474,14 +434,14 @@ await client.device.openUrl("https://github.com", "Safari");
 await client.notify({
   title: "hello from cubby",
   body: "this is a test notification"
-});`}</code>
+});`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">environment configuration</h3>
-                    <div class="docs-code-block">
-                      <code>{`// set environment variables
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">environment configuration</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`// set environment variables
 export CUBBY_API_BASE_URL="https://api.cubby.sh"
 export CUBBY_API_TOKEN="your-token"
 
@@ -492,23 +452,25 @@ globalThis.__CUBBY_ENV__ = {
 };
 
 // then use without explicit config
-const client = createClient();`}</code>
+const client = createClient();`}</code></pre>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* MCP Integration Section */}
-              <div id="mcp-integration" class="docs-card">
-                <h2 class="text-2xl font-bold mb-4">mcp integration</h2>
-                <p class="text-gray-300 mb-6">model context protocol (mcp) allows ai assistants to interact with cubby tools.</p>
-                
-                <div class="space-y-6">
+              <div id="mcp-integration" class="card bg-base-200 shadow-xl mb-6">
+                <div class="card-body">
+                  <h2 class="card-title text-2xl font-bold text-base-content">mcp integration</h2>
+                  <p class="text-base-content/80 mb-6">model context protocol (mcp) allows ai assistants to interact with cubby tools.</p>
+                  
                   <div>
-                    <h3 class="text-xl font-bold mb-3">claude desktop</h3>
-                    <p class="text-gray-300 mb-3">add to your claude desktop config:</p>
-                    <div class="docs-code-block">
-                      <code>{`{
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">claude desktop</h3>
+                      <p class="text-base-content/80 mb-3">add to your claude desktop config:</p>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`{
   "mcpServers": {
     "cubby": {
       "command": "npx",
@@ -516,120 +478,129 @@ const client = createClient();`}</code>
       "env": {}
     }
   }
-}`}</code>
+}`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">cursor ide</h3>
-                    <p class="text-gray-300 mb-3">add to your cursor mcp config:</p>
-                    <div class="docs-code-block">
-                      <code>{`{
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">cursor ide</h3>
+                      <p class="text-base-content/80 mb-3">add to your cursor mcp config:</p>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`{
   "mcpServers": {
     "cubby": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-fetch", "http://localhost:3030/mcp"]
     }
   }
-}`}</code>
+}`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">available mcp tools</h3>
-                    <ul class="space-y-2 text-gray-300">
-                      <li><span class="font-semibold text-gray-200">search-content</span> - search through ocr text, audio transcriptions, ui elements</li>
-                      <li><span class="font-semibold text-gray-200">open-application</span> - open applications by name (macos only)</li>
-                      <li><span class="font-semibold text-gray-200">open-url</span> - open urls in browser (cross-platform)</li>
-                      <li><span class="font-semibold text-gray-200">pixel-control</span> - control mouse and keyboard (cross-platform)</li>
-                      <li><span class="font-semibold text-gray-200">find-elements</span> - find ui elements by role (macos only)</li>
-                      <li><span class="font-semibold text-gray-200">click-element</span> - click ui elements by id (macos only)</li>
-                      <li><span class="font-semibold text-gray-200">fill-element</span> - type into ui elements (macos only)</li>
-                      <li><span class="font-semibold text-gray-200">scroll-element</span> - scroll ui elements (macos only)</li>
-                    </ul>
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">available mcp tools</h3>
+                      <ul class="text-base-content/80">
+                        <li class="mb-2"><span class="font-semibold text-base-content">search-content</span> - search through ocr text, audio transcriptions, ui elements</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">open-application</span> - open applications by name (macos only)</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">open-url</span> - open urls in browser (cross-platform)</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">pixel-control</span> - control mouse and keyboard (cross-platform)</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">find-elements</span> - find ui elements by role (macos only)</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">click-element</span> - click ui elements by id (macos only)</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">fill-element</span> - type into ui elements (macos only)</li>
+                        <li class="mb-2"><span class="font-semibold text-base-content">scroll-element</span> - scroll ui elements (macos only)</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* REST API Section */}
-              <div id="rest-api" class="docs-card">
-                <h2 class="text-2xl font-bold mb-4">rest api</h2>
-                <p class="text-gray-300 mb-6">direct api access for custom integrations.</p>
-                
-                <div class="space-y-6">
+              <div id="rest-api" class="card bg-base-200 shadow-xl mb-6">
+                <div class="card-body">
+                  <h2 class="card-title text-2xl font-bold text-base-content">rest api</h2>
+                  <p class="text-base-content/80 mb-6">direct api access for custom integrations.</p>
+                  
                   <div>
-                    <h3 class="text-xl font-bold mb-3">local development</h3>
-                    <div class="docs-code-block">
-                      <code>{`# start cubby service
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">local development</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`# start cubby service
 cubby start
 
 # api documentation
 curl http://localhost:3030/openapi.json
 
 # mcp server
-curl http://localhost:3030/mcp`}</code>
+curl http://localhost:3030/mcp`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">authentication</h3>
-                    <div class="docs-code-block">
-                      <code>{`# get oauth token
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">authentication</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`# get oauth token
 curl -X POST https://api.cubby.sh/dev/token \\
   -H "Content-Type: application/json" \\
   -d '{"email": "your@email.com", "password": "your-password"}'
 
 # use token in requests
 curl -H "Authorization: Bearer YOUR_TOKEN" \\
-  https://api.cubby.sh/devices`}</code>
+  https://api.cubby.sh/devices`}</code></pre>
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <h3 class="text-xl font-bold mb-3">search endpoints</h3>
-                    <div class="docs-code-block">
-                      <code>{`# search content
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">search endpoints</h3>
+                      <div class="mockup-code w-full">
+                        <pre data-prefix="$"><code>{`# search content
 curl -H "Authorization: Bearer YOUR_TOKEN" \\
   "https://api.cubby.sh/devices/DEVICE_ID/search?q=hello&limit=10"
 
 # semantic search
 curl -H "Authorization: Bearer YOUR_TOKEN" \\
-  "https://api.cubby.sh/devices/DEVICE_ID/semantic-search?q=meeting notes"`}</code>
+  "https://api.cubby.sh/devices/DEVICE_ID/semantic-search?q=meeting notes"`}</code></pre>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Local vs Remote Section */}
-              <div id="local-vs-remote" class="docs-card">
-                <h2 class="text-2xl font-bold mb-4">local vs remote</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div class="bg-gray-800/50 rounded-lg p-6">
-                    <h3 class="text-lg font-bold text-gray-200 mb-4">local usage</h3>
-                    <ul class="space-y-2 text-sm text-gray-300">
-                      <li>mcp client: <code class="bg-gray-700 px-1 rounded text-gray-200">http://localhost:3030/mcp</code></li>
-                      <li>no authentication required</li>
-                      <li>tools require no device_id parameter</li>
-                      <li>direct access to local cubby instance</li>
-                    </ul>
-                  </div>
-                  <div class="bg-gray-800/50 rounded-lg p-6">
-                    <h3 class="text-lg font-bold text-gray-200 mb-4">remote usage</h3>
-                    <ul class="space-y-2 text-sm text-gray-300">
-                      <li>mcp client: <code class="bg-gray-700 px-1 rounded text-gray-200">https://api.cubby.sh/mcp</code></li>
-                      <li>oauth authentication required</li>
-                      <li>tools require device_id parameter</li>
-                      <li>access from anywhere via cloud</li>
-                    </ul>
+              <div id="local-vs-remote" class="card bg-base-200 shadow-xl mb-6">
+                <div class="card-body">
+                  <h2 class="card-title text-2xl font-bold text-base-content">local vs remote</h2>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="card bg-base-300 shadow-md">
+                      <div class="card-body">
+                        <h3 class="card-title text-lg font-bold text-base-content">local usage</h3>
+                        <ul class="text-sm text-base-content/80">
+                          <li class="mb-2">mcp client: <code class="bg-base-100 px-1 rounded text-base-content">http://localhost:3030/mcp</code></li>
+                          <li class="mb-2">no authentication required</li>
+                          <li class="mb-2">tools require no device_id parameter</li>
+                          <li class="mb-2">direct access to local cubby instance</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="card bg-base-300 shadow-md">
+                      <div class="card-body">
+                        <h3 class="card-title text-lg font-bold text-base-content">remote usage</h3>
+                        <ul class="text-sm text-base-content/80">
+                          <li class="mb-2">mcp client: <code class="bg-base-100 px-1 rounded text-base-content">https://api.cubby.sh/mcp</code></li>
+                          <li class="mb-2">oauth authentication required</li>
+                          <li class="mb-2">tools require device_id parameter</li>
+                          <li class="mb-2">access from anywhere via cloud</li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Footer Navigation */}
               <div class="pt-8 text-center">
-                <div class="flex justify-center gap-6">
-                  <a href="/" class="text-gray-300 underline hover:text-gray-100">← back to home</a>
-                  <a href="/login" class="text-gray-300 underline hover:text-gray-100">login</a>
+                <div class="flex justify-center">
+                  <a href="/" class="link link-hover text-base-content/70 mr-6">← back to home</a>
+                  <a href="/login" class="link link-hover text-base-content/70">login</a>
                 </div>
               </div>
             </div>

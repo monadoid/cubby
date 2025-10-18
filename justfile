@@ -37,6 +37,12 @@ api-types:
 api-migrate:
     cd cubby-api && pnpm db:migrate
 
+frontend-build-css:
+    cd cubby-frontend && ./tailwindcss -i public/input.css -o public/output.css
+
+frontend-dev:
+    cd cubby-frontend && pnpm dev
+
 example-dev:
     cd exampleco-website && pnpm dev
 
