@@ -10,4 +10,6 @@ edition.workspace = true
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6.6"

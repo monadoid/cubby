@@ -10,6 +10,14 @@ export function TopBar() {
       </div>
       <div style="display: flex; gap: 1rem;">
         <a 
+          href="/login" 
+          style="color: #fff; text-decoration: none; font-family: 'Courier New', monospace; font-size: 14px; hover: color: #ccc;"
+          onMouseOver={(e) => e.target.style.color = '#ccc'}
+          onMouseOut={(e) => e.target.style.color = '#fff'}
+        >
+          login
+        </a>
+        <a 
           href="/docs" 
           style="color: #fff; text-decoration: none; font-family: 'Courier New', monospace; font-size: 14px; hover: color: #ccc;"
           onMouseOver={(e) => e.target.style.color = '#ccc'}
