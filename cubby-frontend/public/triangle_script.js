@@ -807,8 +807,8 @@ var scene = {
   gravity: GRAVITY,
   dt: SPEED_BASE,
   flipRatio: 0.9,
-  numPressureIters: 30,
-  numParticleIters: 2,
+  numPressureIters: 10,
+  numParticleIters: 1,
   frameNr: 0,
   overRelaxation: 1.9,
   compensateDrift: true,
@@ -1191,3 +1191,4 @@ setupScene();
 startDrag(window.innerWidth / 2, window.innerHeight * 0.54);
 endDrag();
 update();
+

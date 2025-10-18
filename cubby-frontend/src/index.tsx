@@ -20,7 +20,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 // Main route - serve the hello world page with components
 app.get("/", (c) => {
   return c.html(
-    <html lang="en">
+    <html lang="en" data-theme="dark" style="--root-bg:#000; --color-base-100:#000; --color-base-content:#fff;">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -28,8 +28,16 @@ app.get("/", (c) => {
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
-        <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="tailwind.css" />
+        <script src="/htmx.min.js"></script>
+        <link rel="stylesheet" href="/output.css" />
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            document.addEventListener('htmx:historyRestore', function(evt){
+              var path = (evt && evt.detail && evt.detail.path) || location.pathname;
+              if (path === '/') { window.location.replace('/'); }
+            });
+          `
+        }}></script>
         <style>
           {`
             body {
@@ -81,8 +89,16 @@ app.get("/login", (c) => {
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
-        <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="output.css" />
+        <script src="/htmx.min.js"></script>
+        <link rel="stylesheet" href="/output.css" />
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            document.addEventListener('htmx:historyRestore', function(evt){
+              var path = (evt && evt.detail && evt.detail.path) || location.pathname;
+              if (path === '/') { window.location.replace('/'); }
+            });
+          `
+        }}></script>
         <style>
           {`
             body {
@@ -233,8 +249,16 @@ app.get("/dashboard", (c) => {
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
-        <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="output.css" />
+        <script src="/htmx.min.js"></script>
+        <link rel="stylesheet" href="/output.css" />
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            document.addEventListener('htmx:historyRestore', function(evt){
+              var path = (evt && evt.detail && evt.detail.path) || location.pathname;
+              if (path === '/') { window.location.replace('/'); }
+            });
+          `
+        }}></script>
         <style>
           {`
             body {
@@ -453,7 +477,7 @@ app.post("/api/m2m/create", async (c) => {
 // Docs page
 app.get("/docs", (c) => {
   return c.html(
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -461,8 +485,16 @@ app.get("/docs", (c) => {
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="icon" href="/favicon.png" type="image/png" />
         <link rel="icon" href="/favicon.ico" />
-        <script src="htmx.min.js"></script>
-        <link rel="stylesheet" href="output.css" />
+        <script src="/htmx.min.js"></script>
+        <link rel="stylesheet" href="/output.css" />
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            document.addEventListener('htmx:historyRestore', function(evt){
+              var path = (evt && evt.detail && evt.detail.path) || location.pathname;
+              if (path === '/') { window.location.replace('/'); }
+            });
+          `
+        }}></script>
         <style>
           {`
             body {
@@ -489,7 +521,7 @@ app.get("/docs", (c) => {
                 <a href="#mcp-integration" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">mcp server</a>
                 <a href="#rest-api" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">rest api</a>
                 <div class="divider my-4"></div>
-                <a href="/docs/api" class="block p-3 rounded-lg bg-accent text-accent-content font-medium">full api reference →</a>
+                <a href="/docs/api" data-hx-boost="false" class="block p-3 rounded-lg bg-accent text-accent-content font-medium">full api reference →</a>
               </nav>
             </div>
           </div>
