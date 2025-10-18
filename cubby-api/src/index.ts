@@ -29,6 +29,7 @@ import { strictJSONResponse } from "./helpers";
 import { isPathAllowed } from "./proxy_config";
 import { mcpHttpHandler } from "./mcp/handler";
 import { generateMcpOpenAPISpec } from "./mcp/openapi";
+import { generateGatewayOpenAPISpec } from "./gateway_openapi";
 import {
   DcrRegisterRequestSchema,
   DcrRegisterResponseSchema,
@@ -1650,29 +1651,21 @@ app.get("/debug/env", (c) => {
 // Main API root endpoint
 app.get("/", (c) => {
   return c.text(
-    "cubby api - visit /openapi for rest api documentation or /mcp/openapi for mcp tools documentation",
+    "cubby api - visit /openapi.json for rest api documentation or /mcp/openapi for mcp tools documentation",
   );
 });
 
-// OpenAPI documentation endpoint
-app.get(
-  "/openapi",
-  openAPIRouteHandler(app, {
-    documentation: {
-      openapi: "3.0.0",
-      info: {
-        title: "Cubby API",
-        version: "1.0.0",
-        description: "Authentication API for Cubby",
-      },
-      servers: [
-        {
-          url: "http://localhost:8787",
-          description: "Local Development Server",
-        },
-      ],
-    },
-  }),
-);
+// OpenAPI documentation endpoint - comprehensive gateway + device proxy docs
+app.get("/openapi.json", (c) => {
+  const url = new URL(c.req.url);
+  const baseUrl = `${url.protocol}//${url.host}`;
+  const spec = generateGatewayOpenAPISpec(baseUrl);
+  return c.json(spec);
+});
+
+// Legacy endpoint - redirect to openapi.json
+app.get("/openapi", (c) => {
+  return c.redirect("/openapi.json", 301);
+});
 
 export default app;

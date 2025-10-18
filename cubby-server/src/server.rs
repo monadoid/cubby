@@ -1046,11 +1046,8 @@ impl SCServer {
                 "/experimental/operator/press-key-by-index",
                 press_key_by_index_handler,
             )
-            .post(
-                "/experimental/operator/open-application",
-                open_application_handler,
-            )
-            .post("/experimental/operator/open-url", open_url_handler)
+            .post("/open-application", open_application_handler)
+            .post("/open-url", open_url_handler)
             .post("/experimental/operator/pixel", input_control_handler)
             .post("/audio/start", start_audio)
             .post("/audio/stop", stop_audio)

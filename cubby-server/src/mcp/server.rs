@@ -729,7 +729,7 @@ async fn handle_open_application_tool(
     });
 
     let result = reqwest::Client::new()
-        .post("http://localhost:3030/experimental/operator/open-application")
+        .post("http://localhost:3030/open-application")
         .json(&payload)
         .send()
         .await
@@ -759,7 +759,7 @@ async fn handle_open_url_tool(
     });
 
     let result = reqwest::Client::new()
-        .post("http://localhost:3030/experimental/operator/open-url")
+        .post("http://localhost:3030/open-url")
         .json(&payload)
         .send()
         .await

@@ -89,14 +89,14 @@ const ALLOWED_ROUTES: AllowedRoute[] = [
     description: "Get unnamed speakers",
   },
 
-  // Experimental operator - app/url launching only
+  // Automation - app/url launching
   {
-    pattern: /^\/experimental\/operator\/open-application$/,
+    pattern: /^\/open-application$/,
     methods: ["POST"],
     description: "Open application",
   },
   {
-    pattern: /^\/experimental\/operator\/open-url$/,
+    pattern: /^\/open-url$/,
     methods: ["POST"],
     description: "Open URL",
   },
