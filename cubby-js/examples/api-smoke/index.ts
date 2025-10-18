@@ -24,10 +24,11 @@ async function main() {
     throw new Error('no devices found');
   }
   const deviceId = String(devices.devices[0].id);
+  client.setDeviceId(deviceId);
   console.log('using deviceId:', deviceId);
 
   console.log('search:');
-  const res = await client.search({ q: 'hello', limit: 1, deviceId });
+  const res = await client.search({ q: 'hello', limit: 1 });
   console.log(JSON.stringify(res, null, 2));
 
 }

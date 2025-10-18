@@ -97,6 +97,34 @@ export async function getMcpSse(
 }
 
 /**
+ * Call a device REST endpoint with appropriate headers.
+ */
+export async function callDeviceRest(
+  env: Bindings,
+  deviceId: string,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  path: string,
+  options?: { userId?: string; gwSessionId?: string },
+  body?: unknown,
+): Promise<Response> {
+  const origin = buildDeviceOrigin(env, deviceId);
+  const url = `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "CF-Access-Client-Id": env.ACCESS_CLIENT_ID,
+    "CF-Access-Client-Secret": env.ACCESS_CLIENT_SECRET,
+  };
+  if (options?.userId) headers["X-Cubby-User-Id"] = options.userId;
+  if (options?.gwSessionId) headers["X-Cubby-Session-Id"] = options.gwSessionId;
+  const init: RequestInit = { method, headers };
+  if (method !== "GET" && body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+  return fetch(url, init);
+}
+
+/**
  * Initialize a device MCP session and return the device session ID
  */
 export async function initializeDeviceSession(

@@ -10,7 +10,7 @@
     "@cubby/js": "workspace:*"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "dotenv": "^16"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

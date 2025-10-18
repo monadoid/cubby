@@ -17,6 +17,7 @@ export class CubbyClient {
   private http: HttpClient;
   private baseUrl: string;
   private token: string | null;
+  private selectedDeviceId: string | null = null;
   public device: {
     openApplication: (appName: string) => Promise<boolean>;
     openUrl: (url: string, browser?: string) => Promise<boolean>;
@@ -70,8 +71,22 @@ export class CubbyClient {
 
   // device-scoped methods are defined later
 
+  setDeviceId(deviceId: string) {
+    this.selectedDeviceId = deviceId;
+  }
+
+  clearDeviceId() {
+    this.selectedDeviceId = null;
+  }
+
+  private requireDeviceId(passed?: string): string {
+    if (passed && String(passed).length > 0) return String(passed);
+    if (this.selectedDeviceId && this.selectedDeviceId.length > 0) return this.selectedDeviceId;
+    throw new Error("device not set: call listDevices() and client.setDeviceId(id) or pass deviceId explicitly");
+  }
+
   async notify(options: NotificationOptions & { deviceId?: string }): Promise<{ success: boolean }>{
-    const id = options.deviceId || (await this.getDefaultDeviceId());
+    const id = this.requireDeviceId(options.deviceId);
     const { deviceId, ...rest } = options as any;
     return await this.http.post<{ success: boolean }>(`/devices/${encodeURIComponent(id)}/notify`, rest);
   }
@@ -79,7 +94,7 @@ export class CubbyClient {
   streamEvents(includeImages: boolean = false, deviceId?: string): AsyncGenerator<any, void, unknown> {
     return (async function* (this: CubbyClient) {
       try {
-        const id = deviceId || (await this.getDefaultDeviceId());
+        const id = this.requireDeviceId(deviceId);
         const ws = await createEventSocketAsync({ baseUrl: this.baseUrl, deviceId: id, includeImages, token: this.token });
         await new Promise<void>((resolve, reject) => {
           ws.addEventListener("open", () => resolve());
@@ -131,26 +146,20 @@ export class CubbyClient {
     return await this.http.get("/devices");
   }
 
-  private async getDefaultDeviceId(): Promise<string> {
-    const res = await this.listDevices();
-    if (!res?.devices?.length) throw new Error("no devices found");
-    return String(res.devices[0].id);
-  }
-
   async search(params: cubbyQueryParams & { deviceId?: string }): Promise<cubbyResponse> {
-    const id = params.deviceId || (await this.getDefaultDeviceId());
+    const id = this.requireDeviceId((params as any).deviceId);
     const { deviceId, ...rest } = params as any;
     return await this.http.get<cubbyResponse>(`/devices/${encodeURIComponent(id)}/search`, rest);
   }
 
-  async semanticSearch(params: Record<string, unknown> & { deviceId?: string }): Promise<any> {
-    const id = (params as any).deviceId || (await this.getDefaultDeviceId());
-    const { deviceId, ...rest } = params as any;
-    return await this.http.get<any>(`/devices/${encodeURIComponent(id)}/semantic-search`, rest);
-  }
+  // async semanticSearch(params: Record<string, unknown> & { deviceId?: string }): Promise<any> {
+  //   const id = this.requireDeviceId((params as any).deviceId);
+  //   const { deviceId, ...rest } = params as any;
+  //   return await this.http.get<any>(`/devices/${encodeURIComponent(id)}/semantic-search`, rest);
+  // }
 
   async speakersSearch(params: Record<string, unknown> & { deviceId?: string }): Promise<any> {
-    const id = (params as any).deviceId || (await this.getDefaultDeviceId());
+    const id = this.requireDeviceId((params as any).deviceId);
     const { deviceId, ...rest } = params as any;
     return await this.http.get<any>(`/devices/${encodeURIComponent(id)}/speakers/search`, rest);
   }

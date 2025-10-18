@@ -28,7 +28,6 @@ import m2mRoutes from "./routes/m2m";
 import { strictJSONResponse } from "./helpers";
 import { isPathAllowed } from "./proxy_config";
 import { mcpHttpHandler } from "./mcp/handler";
-import { generateMcpOpenAPISpec } from "./mcp/openapi";
 import { generateGatewayOpenAPISpec } from "./gateway_openapi";
 import {
   DcrRegisterRequestSchema,
@@ -41,11 +40,8 @@ import {
   setSessionAuth,
 } from "./mcp/session_store";
 import { postMcp, getMcpSse } from "./mcp/device_client";
-import {
-  GATEWAY_TOOLS,
-  handleDevicesList,
-  handleDevicesSet,
-} from "./mcp/gateway_tools";
+import { GATEWAY_TOOLS, handleDevicesList, handleDevicesSet } from "./mcp/gateway_tools";
+import { DEVICE_TOOLS, callDeviceTool } from "./mcp/device_tools";
 
 // Explicit bindings type for lints; wrangler will still provide runtime types
 type Bindings = {
@@ -921,7 +917,7 @@ app.all(
         // Persist auth if provided (for future requests)
         persistAuthIfNeeded();
 
-        // Build union of gateway tools + device tools (if device selected)
+        // Build tools: gateway + curated device tools after selection
         let tools = [...GATEWAY_TOOLS];
 
         console.log(`tools/list called with gwSessionId: ${gwSessionId}`);
@@ -931,172 +927,7 @@ app.all(
           console.log(`session found:`, session);
 
           if (session?.deviceId && session?.deviceSessionId) {
-            console.log(
-              `fetching tools from device ${session.deviceId} for union`,
-            );
-
-            try {
-              // Fetch device tools
-              const deviceRequest = {
-                jsonrpc: "2.0",
-                id: body.id || crypto.randomUUID(),
-                method: "tools/list",
-              };
-
-              // Open SSE first to ensure we don't miss early streamable events
-              const sseResponsePromise = getMcpSse(
-                c.env,
-                session.deviceId,
-                // pass device session id also via query for rmcp stream binding
-                new URLSearchParams(),
-                {
-                  sessionId: session.deviceSessionId,
-                  userId: session.userId,
-                  gwSessionId,
-                  timeoutMs: 30000,
-                },
-              );
-
-              const deviceResponse = await postMcp(
-                c.env,
-                session.deviceId,
-                JSON.stringify(deviceRequest),
-                {
-                  sessionId: session.deviceSessionId,
-                  userId: session.userId,
-                  gwSessionId,
-                  // prefer JSON, but advertise SSE as a fallback
-                  accept: "application/json; q=1.0, text/event-stream; q=0.1",
-                },
-              );
-
-              if (deviceResponse.ok) {
-                const status = deviceResponse.status;
-                const contentType = deviceResponse.headers.get("content-type") || "";
-                let deviceData: any | undefined;
-
-                const parseSseStream = async (response: Response): Promise<any | undefined> => {
-                  const reader = response.body?.getReader();
-                  if (!reader) return undefined;
-                  const decoder = new TextDecoder();
-                  let buffer = "";
-                  const deadline = Date.now() + 15000; // 15s budget
-                  let loggedEvents = 0;
-                  while (Date.now() < deadline) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    buffer += decoder.decode(value, { stream: true });
-                    let sepIdx;
-                    // support both \n\n and \r\n\r\n
-                    let findDoubleNewline = () => {
-                      const nn = buffer.indexOf("\n\n");
-                      const crnn = buffer.indexOf("\r\n\r\n");
-                      if (nn === -1) return crnn;
-                      if (crnn === -1) return nn;
-                      return Math.min(nn, crnn);
-                    };
-                    while ((sepIdx = findDoubleNewline()) !== -1) {
-                      const eventChunk = buffer.slice(0, sepIdx);
-                      // remove either \n\n or \r\n\r\n
-                      const advance = buffer.startsWith("\r\n", sepIdx - 1) ? 4 : 2;
-                      buffer = buffer.slice(sepIdx + advance);
-                      const dataLines = eventChunk
-                        .split("\n")
-                        .filter((l) => l.startsWith("data:"))
-                        .map((l) => l.slice(5).trim());
-                      if (dataLines.length > 0) {
-                        const dataPayload = dataLines.join("\n");
-                        if (loggedEvents < 3) {
-                          console.log("[device sse] event payload:", dataPayload.slice(0, 200));
-                          loggedEvents++;
-                        }
-                        try {
-                          const evtObj = JSON.parse(dataPayload);
-                          if (evtObj?.result?.tools) {
-                            return evtObj;
-                          }
-                        } catch {}
-                      }
-                    }
-                  }
-                  return undefined;
-                };
-
-                if (status === 202) {
-                  // Streamable HTTP pattern: result over SSE; use the pre-opened stream
-                  const sseResp = await sseResponsePromise;
-                  if (sseResp.ok) {
-                    deviceData = await parseSseStream(sseResp);
-                    if (!deviceData) {
-                      console.warn("device sse did not yield tools result within budget");
-                    }
-                  } else {
-                    console.warn("device sse get failed:", sseResp.status, sseResp.statusText);
-                  }
-                } else if (contentType.includes("application/json")) {
-                  const text = await deviceResponse.text();
-                  try {
-                    deviceData = JSON.parse(text);
-                  } catch (e) {
-                    console.error(
-                      "error parsing device tools/list json:",
-                      e,
-                      "payload:",
-                      text.slice(0, 200),
-                    );
-                    throw e;
-                  }
-                } else if (contentType.includes("text/event-stream")) {
-                  deviceData = await parseSseStream(deviceResponse);
-                  if (!deviceData) {
-                    console.warn("device returned sse without tools result within budget");
-                  }
-                } else {
-                  const preview = (await deviceResponse.text()).slice(0, 200);
-                  console.warn("unexpected content-type from device:", contentType, "body:", preview);
-                }
-                if (deviceData?.result?.tools) {
-                  const deviceTools = deviceData.result.tools;
-
-                  // Check for name collisions
-                  const gatewayNames = new Set(tools.map((t) => t.name));
-                  for (const dt of deviceTools) {
-                    if (gatewayNames.has(dt.name)) {
-                      return c.json(
-                        {
-                          jsonrpc: "2.0",
-                          id: body.id,
-                          error: {
-                            code: -32000,
-                            message: `tool name collision: ${dt.name}`,
-                          },
-                        },
-                        500,
-                      );
-                    }
-                  }
-
-                  tools = [...tools, ...deviceTools];
-                  console.log(
-                    `unioned ${deviceTools.length} device tools with ${GATEWAY_TOOLS.length} gateway tools`,
-                  );
-                }
-              } else {
-                const headersObj: Record<string, string> = {};
-                deviceResponse.headers.forEach((v, k) => (headersObj[k] = v));
-                let bodySnippet = "";
-                try {
-                  bodySnippet = (await deviceResponse.text()).slice(0, 500);
-                } catch {}
-                console.warn(
-                  `failed to fetch device tools: ${deviceResponse.status} ${deviceResponse.statusText}`,
-                  { headers: headersObj, body: bodySnippet },
-                );
-              }
-            } catch (error) {
-              console.error(`error fetching device tools:`, error);
-              // Continue with just gateway tools if device fetch fails
-            }
+            tools = [...tools, ...DEVICE_TOOLS];
           } else {
             console.log(`no device selected for session ${gwSessionId}`);
           }
@@ -1228,163 +1059,30 @@ app.all(
           );
         }
 
-        console.log(
-          `proxying tool call ${toolName} to device ${session.deviceId}`,
-        );
-
-        // Open SSE first to avoid missing streamable events
-        const ssePromise = getMcpSse(
-          c.env,
-          session.deviceId,
-          new URLSearchParams(),
-          {
-            sessionId: session.deviceSessionId,
-            userId: session.userId,
+        try {
+          const result = await callDeviceTool(
+            c.env,
+            session.deviceId,
+            session.userId,
             gwSessionId,
-            timeoutMs: 60000,
-          },
-        );
-
-        const deviceResponse = await postMcp(
-          c.env,
-          session.deviceId,
-          bodyText || "{}",
-          {
-            sessionId: session.deviceSessionId,
-            userId: session.userId,
-            gwSessionId,
-            accept: "application/json; q=1.0, text/event-stream; q=0.5",
-          },
-        );
-
-        const parseSseStream = async (response: Response): Promise<any | undefined> => {
-          const reader = response.body?.getReader();
-          if (!reader) return undefined;
-          const decoder = new TextDecoder();
-          let buffer = "";
-          const deadline = Date.now() + 60000; // 60s budget for tool call
-          while (Date.now() < deadline) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let sepIdx;
-            const findDoubleNewline = () => {
-              const nn = buffer.indexOf("\n\n");
-              const crnn = buffer.indexOf("\r\n\r\n");
-              if (nn === -1) return crnn;
-              if (crnn === -1) return nn;
-              return Math.min(nn, crnn);
-            };
-            while ((sepIdx = findDoubleNewline()) !== -1) {
-              const eventChunk = buffer.slice(0, sepIdx);
-              const advance = buffer.startsWith("\r\n", sepIdx - 1) ? 4 : 2;
-              buffer = buffer.slice(sepIdx + advance);
-              const dataLines = eventChunk
-                .split("\n")
-                .filter((l) => l.startsWith("data:"))
-                .map((l) => l.slice(5).trim());
-              if (dataLines.length > 0) {
-                const dataPayload = dataLines.join("\n");
-                try {
-                  const evtObj = JSON.parse(dataPayload);
-                  // For tool calls, a complete JSON-RPC response includes result or error
-                  if (evtObj?.result || evtObj?.error) {
-                    return evtObj;
-                  }
-                } catch {
-                  // ignore non-JSON fragments
-                }
-              }
-            }
-          }
-          return undefined;
-        };
-
-        if (!deviceResponse.ok) {
-          const errorText = await deviceResponse.text();
-          console.error(`device proxy error: ${deviceResponse.status} - ${errorText}`);
+            toolName,
+            body.params?.arguments,
+          );
+          return c.json({ jsonrpc: "2.0", id: body.id, result });
+        } catch (error) {
+          console.error(`device tool ${toolName} error:`, error);
           return c.json(
             {
               jsonrpc: "2.0",
               id: body.id,
               error: {
                 code: -32000,
-                message: `device request failed: ${deviceResponse.status}`,
+                message: error instanceof Error ? error.message : "tool call failed",
               },
             },
-            502,
+            500,
           );
         }
-
-        const status = deviceResponse.status;
-        const contentType = deviceResponse.headers.get("content-type") || "";
-
-        if (status === 202) {
-          const sseResp = await ssePromise;
-          if (sseResp.ok) {
-            const evt = await parseSseStream(sseResp);
-            if (evt) return c.json(evt);
-            console.warn("device tool sse did not yield a final result within budget");
-            return c.json(
-              {
-                jsonrpc: "2.0",
-                id: body.id,
-                error: { code: -32000, message: "device did not produce a result in time" },
-              },
-              504,
-            );
-          }
-          return c.json(
-            {
-              jsonrpc: "2.0",
-              id: body.id,
-              error: { code: -32000, message: `device sse failed: ${sseResp.status}` },
-            },
-            502,
-          );
-        }
-
-        if (contentType.includes("application/json")) {
-          const text = await deviceResponse.text();
-          try {
-            const json = JSON.parse(text);
-            return c.json(json);
-          } catch (e) {
-            console.error("device returned invalid json:", e, "payload:", text.slice(0, 200));
-            return c.json(
-              {
-                jsonrpc: "2.0",
-                id: body.id,
-                error: { code: -32000, message: "invalid json from device" },
-              },
-              502,
-            );
-          }
-        }
-
-        if (contentType.includes("text/event-stream")) {
-          const evt = await parseSseStream(deviceResponse);
-          if (evt) return c.json(evt);
-          return c.json(
-            {
-              jsonrpc: "2.0",
-              id: body.id,
-              error: { code: -32000, message: "device sse did not produce a result" },
-            },
-            502,
-          );
-        }
-
-        const preview = (await deviceResponse.text()).slice(0, 200);
-        console.warn("unexpected device response content-type:", contentType, "body:", preview);
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            id: body.id,
-            error: { code: -32000, message: "unexpected device response" },
-          },
-          502,
-        );
       }
 
       case "resources/list":
@@ -1461,11 +1159,6 @@ app.get(
   },
 );
 
-app.get("/mcp/openapi", (c) => {
-  const baseUrl = new URL(c.req.url).origin;
-  const spec = generateMcpOpenAPISpec(baseUrl);
-  return c.json(spec);
-});
 
 // OAuth 2.0 Protected Resource Metadata
 // Tells clients that Stytch is the authorization server for this resource

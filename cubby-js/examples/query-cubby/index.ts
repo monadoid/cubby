@@ -1,6 +1,14 @@
+import 'dotenv/config';
 import { createClient } from "@cubby/js";
 
 async function queryCubby() {
+  const baseUrl = process.env.CUBBY_API_BASE_URL;
+  const token = process.env.CUBBY_API_TOKEN;
+  if (!baseUrl || !token) {
+    console.error('error: set CUBBY_API_BASE_URL and CUBBY_API_TOKEN in .env');
+    process.exit(1);
+  }
+
   console.log("starting query cubby...");
   console.log("------------------------------");
   console.log("querying last 5 minutes of activity...");
@@ -9,7 +17,13 @@ async function queryCubby() {
   // get content from last 5 minutes
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
-  const client = createClient();
+  const client = createClient({ baseUrl, token });
+  const devices = await client.listDevices();
+  if (!devices?.devices?.length) {
+    console.error("no devices found");
+    process.exit(1);
+  }
+  client.setDeviceId(String(devices.devices[0].id));
   const results = await client.search({
     startTime: fiveMinutesAgo,
     limit: 10,
@@ -43,13 +57,10 @@ async function queryCubby() {
     //   messages: [{ role: "user", content: item.content }],
     //   model: "gpt-4"
     // });
-    console.log(
-      "\n\nnow you could send to openai or other ai service with this code:\n"
-    );
-    console.log(
-      "const aiResponse = await openai.chat.completions.create({ messages: [{ role: 'user', content: item.content }], model: 'gpt-4' });"
-    );
   }
 }
 
-queryCubby().catch(console.error);
+queryCubby().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

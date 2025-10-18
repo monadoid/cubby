@@ -20,7 +20,7 @@ import { z } from "zod";
  * - OAuth metadata is discovered via /.well-known/oauth-protected-resource
  */
 export const mcpServer = new McpServer({
-  name: "cubby-cubby",
+  name: "cubby-mcp",
   version: "1.0.0",
   schemaAdapter: (schema) => z.toJSONSchema(schema as z.ZodType),
 });

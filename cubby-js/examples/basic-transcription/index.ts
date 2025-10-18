@@ -13,6 +13,12 @@ async function monitorEvents() {
   }
 
   const client = createClient({ baseUrl, token });
+  const devices = await client.listDevices();
+  if (!devices?.devices?.length) {
+    console.error("error: no devices found");
+    process.exit(1);
+  }
+  client.setDeviceId(String(devices.devices[0].id));
 
   // no filtering: stream everything from the device as { name, data }
   // example event: { name: "ocr_result", data: { app_name, text, ... } }
