@@ -13,6 +13,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx}\""
   },
   "dependencies": {
+    "@scalar/hono-api-reference": "^0.9.22",
     "hono": "^4.9.9"
   },
   "devDependencies": {

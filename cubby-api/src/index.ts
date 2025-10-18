@@ -2,9 +2,8 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
-import { proxy } from "hono/proxy";
 import { setCookie } from "hono/cookie";
-import { describeRoute, resolver, openAPIRouteHandler } from "hono-openapi";
+import { describeRoute, resolver } from "hono-openapi";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod/v4";
 import stytch from "stytch";
@@ -147,7 +146,7 @@ app.onError((err, c) => {
     return err.getResponse();
   }
   console.error("Unhandled error:", err);
-  return c.text("Internal Server Error", 500);
+  return c.json({ error: "Internal Server Error" }, 500);
 });
 
 // OAuth token endpoint - must be defined BEFORE mounting oauth routes
@@ -715,12 +714,35 @@ app.all(
         `Proxying ${method} request to device ${deviceId}${path}${url.search} (request ID: ${requestId})`,
       );
 
-      return proxy(targetUrl, {
-        headers: {
-          "CF-Access-Client-Id": c.env.ACCESS_CLIENT_ID,
-          "CF-Access-Client-Secret": c.env.ACCESS_CLIENT_SECRET,
-          "X-Cubby-Request-Id": requestId,
-        },
+      // Manual proxy to ensure body is forwarded for POST requests
+      const proxyHeaders = new Headers();
+      proxyHeaders.set("CF-Access-Client-Id", c.env.ACCESS_CLIENT_ID);
+      proxyHeaders.set("CF-Access-Client-Secret", c.env.ACCESS_CLIENT_SECRET);
+      proxyHeaders.set("X-Cubby-Request-Id", requestId);
+      
+      // Copy content-type if present
+      const contentType = c.req.header("content-type");
+      if (contentType) {
+        proxyHeaders.set("Content-Type", contentType);
+      }
+
+      const proxyInit: RequestInit = {
+        method,
+        headers: proxyHeaders,
+      };
+
+      // Forward body for POST/PUT/PATCH
+      if (method === "POST" || method === "PUT" || method === "PATCH") {
+        proxyInit.body = await c.req.raw.clone().arrayBuffer();
+      }
+
+      const upstreamResponse = await fetch(targetUrl, proxyInit);
+      
+      // Return response with original headers and body
+      return new Response(upstreamResponse.body, {
+        status: upstreamResponse.status,
+        statusText: upstreamResponse.statusText,
+        headers: upstreamResponse.headers,
       });
     } catch (error) {
       console.error("Device proxy error:", error);

@@ -8,5 +8,8 @@
   },
   "dependencies": {
     "@cubby/js": "workspace:*"
+  },
+  "devDependencies": {
+    "dotenv": "^16"
   }
 }

@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { createClient } from "@cubby/js";
 
-async function monitorTranscriptions() {
-  console.log("starting transcription monitor...");
+async function monitorEvents() {
+  console.log("starting event stream...");
 
   const baseUrl = process.env.CUBBY_API_BASE_URL;
   const token = process.env.CUBBY_API_TOKEN;
@@ -13,13 +13,31 @@ async function monitorTranscriptions() {
   }
 
   const client = createClient({ baseUrl, token });
-  for await (const chunk of client.streamTranscriptions()) {
-    const text = chunk.choices[0].text;
-    const isFinal = chunk.choices[0].finish_reason === "stop";
-    const device = chunk.metadata?.device;
 
-    console.log(`[${device}] ${isFinal ? "final:" : "partial:"} ${text}`);
+  // no filtering: stream everything from the device as { name, data }
+  // example event: { name: "ocr_result", data: { app_name, text, ... } }
+  for await (const evt of client.streamEvents()) {
+    // logs: [event_name] {...data}
+    console.log(`[${evt?.name}] ${JSON.stringify(evt?.data)}`);
   }
+
+  // how to filter only transcriptions (if your device emits them):
+  // for await (const evt of client.streamEvents()) {
+  //   if (evt?.name === "transcription") {
+  //     // typical shape: { name: "transcription", data: { text: string, is_final?: boolean, ts?: number, ... } }
+  //     const { text, is_final } = evt.data || {};
+  //     console.log(`[transcription] ${is_final ? "final:" : "partial:"} ${text || ""}`);
+  //   }
+  // }
+
+  // how to filter only vision/ocr frames:
+  // for await (const evt of client.streamEvents()) {
+  //   if (evt?.name === "ocr_result" || evt?.name === "ui_frame") {
+  //     // ocr_result example (from ws): { name: "ocr_result", data: { app_name: string, text: string, confidence: number, ... } }
+  //     const { app_name, text, confidence } = evt.data || {};
+  //     console.log(`[ocr] app=${app_name || "unknown"} conf=${confidence ?? "?"} text=${(text || "").slice(0, 120)}`);
+  //   }
+  // }
 }
 
-monitorTranscriptions().catch(console.error);
+monitorEvents().catch(console.error);

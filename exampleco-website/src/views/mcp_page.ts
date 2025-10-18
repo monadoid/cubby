@@ -5,7 +5,7 @@ export function renderMcpPage(cubbyApiUrl: string): string {
   <meta charset="utf-8" />
   <title>ExampleCo - MCP Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="htmx.min.js"></script>
   <style>
     body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 800px; padding: 0 1rem; }
     h1 { font-size: 1.75rem; margin-bottom: 1rem; }

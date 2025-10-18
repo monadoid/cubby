@@ -91,6 +91,17 @@ nuke:
     -rm -rf ~/.cubby/*.log
     -rm -rf ~/Library/Caches/cubby/models/*.onnx
 
+# get dev token for email
+token EMAIL:
+    ./test-dev-token.sh {{EMAIL}}
+
+# update CUBBY_API_TOKEN in all example .env files
+update-tokens EMAIL:
+    @echo "updating tokens in example .env files..."
+    @echo "got token: `./test-dev-token.sh {{EMAIL}} | head -c 50`..."
+    find cubby-js/examples -name ".env" -type f -exec sh -c 'if grep -q "CUBBY_API_TOKEN" "$1"; then echo "updating $1..."; sed -i.bak "s/CUBBY_API_TOKEN=.*/CUBBY_API_TOKEN=`./test-dev-token.sh {{EMAIL}}`/" "$1"; rm "$1.bak"; fi' _ {} \;
+    @echo "✅ tokens updated in all example .env files"
+
 # show available commands
 help:
     @just --list

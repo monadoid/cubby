@@ -38,8 +38,13 @@ export const oauth = (
   opts: OAuthOptions = {},
 ): MiddlewareHandler<{ Bindings: Bindings; Variables: Variables }> => {
   return createMiddleware(async (c, next) => {
-    // Extract token from Authorization header
+    // Extract token from Authorization header, or query param (for WS/browser)
     let token = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+    if (!token) {
+      const url = new URL(c.req.url);
+      const qp = url.searchParams.get("access_token");
+      if (qp) token = qp;
+    }
     if (!token) throw errors.auth.MISSING_TOKEN();
 
     // Trim and remove any quotes

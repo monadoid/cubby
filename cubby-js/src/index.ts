@@ -70,8 +70,10 @@ export class CubbyClient {
 
   // device-scoped methods are defined later
 
-  async notify(options: NotificationOptions): Promise<{ success: boolean }>{
-    return await this.http.post<{ success: boolean }>("/notify", options);
+  async notify(options: NotificationOptions & { deviceId?: string }): Promise<{ success: boolean }>{
+    const id = options.deviceId || (await this.getDefaultDeviceId());
+    const { deviceId, ...rest } = options as any;
+    return await this.http.post<{ success: boolean }>(`/devices/${encodeURIComponent(id)}/notify`, rest);
   }
 
   streamEvents(includeImages: boolean = false, deviceId?: string): AsyncGenerator<any, void, unknown> {

@@ -1,5 +1,4 @@
 Rules:
-- cubby is the context layer for AGI. that is a bridge between dull context-free AI and context aware super intelligence, this bridge is a lib, and CLI, that record screens & mics 24/7, extract OCR & STT, save to local db, connect to AI, do magic, it's written in Rust + Tauri and we write plugins (pipes) in TS + Bun. the Rust CLI is embedded as a sidecar in Tauri. it works on macos, windows, linux
 - always keep my style black and white, with some nerdy style and fonts pixelated / scientific style
 - do not remove @ts-ignore except if i explicitly ask you
 - always use lower case for logging stuff or UI
