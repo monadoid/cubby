@@ -10,6 +10,22 @@ works in node, cloudflare workers, and browsers.
 npm i @cubby/js
 ```
 
+## authentication
+
+get your api credentials at [cubby.sh/dashboard](https://cubby.sh/dashboard):
+
+1. log in to your cubby account
+2. click "generate new credentials"
+3. save your `client_id` and `client_secret`
+4. set them as environment variables:
+
+```bash
+export CUBBY_CLIENT_ID="your_client_id"
+export CUBBY_CLIENT_SECRET="your_client_secret"
+```
+
+the sdk automatically exchanges these credentials for access tokens and handles token refresh.
+
 ## quick start
 
 ### local usage
@@ -33,9 +49,12 @@ console.log(`found ${results.pagination.total} results`);
 ```typescript
 import { createClient } from '@cubby/js';
 
+// credentials are auto-detected from environment variables
+// or pass them explicitly
 const client = createClient({ 
   baseUrl: 'https://api.cubby.sh',
-  token: 'your-oauth-token'
+  clientId: process.env.CUBBY_CLIENT_ID,
+  clientSecret: process.env.CUBBY_CLIENT_SECRET,
 });
 
 // list devices and select one
@@ -56,8 +75,8 @@ import { createClient } from '@cubby/js';
 
 const client = createClient({
   baseUrl: 'http://localhost:3030', // or 'https://api.cubby.sh'
-  token: 'your-token', // optional for local, required for remote
-  tokenProvider: async () => 'dynamic-token', // alternative to static token
+  clientId: 'your-client-id', // optional, auto-detected from CUBBY_CLIENT_ID env var
+  clientSecret: 'your-client-secret', // optional, auto-detected from CUBBY_CLIENT_SECRET env var
 });
 ```
 
@@ -150,14 +169,11 @@ await client.notify({
 // update base url
 client.setBaseUrl('https://api.cubby.sh');
 
-// update auth token
-client.setAuthToken('new-token');
+// update credentials
+client.setCredentials('new-client-id', 'new-client-secret');
 
-// set token provider for dynamic tokens
-client.setTokenProvider(async () => {
-  // fetch token from your auth system
-  return await getToken();
-});
+// get current access token (mainly for debugging)
+const token = await client.getAccessToken();
 ```
 
 ## environment variables
@@ -167,19 +183,32 @@ the sdk automatically reads from environment variables:
 ```bash
 # node / bun
 export CUBBY_API_BASE_URL="https://api.cubby.sh"
-export CUBBY_API_TOKEN="your-token"
+export CUBBY_CLIENT_ID="your-client-id"
+export CUBBY_CLIENT_SECRET="your-client-secret"
 ```
 
 ```typescript
 // cloudflare workers / browser
 globalThis.__CUBBY_ENV__ = {
   CUBBY_API_BASE_URL: 'https://api.cubby.sh',
-  CUBBY_API_TOKEN: 'your-token'
+  CUBBY_CLIENT_ID: 'your-client-id',
+  CUBBY_CLIENT_SECRET: 'your-client-secret',
 };
 
 // then create client without config
 const client = createClient();
 ```
+
+**important for browsers/next.js:** in browser environments, you need to use public environment variables:
+
+```bash
+# .env.local for next.js
+NEXT_PUBLIC_CUBBY_API_BASE_URL=https://api.cubby.sh
+NEXT_PUBLIC_CUBBY_CLIENT_ID=your-client-id
+NEXT_PUBLIC_CUBBY_CLIENT_SECRET=your-client-secret
+```
+
+note: exposing client credentials in browser code is generally not recommended for production apps. consider creating an api route that proxies requests to cubby.
 
 ## examples
 
@@ -222,7 +251,8 @@ import { createClient } from '@cubby/js';
 
 const client = createClient({ 
   baseUrl: 'https://api.cubby.sh',
-  token: process.env.CUBBY_TOKEN 
+  clientId: process.env.CUBBY_CLIENT_ID,
+  clientSecret: process.env.CUBBY_CLIENT_SECRET,
 });
 
 // list and select device

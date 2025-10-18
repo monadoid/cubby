@@ -11,7 +11,13 @@ export default function Home() {
   useEffect(() => {
     const streamVision = async () => {
       try {
-        const client = createClient({ env: { CUBBY_API_BASE_URL: process.env.NEXT_PUBLIC_CUBBY_API_BASE_URL || "https://api.cubby.sh" } });
+        const client = createClient({ 
+          env: { 
+            CUBBY_API_BASE_URL: process.env.NEXT_PUBLIC_CUBBY_API_BASE_URL || "https://api.cubby.sh" 
+          },
+          clientId: process.env.NEXT_PUBLIC_CUBBY_CLIENT_ID,
+          clientSecret: process.env.NEXT_PUBLIC_CUBBY_CLIENT_SECRET,
+        });
         for await (const event of client.streamVision(true)) {
           setVisionEvent(event.data);
           console.log("vision event received");

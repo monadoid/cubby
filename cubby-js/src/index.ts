@@ -1,13 +1,14 @@
 import type { cubbyQueryParams, cubbyResponse, NotificationOptions } from "./types";
 import { HttpClient } from "./http";
 import { createEventSocketAsync } from "./ws";
-import { getDefaultBaseUrlSync } from "./config";
+import { getDefaultBaseUrlSync, getClientIdSync, getClientSecretSync } from "./config";
 import type { CubbyEnv } from "./config";
+import { TokenManager } from "./auth";
 
 export interface ClientOptions {
   baseUrl?: string;
-  token?: string | null;
-  tokenProvider?: () => Promise<string | null> | string | null;
+  clientId?: string;
+  clientSecret?: string;
   fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   credentials?: RequestCredentials;
   env?: CubbyEnv;
@@ -16,7 +17,7 @@ export interface ClientOptions {
 export class CubbyClient {
   private http: HttpClient;
   private baseUrl: string;
-  private token: string | null;
+  private tokenManager: TokenManager;
   private selectedDeviceId: string | null = null;
   public device: {
     openApplication: (appName: string) => Promise<boolean>;
@@ -25,12 +26,29 @@ export class CubbyClient {
 
   constructor(opts: ClientOptions = {}) {
     const resolvedBaseUrl = (opts.env?.CUBBY_API_BASE_URL || opts.baseUrl || getDefaultBaseUrlSync()) as string;
-    this.http = new HttpClient({ ...opts, baseUrl: resolvedBaseUrl });
+    
+    // resolve client credentials from options or environment
+    const clientId = opts.clientId || getClientIdSync();
+    const clientSecret = opts.clientSecret || getClientSecretSync();
+    
+    // initialize token manager with credentials
+    this.tokenManager = new TokenManager({
+      clientId,
+      clientSecret,
+      baseUrl: resolvedBaseUrl,
+      fetchImpl: opts.fetchImpl,
+    });
+    
+    this.http = new HttpClient({ 
+      baseUrl: resolvedBaseUrl,
+      tokenManager: this.tokenManager,
+      fetchImpl: opts.fetchImpl,
+      credentials: opts.credentials,
+    });
     this.baseUrl = resolvedBaseUrl;
-    this.token = opts.token ?? null;
 
     // device control using gateway endpoints
-    const fetchImpl = (input: RequestInfo | URL, init?: RequestInit) => (this.http as any).fetchImpl(input, init) || fetch(input, init);
+    const fetchImpl = opts.fetchImpl || fetch.bind(globalThis);
     this.device = {
       openApplication: async (name: string): Promise<boolean> => {
         const resp = await fetchImpl(new URL("/open-application", this.baseUrl).toString(), {
@@ -60,13 +78,8 @@ export class CubbyClient {
     this.http.setBaseUrl(url);
   }
 
-  setAuthToken(token: string | null) {
-    this.token = token;
-    this.http.setToken(token);
-  }
-
-  setTokenProvider(provider: (() => Promise<string | null> | string | null) | undefined) {
-    this.http.setTokenProvider(provider);
+  setCredentials(clientId: string, clientSecret: string) {
+    this.tokenManager.setCredentials(clientId, clientSecret);
   }
 
   // device-scoped methods are defined later
@@ -95,7 +108,7 @@ export class CubbyClient {
     return (async function* (this: CubbyClient) {
       try {
         const id = this.requireDeviceId(deviceId);
-        const ws = await createEventSocketAsync({ baseUrl: this.baseUrl, deviceId: id, includeImages, token: this.token });
+        const ws = await createEventSocketAsync({ baseUrl: this.baseUrl, deviceId: id, includeImages, tokenManager: this.tokenManager });
         await new Promise<void>((resolve, reject) => {
           ws.addEventListener("open", () => resolve());
           ws.addEventListener("error", (e: Event) => reject(e));
@@ -139,6 +152,14 @@ export class CubbyClient {
     for await (const evt of this.streamEvents(includeImages, deviceId)) {
       if (evt?.name === "ocr_result" || evt?.name === "ui_frame") yield evt;
     }
+  }
+
+  /**
+   * get current access token (mainly for debugging or advanced use cases)
+   * the sdk automatically manages tokens, so you typically don't need this
+   */
+  async getAccessToken(): Promise<string | null> {
+    return await this.tokenManager.getToken();
   }
 
   // device discovery helpers and device-scoped http

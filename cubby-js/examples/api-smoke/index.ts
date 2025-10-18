@@ -3,13 +3,20 @@ import { createClient } from '@cubby/js';
 
 async function main() {
   const baseUrl = process.env.CUBBY_API_BASE_URL;
-  const token = process.env.CUBBY_API_TOKEN;
-  if (!baseUrl || !token) {
-    console.error('error: set CUBBY_API_BASE_URL and CUBBY_API_TOKEN in .env');
+  const clientId = process.env.CUBBY_CLIENT_ID;
+  const clientSecret = process.env.CUBBY_CLIENT_SECRET;
+  
+  if (!baseUrl || !clientId || !clientSecret) {
+    console.error('error: set CUBBY_API_BASE_URL, CUBBY_CLIENT_ID, and CUBBY_CLIENT_SECRET in .env');
+    console.error('get credentials at https://cubby.sh/dashboard');
     process.exit(1);
   }
 
-  const client = createClient({ baseUrl, token });
+  const client = createClient({ baseUrl, clientId, clientSecret });
+
+  console.log('getting access token...');
+  const token = await client.getAccessToken();
+  console.log('access token obtained:', token?.substring(0, 20) + '...');
 
   console.log('whoami:');
   const who = await fetch(new URL('/whoami', baseUrl).toString(), {

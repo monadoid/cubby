@@ -5,14 +5,16 @@ async function monitorEvents() {
   console.log("starting event stream...");
 
   const baseUrl = process.env.CUBBY_API_BASE_URL;
-  const token = process.env.CUBBY_API_TOKEN;
+  const clientId = process.env.CUBBY_CLIENT_ID;
+  const clientSecret = process.env.CUBBY_CLIENT_SECRET;
 
-  if (!baseUrl || !token) {
-    console.error("error: CUBBY_API_BASE_URL and CUBBY_API_TOKEN must be set in .env");
+  if (!baseUrl || !clientId || !clientSecret) {
+    console.error("error: CUBBY_API_BASE_URL, CUBBY_CLIENT_ID, and CUBBY_CLIENT_SECRET must be set in .env");
+    console.error("get credentials at https://cubby.sh/dashboard");
     process.exit(1);
   }
 
-  const client = createClient({ baseUrl, token });
+  const client = createClient({ baseUrl, clientId, clientSecret });
   const devices = await client.listDevices();
   if (!devices?.devices?.length) {
     console.error("error: no devices found");
