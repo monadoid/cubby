@@ -21,7 +21,8 @@ export class HttpClient {
     const envBase = getDefaultBaseUrlSync();
     this.baseUrl = options.baseUrl || envBase;
     this.tokenManager = options.tokenManager ?? null;
-    this.fetchImpl = options.fetchImpl || (globalThis.fetch as FetchLike);
+    // bind fetch to globalThis to avoid Illegal invocation in Cloudflare Workers
+    this.fetchImpl = options.fetchImpl || ((globalThis.fetch as unknown as FetchLike).bind(globalThis) as FetchLike);
     this.credentials = options.credentials;
   }
 
