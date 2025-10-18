@@ -57,6 +57,8 @@ export function getEnvSync(key: string): string | undefined {
 }
 
 export const BASE_URL_ENV_KEY = "CUBBY_API_BASE_URL";
+export const CLIENT_ID_ENV_KEY = "CUBBY_CLIENT_ID";
+export const CLIENT_SECRET_ENV_KEY = "CUBBY_CLIENT_SECRET";
 
 export async function getDefaultBaseUrl(): Promise<string> {
   const fromEnv = await getEnv(BASE_URL_ENV_KEY);
@@ -66,6 +68,22 @@ export async function getDefaultBaseUrl(): Promise<string> {
 export function getDefaultBaseUrlSync(): string {
   const fromEnv = getEnvSync(BASE_URL_ENV_KEY);
   return fromEnv || "https://api.cubby.sh";
+}
+
+export async function getClientId(): Promise<string | undefined> {
+  return await getEnv(CLIENT_ID_ENV_KEY);
+}
+
+export function getClientIdSync(): string | undefined {
+  return getEnvSync(CLIENT_ID_ENV_KEY);
+}
+
+export async function getClientSecret(): Promise<string | undefined> {
+  return await getEnv(CLIENT_SECRET_ENV_KEY);
+}
+
+export function getClientSecretSync(): string | undefined {
+  return getEnvSync(CLIENT_SECRET_ENV_KEY);
 }
 
 

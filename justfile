@@ -97,16 +97,59 @@ nuke:
     -rm -rf ~/.cubby/*.log
     -rm -rf ~/Library/Caches/cubby/models/*.onnx
 
-# get dev token for email
+# get dev token for email (legacy - use update-credentials instead)
 token EMAIL:
     ./test-dev-token.sh {{EMAIL}}
 
-# update CUBBY_API_TOKEN in all example .env files
-update-tokens EMAIL:
-    @echo "updating tokens in example .env files..."
-    @echo "got token: `./test-dev-token.sh {{EMAIL}} | head -c 50`..."
-    find cubby-js/examples -name ".env" -type f -exec sh -c 'if grep -q "CUBBY_API_TOKEN" "$1"; then echo "updating $1..."; sed -i.bak "s/CUBBY_API_TOKEN=.*/CUBBY_API_TOKEN=`./test-dev-token.sh {{EMAIL}}`/" "$1"; rm "$1.bak"; fi' _ {} \;
-    @echo "✅ tokens updated in all example .env files"
+# generate M2M credentials and update all example .env files
+update-credentials EMAIL PASSWORD="Jura55ic5!":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "generating m2m credentials for {{EMAIL}}..."
+    CREDS=$(API_URL="${API_URL:-http://localhost:8787}" ./generate-m2m-credentials.sh {{EMAIL}} {{PASSWORD}})
+    CLIENT_ID=$(echo "$CREDS" | cut -d'|' -f1)
+    CLIENT_SECRET=$(echo "$CREDS" | cut -d'|' -f2)
+    echo ""
+    echo "updating credentials in example .env files..."
+    # update or create .env files in all examples
+    for dir in cubby-js/examples/*/; do
+        if [ -d "$dir" ] && [ ! -d "$dir/node_modules" ] || [ -f "$dir/package.json" ]; then
+            env_file="${dir}.env"
+            echo "  updating $env_file..."
+            # create or update .env file
+            if [ -f "$env_file" ]; then
+                # update existing file
+                if grep -q "CUBBY_CLIENT_ID" "$env_file"; then
+                    sed -i.bak "s/CUBBY_CLIENT_ID=.*/CUBBY_CLIENT_ID=$CLIENT_ID/" "$env_file"
+                else
+                    echo "CUBBY_CLIENT_ID=$CLIENT_ID" >> "$env_file"
+                fi
+                if grep -q "CUBBY_CLIENT_SECRET" "$env_file"; then
+                    sed -i.bak "s/CUBBY_CLIENT_SECRET=.*/CUBBY_CLIENT_SECRET=$CLIENT_SECRET/" "$env_file"
+                else
+                    echo "CUBBY_CLIENT_SECRET=$CLIENT_SECRET" >> "$env_file"
+                fi
+                # ensure base url is set
+                if ! grep -q "CUBBY_API_BASE_URL" "$env_file"; then
+                    echo "CUBBY_API_BASE_URL=http://localhost:8787" >> "$env_file"
+                fi
+                # remove old token if it exists
+                sed -i.bak '/CUBBY_API_TOKEN/d' "$env_file"
+                rm -f "${env_file}.bak"
+            else
+                # create new file
+                cat > "$env_file" << EOF
+    CUBBY_API_BASE_URL=http://localhost:8787
+    CUBBY_CLIENT_ID=$CLIENT_ID
+    CUBBY_CLIENT_SECRET=$CLIENT_SECRET
+    EOF
+            fi
+        fi
+    done
+    echo ""
+    echo "✅ m2m credentials updated in all example .env files"
+    echo "   client_id: $CLIENT_ID"
+    echo "   client_secret: ${CLIENT_SECRET:0:20}..."
 
 # show available commands
 help:

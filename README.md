@@ -25,15 +25,23 @@ you can then access your data in three ways:
 pnpm i @cubby/js
 ```
 
+**authentication:** get credentials at [cubby.sh/dashboard](https://cubby.sh/dashboard), then:
+```bash
+export CUBBY_CLIENT_ID="your_client_id"
+export CUBBY_CLIENT_SECRET="your_client_secret"
+```
+
 common ways to use cubby:
 
 **search** - query your history:
 ```typescript
 import { createClient } from '@cubby/js';
 
+// credentials auto-detected from env, or pass explicitly:
 const client = createClient({ 
   baseUrl: 'https://api.cubby.sh',
-  token: 'your-oauth-token'
+  clientId: process.env.CUBBY_CLIENT_ID,
+  clientSecret: process.env.CUBBY_CLIENT_SECRET,
 });
 
 // list devices and select one (for remote usage)
@@ -43,7 +51,7 @@ client.setDeviceId(devices[0].id);
 // find that article about dolphins you read last week
 const results = await client.search({
   q: 'find me that website about dolphins',
-  contentType: 'ocr',
+  content_type: 'ocr',
   limit: 5
 });
 ```
@@ -53,13 +61,10 @@ const results = await client.search({
 // auto-create todoist tasks from spoken todos with ai
 for await (const event of client.streamTranscriptions()) {
   if (event.text?.toLowerCase().includes('todo') || event.text?.toLowerCase().includes('remind me')) {
-    // extract structured task details with ai
     const task = await ai.generateStructuredOutput({
       prompt: `extract task from: "${event.text}"`,
       schema: { title: 'string', priority: 'high|medium|low', dueDate: 'ISO date' }
     });
-    
-    // add to todoist
     await todoist.create(task);
     await client.notify({ 
       title: 'task added', 
@@ -74,19 +79,16 @@ for await (const event of client.streamTranscriptions()) {
 // smart email responses based on recent conversations
 const recentChats = await client.search({
   q: 'slack messages project alpha',
-  contentType: 'ocr',
+  content_type: 'ocr',
   limit: 15
 });
 
-// generate contextual reply
 const draft = await ai.chat.completions.create({
   messages: [
     { role: 'system', content: 'draft professional email responses' },
     { role: 'user', content: `recent context: ${JSON.stringify(recentChats)}. draft reply to: "${emailContent}"` }
   ]
 });
-
-// send via gmail
 await gmail.users.messages.send({ userId: 'me', raw: encodeDraft(draft) });
 ```
 
@@ -106,9 +108,12 @@ full sdk docs at [npmjs.com/package/@cubby/js](https://www.npmjs.com/package/@cu
 
 ### 2. mcp server
 
-**local:** `http://localhost:3030/mcp` (no auth required)
+**local:** `http://localhost:3030/mcp` (no auth)
 
-**remote:** `https://api.cubby.sh/mcp` (oauth via [cubby.sh](https://cubby.sh))
+**remote:** `https://api.cubby.sh/mcp` (requires access token)
+- get credentials at [cubby.sh/dashboard](https://cubby.sh/dashboard)
+- exchange for token: `curl -X POST https://api.cubby.sh/oauth/token -H "Content-Type: application/x-www-form-urlencoded" -d "grant_type=client_credentials&client_id=YOUR_ID&client_secret=YOUR_SECRET&scope=read:cubby"`
+- add to mcp config: `"headers": { "Authorization": "Bearer YOUR_TOKEN" }`
 
 **available tools:**
 - `devices/list` - list your enrolled devices

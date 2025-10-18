@@ -536,6 +536,15 @@ app.get("/docs", (c) => {
                       </div>
                     </div>
 
+                    <div class="mb-6">
+                      <h3 class="text-xl font-bold mb-3 text-base-content">authentication</h3>
+                      <p class="text-sm text-base-content/70 mb-2">get credentials at <a href="https://cubby.sh/dashboard" class="link">cubby.sh/dashboard</a></p>
+                      <div class="mockup-code w-full mb-2">
+                        <pre data-prefix="$"><code>export CUBBY_CLIENT_ID="your_client_id"</code></pre>
+                        <pre data-prefix="$"><code>export CUBBY_CLIENT_SECRET="your_client_secret"</code></pre>
+                      </div>
+                    </div>
+
                     <p class="text-base-content/80 mb-4">common ways to use cubby:</p>
                     
                     <div class="mb-6">
@@ -544,19 +553,21 @@ app.get("/docs", (c) => {
                       <div class="mockup-code w-full">
                         <pre data-prefix="$"><code>{`import { createClient } from '@cubby/js';
 
+// credentials auto-detected from env
 const client = createClient({ 
   baseUrl: 'https://api.cubby.sh',
-  token: 'your-oauth-token'
+  clientId: process.env.CUBBY_CLIENT_ID,
+  clientSecret: process.env.CUBBY_CLIENT_SECRET,
 });
 
-// list devices and select one (for remote usage)
+// list devices and select one (for remote)
 const { devices } = await client.listDevices();
 client.setDeviceId(devices[0].id);
 
-// find that article about dolphins you read last week
+// find that article you read last week
 const results = await client.search({
-  q: 'find me that website about dolphins',
-  contentType: 'ocr',
+  q: 'dolphins',
+  content_type: 'ocr',
   limit: 5
 });`}</code></pre>
                       </div>
@@ -566,16 +577,13 @@ const results = await client.search({
                       <h3 class="text-xl font-bold mb-3 text-base-content">watch</h3>
                       <p class="text-sm text-base-content/70 mb-2">process live events and trigger actions</p>
                       <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`// auto-create todoist tasks from spoken todos with ai
+                        <pre data-prefix="$"><code>{`// auto-create todoist tasks from spoken todos
 for await (const event of client.streamTranscriptions()) {
-  if (event.text?.toLowerCase().includes('todo') || event.text?.toLowerCase().includes('remind me')) {
-    // extract structured task details with ai
+  if (event.text?.toLowerCase().includes('todo')) {
     const task = await ai.generateStructuredOutput({
       prompt: \`extract task from: "\${event.text}"\`,
-      schema: { title: 'string', priority: 'high|medium|low', dueDate: 'ISO date' }
+      schema: { title: 'string', priority: 'high|medium|low' }
     });
-    
-    // add to todoist
     await todoist.create(task);
     await client.notify({ 
       title: 'task added', 
@@ -590,23 +598,20 @@ for await (const event of client.streamTranscriptions()) {
                       <h3 class="text-xl font-bold mb-3 text-base-content">contextualize</h3>
                       <p class="text-sm text-base-content/70 mb-2">power ai with your personal context</p>
                       <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`// smart email responses based on recent conversations
+                        <pre data-prefix="$"><code>{`// smart email responses based on recent chats
 const recentChats = await client.search({
   q: 'slack messages project alpha',
-  contentType: 'ocr',
+  content_type: 'ocr',
   limit: 15
 });
 
-// generate contextual reply
 const draft = await ai.chat.completions.create({
   messages: [
-    { role: 'system', content: 'draft professional email responses' },
-    { role: 'user', content: \`recent context: \${JSON.stringify(recentChats)}. draft reply to: "\${emailContent}"\` }
+    { role: 'system', content: 'draft professional email' },
+    { role: 'user', content: \`context: \${JSON.stringify(recentChats)}\` }
   ]
 });
-
-// send via gmail
-await gmail.users.messages.send({ userId: 'me', raw: encodeDraft(draft) });`}</code></pre>
+await gmail.users.messages.send({ raw: encodeDraft(draft) });`}</code></pre>
                       </div>
                     </div>
 
@@ -653,8 +658,13 @@ for await (const event of client.streamVision()) {
 
                     <div class="mb-6">
                       <h3 class="text-xl font-bold mb-3 text-base-content">remote access</h3>
-                      <p class="text-base-content/80 mb-3">use <code class="bg-base-100 px-1 rounded">https://api.cubby.sh/mcp</code> with oauth authentication configured once via <a href="https://cubby.sh" class="link">cubby.sh</a></p>
-                      <p class="text-base-content/80">remote tools require <code class="bg-base-100 px-1 rounded">deviceId</code> parameter to specify which device to control</p>
+                      <p class="text-base-content/80 mb-3">use <code class="bg-base-100 px-1 rounded">https://api.cubby.sh/mcp</code> with bearer token authentication</p>
+                      <ol class="list-decimal list-inside space-y-1 text-sm text-base-content/80 mb-3">
+                        <li>get credentials at <a href="https://cubby.sh/dashboard" class="link">cubby.sh/dashboard</a></li>
+                        <li>exchange for token: <code class="text-xs bg-base-100 px-1">curl -X POST https://api.cubby.sh/oauth/token -d "grant_type=client_credentials&client_id=ID&client_secret=SECRET&scope=read:cubby"</code></li>
+                        <li>add to mcp config: <code class="text-xs bg-base-100 px-1">"headers": {{"Authorization": "Bearer TOKEN"}}</code></li>
+                      </ol>
+                      <p class="text-base-content/80 text-sm">remote tools require <code class="bg-base-100 px-1 rounded">deviceId</code> parameter</p>
                     </div>
 
                     <div class="mb-6">

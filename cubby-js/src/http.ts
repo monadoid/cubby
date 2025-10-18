@@ -1,28 +1,26 @@
 import { toSnakeCase } from "./utils";
 import { getDefaultBaseUrlSync } from "./config";
+import type { TokenManager } from "./auth";
 
 export type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 export interface HttpClientOptions {
   baseUrl?: string;
-  token?: string | null;
-  tokenProvider?: () => Promise<string | null> | string | null;
+  tokenManager?: TokenManager;
   fetchImpl?: FetchLike;
   credentials?: RequestCredentials;
 }
 
 export class HttpClient {
   private baseUrl: string;
-  private token: string | null;
-  private tokenProvider?: () => Promise<string | null> | string | null;
+  private tokenManager: TokenManager | null;
   private fetchImpl: FetchLike;
   private credentials?: RequestCredentials;
 
   constructor(options: HttpClientOptions = {}) {
     const envBase = getDefaultBaseUrlSync();
     this.baseUrl = options.baseUrl || envBase;
-    this.token = options.token ?? null;
-    this.tokenProvider = options.tokenProvider;
+    this.tokenManager = options.tokenManager ?? null;
     this.fetchImpl = options.fetchImpl || (globalThis.fetch as FetchLike);
     this.credentials = options.credentials;
   }
@@ -31,21 +29,16 @@ export class HttpClient {
     this.baseUrl = url;
   }
 
-  public setToken(token: string | null) {
-    this.token = token;
-  }
-
-  public setTokenProvider(provider: (() => Promise<string | null> | string | null) | undefined) {
-    this.tokenProvider = provider;
+  public setTokenManager(tokenManager: TokenManager | null) {
+    this.tokenManager = tokenManager;
   }
 
   private async resolveToken(): Promise<string | null> {
-    if (this.token != null) return this.token;
-    if (!this.tokenProvider) return null;
+    if (!this.tokenManager) return null;
     try {
-      const t = await Promise.resolve(this.tokenProvider());
-      return t ?? null;
-    } catch {
+      return await this.tokenManager.getToken();
+    } catch (error) {
+      console.error("failed to get token:", error);
       return null;
     }
   }

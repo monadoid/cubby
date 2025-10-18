@@ -1,4 +1,5 @@
 import { WebSocket as IsoWebSocket } from "isows";
+import type { TokenManager } from "./auth";
 
 export type IsoWebSocketInstance = InstanceType<typeof IsoWebSocket>;
 
@@ -6,8 +7,7 @@ export interface CreateSocketOptions {
   baseUrl: string;
   deviceId: string;
   includeImages?: boolean;
-  token?: string | null;
-  tokenProvider?: () => Promise<string | null> | string | null;
+  tokenManager?: TokenManager;
 }
 
 export function toWsUrl(baseHttpUrl: string, path: string, query: Record<string, string | number | boolean | undefined>): string {
@@ -24,11 +24,12 @@ export function toWsUrl(baseHttpUrl: string, path: string, query: Record<string,
 }
 
 export async function createEventSocketAsync(opts: CreateSocketOptions): Promise<IsoWebSocketInstance> {
-  let token = opts.token ?? null;
-  if (token == null && opts.tokenProvider) {
+  let token: string | null = null;
+  if (opts.tokenManager) {
     try {
-      token = await Promise.resolve(opts.tokenProvider());
-    } catch {
+      token = await opts.tokenManager.getToken();
+    } catch (error) {
+      console.error("failed to get token for websocket:", error);
       token = null;
     }
   }

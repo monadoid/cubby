@@ -46,6 +46,7 @@ export function generateGatewayOpenAPISpec(baseUrl: string): OpenAPISpec {
       },
     ],
     security: [
+      { M2MClientCredentials: [] },
       { OAuth2: ["openid", "read:cubby"] },
       { BearerAuth: [] }
     ],
@@ -151,7 +152,7 @@ export function generateGatewayOpenAPISpec(baseUrl: string): OpenAPISpec {
       "/oauth/token": {
         post: {
           summary: "oauth token exchange",
-          description: "exchange authorization code for access token (supports PKCE for public clients)",
+          description: "exchange authorization code, refresh token, or client credentials for access token. supports PKCE for public clients and M2M authentication via client_credentials grant.",
           tags: ["oauth"],
           operationId: "oauthToken",
           security: [], // public endpoint
@@ -165,8 +166,8 @@ export function generateGatewayOpenAPISpec(baseUrl: string): OpenAPISpec {
                   properties: {
                     grant_type: { 
                       type: "string",
-                      enum: ["authorization_code", "refresh_token"],
-                      description: "oauth grant type",
+                      enum: ["authorization_code", "refresh_token", "client_credentials"],
+                      description: "oauth grant type. use 'client_credentials' for M2M authentication with api keys, 'authorization_code' for user oauth flow, 'refresh_token' to refresh an existing token",
                     },
                     code: { 
                       type: "string",
@@ -174,20 +175,59 @@ export function generateGatewayOpenAPISpec(baseUrl: string): OpenAPISpec {
                     },
                     redirect_uri: { 
                       type: "string",
-                      description: "must match the redirect_uri from /authorize",
+                      description: "must match the redirect_uri from /authorize (required for authorization_code grant)",
                     },
-                    client_id: { type: "string" },
+                    client_id: { 
+                      type: "string",
+                      description: "client id from M2M credentials or oauth app (required for client_credentials grant)",
+                    },
                     client_secret: { 
                       type: "string",
-                      description: "required for confidential clients, omit for public clients using PKCE",
+                      description: "client secret from M2M credentials (required for client_credentials grant). for oauth apps: required for confidential clients, omit for public clients using PKCE",
                     },
                     code_verifier: { 
                       type: "string",
-                      description: "PKCE code verifier (required for public clients)",
+                      description: "PKCE code verifier (required for authorization_code grant with public clients)",
                     },
                     refresh_token: { 
                       type: "string",
                       description: "refresh token (required for refresh_token grant)",
+                    },
+                    scope: {
+                      type: "string",
+                      description: "space-separated list of scopes. for M2M: use 'read:cubby' for api access",
+                      example: "read:cubby",
+                    },
+                  },
+                },
+                examples: {
+                  m2m: {
+                    summary: "M2M client credentials",
+                    description: "exchange api credentials for access token (recommended for scripts, automation, mcp servers)",
+                    value: {
+                      grant_type: "client_credentials",
+                      client_id: "project-test-...-m2m-...",
+                      client_secret: "secret_...",
+                      scope: "read:cubby",
+                    },
+                  },
+                  oauth: {
+                    summary: "oauth authorization code",
+                    description: "exchange authorization code for access token (for user-facing oauth flows)",
+                    value: {
+                      grant_type: "authorization_code",
+                      code: "...",
+                      redirect_uri: "https://yourapp.com/callback",
+                      client_id: "...",
+                      code_verifier: "...",
+                    },
+                  },
+                  refresh: {
+                    summary: "refresh access token",
+                    description: "exchange refresh token for new access token",
+                    value: {
+                      grant_type: "refresh_token",
+                      refresh_token: "...",
                     },
                   },
                 },
@@ -816,8 +856,21 @@ export function generateGatewayOpenAPISpec(baseUrl: string): OpenAPISpec {
       },
 
       securitySchemes: {
+        M2MClientCredentials: {
+          type: "oauth2",
+          description: "M2M authentication using client credentials (recommended for scripts, automation, mcp servers). get credentials at https://cubby.sh/dashboard",
+          flows: {
+            clientCredentials: {
+              tokenUrl: `${baseUrl}/oauth/token`,
+              scopes: {
+                "read:cubby": "read and write access to cubby data",
+              },
+            },
+          },
+        },
         OAuth2: {
           type: "oauth2",
+          description: "user oauth authentication for third-party apps",
           flows: {
             authorizationCode: {
               authorizationUrl: `${baseUrl}/oauth/authorize`,
@@ -835,7 +888,7 @@ export function generateGatewayOpenAPISpec(baseUrl: string): OpenAPISpec {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "bearer token authentication (session jwt or oauth access token)",
+          description: "bearer token authentication using access token from M2M or oauth flow, or session jwt from direct login",
         },
       },
 
