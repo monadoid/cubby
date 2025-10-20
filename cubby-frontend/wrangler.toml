@@ -17,6 +17,5 @@ head_sampling_rate = 1
 [assets]
 directory = "public"
 
-
-
-
+[vars]
+API_URL = "https://api.cubby.sh"

@@ -531,11 +531,18 @@ app.get("/docs", (c) => {
           <div class="flex-1 overflow-y-auto bg-base-100">
             <div class="max-w-4xl mx-auto p-8 pt-16">
               <div class="mb-8">
-                <h1 class="text-4xl font-bold pixelated mb-2 text-base-content">cubby documentation</h1>
-                <p class="text-base-content/70 text-lg">comprehensive guide to using cubby</p>
-                <p class="text-base-content/80 mt-4"><strong>local-first data with cloud access</strong> - your screen and audio recordings stay on your device, but you control who can access them securely via oauth and mcp tools. use it locally for instant access, or connect remotely from ai assistants and custom apps.</p>
+                <h1 class="text-4xl font-bold pixelated mb-2 text-base-content">What is cubby?</h1>
+                {/*<p class="text-base-content/70 text-lg">comprehensive guide to using cubby</p>*/}
               </div>
-              
+              {/* Header Image */}
+              {/*<div class="card bg-base-200 shadow-xl mb-6">*/}
+              {/*  <div class="card-body p-0">*/}
+                  <img src="/cubby_explainer_no_bg.png" alt="cubby overview" class="w-full h-auto pixelated" />
+                {/*</div>*/}
+              {/*</div>*/}
+              <p class="text-base-content/80 mt-4"><strong>cubby captures your screen and audio context and lets you decide which apps you want to share it with.</strong> <br />Don't panic - your data is only stored locally, and cubby is completely open source.<br/></p>
+              {/*<p class="text-base-content/80 mt-4"><strong>local-first data with cloud access</strong> - your screen and audio recordings stay on your device, but you control who can access them securely via oauth and mcp tools. use it locally for instant access, or connect remotely from ai assistants and custom apps.</p>*/}
+
               {/* Getting Started Section */}
               <div id="getting-started" class="card bg-base-200 shadow-xl mb-6">
                 <div class="card-body">
