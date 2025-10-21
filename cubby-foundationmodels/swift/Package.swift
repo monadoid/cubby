@@ -11,17 +11,21 @@ let package = Package(
     products: [
         .library(name: "FoundationModelsBridge", type: .static, targets: ["FoundationModelsBridge"])
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/Brendonovich/swift-rs", from: "1.0.5")
+    ],
     targets: [
         .target(
             name: "FoundationModelsBridge",
-            dependencies: [],
+            dependencies: [
+                .product(name: "SwiftRs", package: "swift-rs")
+            ],
             linkerSettings: [
                 .linkedFramework("FoundationModels"),
                 .linkedFramework("Foundation"),
-                .linkedFramework("Speech")
+                .linkedFramework("Speech"),
+                .linkedFramework("AVFoundation")
             ]
         )
     ]
 )
-

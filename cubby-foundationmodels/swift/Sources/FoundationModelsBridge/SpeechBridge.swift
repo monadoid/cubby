@@ -1,6 +1,7 @@
 import Foundation
 import Speech
 @preconcurrency import AVFoundation
+import SwiftRs
 
 // NOTE: runAsyncAndWait is defined in FoundationModelsBridge.swift
 
@@ -84,10 +85,11 @@ private func ensureSpeechAssets(debugEnabled: Bool) async throws -> (initial: As
     return (initial: initialStatus, final: finalStatus, installedNow: installedFlag)
 }
 
-public func fm_speech_preheat() -> String {
+@_cdecl("fm_speech_preheat")
+public func fm_speech_preheat() -> SRString {
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
 
-    return runAsyncAndWait { () async -> String in
+    let result: String = runAsyncAndWait { () async -> String in
         do {
             if debugEnabled { print("[speech] preheat: begin") }
 
@@ -127,12 +129,14 @@ public func fm_speech_preheat() -> String {
             return errJSON("speech preheat error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_assets_status() -> String {
+@_cdecl("fm_speech_assets_status")
+public func fm_speech_assets_status() -> SRString {
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
 
-    return runAsyncAndWait { () async -> String in
+    let result: String = runAsyncAndWait { () async -> String in
         do {
             if debugEnabled { print("[speech] assets status: begin") }
             let (_, transcriber) = try await makeTranscriber()
@@ -144,12 +148,14 @@ public func fm_speech_assets_status() -> String {
             return errJSON("speech assets status error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_ensure_assets() -> String {
+@_cdecl("fm_speech_ensure_assets")
+public func fm_speech_ensure_assets() -> SRString {
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
 
-    return runAsyncAndWait { () async -> String in
+    let result: String = runAsyncAndWait { () async -> String in
         do {
             if debugEnabled { print("[speech] ensure assets: begin") }
             let result = try await ensureSpeechAssets(debugEnabled: debugEnabled)
@@ -162,12 +168,14 @@ public func fm_speech_ensure_assets() -> String {
             return errJSON("speech ensure assets error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_install_assets() -> String {
+@_cdecl("fm_speech_install_assets")
+public func fm_speech_install_assets() -> SRString {
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
 
-    return runAsyncAndWait { () async -> String in
+    let result: String = runAsyncAndWait { () async -> String in
         do {
             if debugEnabled { print("[speech] assets: begin") }
             let result = try await ensureSpeechAssets(debugEnabled: debugEnabled)
@@ -190,17 +198,19 @@ public func fm_speech_install_assets() -> String {
             return errJSON("speech assets error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_transcribe_file(path: RustStr) -> String {
+@_cdecl("fm_speech_transcribe_file")
+public func fm_speech_transcribe_file(path: SRString) -> SRString {
     let str = path.toString()
     guard !str.isEmpty else {
-        return errJSON("empty path")
+        return SRString(errJSON("empty path"))
     }
     
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
     
-    return runAsyncAndWait { () async -> String in
+    let result: String = runAsyncAndWait { () async -> String in
         do {
             let url = URL(fileURLWithPath: str)
             if debugEnabled { print("[speech] transcribing: \(url.path)") }
@@ -267,6 +277,7 @@ public func fm_speech_transcribe_file(path: RustStr) -> String {
             return errJSON("speech error: \(error)")
         }
     }
+    return SRString(result)
 }
 
 private func makeTranscriber() async throws -> (Locale, SpeechTranscriber) {
@@ -283,8 +294,9 @@ private func makeTranscriber() async throws -> (Locale, SpeechTranscriber) {
     return (locale, transcriber)
 }
 
-public func fm_speech_supported_locale() -> String {
-    return runAsyncAndWait { () async -> String in
+@_cdecl("fm_speech_supported_locale")
+public func fm_speech_supported_locale() -> SRString {
+    let result: String = runAsyncAndWait { () async -> String in
         guard let l = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             return errJSON("unsupported locale")
         }
@@ -292,6 +304,7 @@ public func fm_speech_supported_locale() -> String {
         let data = try? JSONSerialization.data(withJSONObject: obj, options: [])
         return String(data: data ?? Data("{}".utf8), encoding: .utf8) ?? "{}"
     }
+    return SRString(result)
 }
 
 // MARK: - Streaming support
@@ -672,17 +685,9 @@ private func streamingJSON(_ payload: [String: Any]) -> String {
     return String(data: data ?? Data("{}".utf8), encoding: .utf8) ?? "{}"
 }
 
-private extension RustVec where T == Float {
-    func toArray() -> [Float] {
-        let count = self.len()
-        guard count > 0 else { return [] }
-        let pointer = self.as_ptr()
-        return Array(UnsafeBufferPointer(start: pointer, count: count))
-    }
-}
-
-public func fm_speech_stream_create() -> String {
-    runAsyncAndWait {
+@_cdecl("fm_speech_stream_create")
+public func fm_speech_stream_create() -> SRString {
+    let result: String = runAsyncAndWait {
         do {
             let id = try await StreamingSessionManager.shared.createSession()
             return streamingJSON(["session_id": id.uuidString])
@@ -692,13 +697,33 @@ public func fm_speech_stream_create() -> String {
             return errJSON("speech stream create error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_stream_push_f32(session_id: RustStr, samples: RustVec<Float>, sample_rate: Int32) -> String {
+@_cdecl("fm_speech_stream_push_f32")
+public func fm_speech_stream_push_f32(
+    session_id: SRString,
+    samples_ptr: UnsafePointer<UInt8>,
+    samples_len: Int,
+    sample_rate: Int32
+) -> SRString {
     let session = session_id.toString()
-    guard let id = UUID(uuidString: session) else { return errJSON(StreamingError.invalidSession.description) }
-    let floats = samples.toArray()
-    return runAsyncAndWait {
+    guard let id = UUID(uuidString: session) else { return SRString(errJSON(StreamingError.invalidSession.description)) }
+    guard samples_len >= 0 else { return SRString(errJSON("speech stream push error: invalid buffer length")) }
+    let byteCount = samples_len
+    guard byteCount % MemoryLayout<Float>.stride == 0 else {
+        return SRString(errJSON("speech stream push error: misaligned buffer"))
+    }
+    let floatCount = byteCount / MemoryLayout<Float>.stride
+    let floats: [Float]
+    if floatCount > 0 {
+        floats = samples_ptr.withMemoryRebound(to: Float.self, capacity: floatCount) {
+            Array(UnsafeBufferPointer(start: $0, count: floatCount))
+        }
+    } else {
+        floats = []
+    }
+    let result: String = runAsyncAndWait {
         do {
             try await StreamingSessionManager.shared.push(id: id, samples: floats, sampleRate: Int(sample_rate))
             return okJSONBool()
@@ -708,12 +733,14 @@ public func fm_speech_stream_push_f32(session_id: RustStr, samples: RustVec<Floa
             return errJSON("speech stream push error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_stream_finish(session_id: RustStr) -> String {
+@_cdecl("fm_speech_stream_finish")
+public func fm_speech_stream_finish(session_id: SRString) -> SRString {
     let session = session_id.toString()
-    guard let id = UUID(uuidString: session) else { return errJSON(StreamingError.invalidSession.description) }
-    return runAsyncAndWait {
+    guard let id = UUID(uuidString: session) else { return SRString(errJSON(StreamingError.invalidSession.description)) }
+    let result: String = runAsyncAndWait {
         do {
             try await StreamingSessionManager.shared.finish(id: id)
             return okJSONBool()
@@ -723,21 +750,25 @@ public func fm_speech_stream_finish(session_id: RustStr) -> String {
             return errJSON("speech stream finish error: \(error)")
         }
     }
+    return SRString(result)
 }
 
-public func fm_speech_stream_cancel(session_id: RustStr) -> String {
+@_cdecl("fm_speech_stream_cancel")
+public func fm_speech_stream_cancel(session_id: SRString) -> SRString {
     let session = session_id.toString()
-    guard let id = UUID(uuidString: session) else { return errJSON(StreamingError.invalidSession.description) }
-    return runAsyncAndWait {
+    guard let id = UUID(uuidString: session) else { return SRString(errJSON(StreamingError.invalidSession.description)) }
+    let result: String = runAsyncAndWait {
         await StreamingSessionManager.shared.cancel(id: id)
         return okJSONBool()
     }
+    return SRString(result)
 }
 
-public func fm_speech_stream_next_result(session_id: RustStr, timeout_ms: Int32) -> String {
+@_cdecl("fm_speech_stream_next_result")
+public func fm_speech_stream_next_result(session_id: SRString, timeout_ms: Int32) -> SRString {
     let session = session_id.toString()
-    guard let id = UUID(uuidString: session) else { return errJSON(StreamingError.invalidSession.description) }
-    return runAsyncAndWait {
+    guard let id = UUID(uuidString: session) else { return SRString(errJSON(StreamingError.invalidSession.description)) }
+    let result: String = runAsyncAndWait {
         let envelope = await StreamingSessionManager.shared.nextResult(id: id, timeoutMs: Int(timeout_ms))
         let encoder = JSONEncoder()
         if let data = try? encoder.encode(envelope),
@@ -746,4 +777,5 @@ public func fm_speech_stream_next_result(session_id: RustStr, timeout_ms: Int32)
         }
         return errJSON("failed to encode streaming result")
     }
+    return SRString(result)
 }

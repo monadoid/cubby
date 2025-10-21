@@ -13,9 +13,7 @@ pub mod streaming;
 pub mod version;
 
 pub use speech::{
-    ensure_speech_assets_installed,
-    speech_asset_status,
-    SpeechAssetEnsureResponse,
+    ensure_speech_assets_installed, speech_asset_status, SpeechAssetEnsureResponse,
     SpeechAssetStatus,
 };
 pub use streaming::{start_streaming_session, SpeechStreamSnapshot, SpeechStreamingSession};
@@ -28,25 +26,22 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::ffi::{c_void, CStr};
 use std::pin::Pin;
+use swift_rs::SRString;
 use tokio::sync::mpsc;
 
 // Callback type for streaming (defined outside bridge module to avoid parser issues)
 type StreamCallbackFn = extern "C" fn(*mut c_void, *const i8, *const i8);
 
-#[swift_bridge::bridge]
 mod ffi {
-    extern "Swift" {
-        #[swift_bridge(swift_name = "fm_generatePerson")]
-        fn fm_generate_person(prompt: &str) -> String;
+    use swift_rs::{swift, SRString};
 
-        #[swift_bridge(swift_name = "fm_checkModelAvailability")]
-        fn fm_check_model_availability() -> String;
-    }
+    swift!(pub fn fm_generate_person(prompt: &SRString) -> SRString);
+    swift!(pub fn fm_check_model_availability() -> SRString);
 }
 
-// Manual FFI declaration for streaming (swift-bridge doesn't handle complex callback types well)
+// Manual FFI declaration for streaming (swift-rs currently does not cover callbacks)
 extern "C" {
-    fn fm_generatePersonStream_sync(
+    fn fm_generate_person_stream_sync(
         prompt: *const i8,
         callback: StreamCallbackFn,
         context: *mut c_void,
@@ -62,7 +57,7 @@ extern "C" {
 pub fn language_model_availability() -> Result<LanguageModelAvailability> {
     check_version_support()?;
 
-    let availability_json = ffi::fm_check_model_availability();
+    let availability_json = unsafe { ffi::fm_check_model_availability() }.to_string();
     parse_availability(&availability_json)
 }
 
@@ -89,7 +84,12 @@ pub async fn generate_person(prompt: &str) -> Result<Value> {
     let prompt = prompt.to_string();
 
     // spawn_blocking ensures the blocking Swift call doesn't block the tokio runtime
-    let json_str = tokio::task::spawn_blocking(move || ffi::fm_generate_person(&prompt)).await?;
+    let json_str = tokio::task::spawn_blocking(move || {
+        let prompt_sr = SRString::from(prompt.as_str());
+        let result = unsafe { ffi::fm_generate_person(&prompt_sr) };
+        result.to_string()
+    })
+    .await?;
 
     parse_response(&json_str)
 }
@@ -110,7 +110,8 @@ pub async fn generate_person(prompt: &str) -> Result<Value> {
 pub fn generate_person_blocking(prompt: &str) -> Result<Value> {
     check_version_support()?;
 
-    let json_str = ffi::fm_generate_person(prompt);
+    let prompt_sr: SRString = prompt.into();
+    let json_str = unsafe { ffi::fm_generate_person(&prompt_sr) }.to_string();
     parse_response(&json_str)
 }
 
@@ -228,7 +229,7 @@ pub fn generate_person_stream(
             let tx_ptr = &tx_clone as *const _ as *mut c_void;
             let prompt_cstr = std::ffi::CString::new(prompt).expect("CString::new failed");
             unsafe {
-                fm_generatePersonStream_sync(prompt_cstr.as_ptr(), stream_callback, tx_ptr);
+                fm_generate_person_stream_sync(prompt_cstr.as_ptr(), stream_callback, tx_ptr);
             }
         });
 

@@ -1,16 +1,16 @@
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
+use swift_rs::SRString;
 
-#[swift_bridge::bridge]
 mod ffi {
-    extern "Swift" {
-        fn fm_speech_transcribe_file(path: &str) -> String;
-        fn fm_speech_preheat() -> String;
-        fn fm_speech_assets_status() -> String;
-        fn fm_speech_ensure_assets() -> String;
-        fn fm_speech_install_assets() -> String;
-        fn fm_speech_supported_locale() -> String;
-    }
+    use swift_rs::{swift, SRString};
+
+    swift!(pub fn fm_speech_transcribe_file(path: &SRString) -> SRString);
+    swift!(pub fn fm_speech_preheat() -> SRString);
+    swift!(pub fn fm_speech_assets_status() -> SRString);
+    swift!(pub fn fm_speech_ensure_assets() -> SRString);
+    swift!(pub fn fm_speech_install_assets() -> SRString);
+    swift!(pub fn fm_speech_supported_locale() -> SRString);
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,7 +43,12 @@ pub async fn transcribe_file(path: &str) -> Result<String> {
     }
 
     let path = path.to_string();
-    let json = tokio::task::spawn_blocking(move || ffi::fm_speech_transcribe_file(&path)).await?;
+    let json = tokio::task::spawn_blocking(move || {
+        let path_sr = SRString::from(path.as_str());
+        let result = unsafe { ffi::fm_speech_transcribe_file(&path_sr) };
+        result.to_string()
+    })
+    .await?;
     parse(&json)
 }
 
@@ -65,7 +70,8 @@ pub async fn preheat_speech() -> Result<()> {
         )));
     }
 
-    let json = tokio::task::spawn_blocking(|| ffi::fm_speech_preheat()).await?;
+    let json =
+        tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_preheat() }.to_string()).await?;
     let env: PreheatEnvelope = serde_json::from_str(&json)?;
     if let Some(err) = env.error {
         return Err(anyhow!(err));
@@ -129,7 +135,9 @@ pub async fn supported_locale() -> Result<String> {
             ver
         )));
     }
-    let json = tokio::task::spawn_blocking(|| ffi::fm_speech_supported_locale()).await?;
+    let json =
+        tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_supported_locale() }.to_string())
+            .await?;
     let env: LocaleEnvelope = serde_json::from_str(&json)?;
     if let Some(err) = env.error {
         return Err(anyhow!(err));
@@ -149,7 +157,9 @@ pub async fn speech_asset_status() -> Result<SpeechAssetStatus> {
         )));
     }
 
-    let json = tokio::task::spawn_blocking(|| ffi::fm_speech_assets_status()).await?;
+    let json =
+        tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_assets_status() }.to_string())
+            .await?;
     let env = parse_status_envelope(&json)?;
     env.status
         .ok_or_else(|| anyhow!("speech assets status missing status field"))
@@ -167,7 +177,9 @@ pub async fn ensure_speech_assets_installed() -> Result<SpeechAssetEnsureRespons
         )));
     }
 
-    let json = tokio::task::spawn_blocking(|| ffi::fm_speech_ensure_assets()).await?;
+    let json =
+        tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_ensure_assets() }.to_string())
+            .await?;
     let env = parse_status_envelope(&json)?;
     let status = env
         .status
