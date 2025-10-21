@@ -56,12 +56,13 @@ bridges rust ↔ swift to call the foundationmodels framework, enabling structur
    
    or programmatically:
    ```rust
-   use cubby_foundationmodels::version::{MacOSVersion, is_foundationmodels_supported};
+   use cubby_foundationmodels::version::{MacOSVersion, is_macos_26_or_newer};
    
    if let Some(version) = MacOSVersion::current() {
        println!("macOS version: {}", version);
-       println!("supported: {}", version.supports_foundationmodels());
+       println!("supports foundationmodels: {}", version.supports_foundationmodels());
    }
+   println!("runtime meets requirement: {}", is_macos_26_or_newer());
    ```
 
 3. **download apple intelligence models**:

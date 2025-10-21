@@ -10,7 +10,7 @@ use tokio::time::timeout;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn streaming_realtime_test() -> Result<()> {
-    if !version::is_foundationmodels_supported() {
+    if !version::is_macos_26_or_newer() {
         println!("skipping streaming test: macOS 26.0+ required");
         return Ok(());
     }

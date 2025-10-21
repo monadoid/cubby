@@ -70,16 +70,22 @@ impl std::fmt::Display for MacOSVersion {
     }
 }
 
-/// Check if FoundationModels is available on the current system
+/// Check if the current system is running macOS 26.0.0 or newer.
 ///
 /// Returns `false` if:
 /// - Not running on macOS
 /// - macOS version < 26.0.0
 /// - Version detection fails
-pub fn is_foundationmodels_supported() -> bool {
+pub fn is_macos_26_or_newer() -> bool {
     MacOSVersion::current()
         .map(|v| v.supports_foundationmodels())
         .unwrap_or(false)
+}
+
+/// Backward-compatibility alias; prefer [`is_macos_26_or_newer`].
+#[inline]
+pub fn is_foundationmodels_supported() -> bool {
+    is_macos_26_or_newer()
 }
 
 #[cfg(test)]

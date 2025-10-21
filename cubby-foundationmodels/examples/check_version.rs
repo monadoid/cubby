@@ -1,6 +1,6 @@
 //! example: check macOS version compatibility
 
-use cubby_foundationmodels::version::{is_foundationmodels_supported, MacOSVersion};
+use cubby_foundationmodels::version::{is_macos_26_or_newer, MacOSVersion};
 
 fn main() {
     println!("=== macos version check ===\n");
@@ -34,7 +34,7 @@ fn main() {
 
     println!("\n=== global check ===");
     println!(
-        "is_foundationmodels_supported(): {}",
-        is_foundationmodels_supported()
+        "is_macos_26_or_newer(): {}",
+        is_macos_26_or_newer()
     );
 }

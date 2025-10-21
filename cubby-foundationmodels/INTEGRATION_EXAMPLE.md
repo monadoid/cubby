@@ -229,7 +229,7 @@ pub async fn handle_stream_summary(
 ### checking version at runtime
 
 ```rust
-use cubby_foundationmodels::version::{MacOSVersion, is_foundationmodels_supported};
+use cubby_foundationmodels::version::{MacOSVersion, is_macos_26_or_newer};
 
 pub fn should_use_foundationmodels() -> bool {
     #[cfg(not(target_os = "macos"))]
@@ -246,7 +246,7 @@ pub fn should_use_foundationmodels() -> bool {
                 return false;
             }
         }
-        false
+        is_macos_26_or_newer()
     }
 }
 ```
@@ -341,4 +341,3 @@ this integration pattern:
 - ✅ testable on all platforms
 
 the key is using `#[cfg(target_os = "macos")]` to conditionally compile foundationmodels code, with fallback implementations always available.
-
