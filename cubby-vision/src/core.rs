@@ -7,14 +7,14 @@ use crate::custom_ocr::perform_ocr_custom;
 use crate::microsoft::perform_ocr_windows;
 use crate::monitor::get_monitor_by_id;
 use crate::tesseract::perform_ocr_tesseract;
+use crate::unstructured_ocr::perform_ocr_cloud;
 use crate::utils::OcrEngine;
 use crate::utils::{capture_screenshot, compare_with_previous_image};
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
+use cubby_core::Language;
 use image::codecs::jpeg::JpegEncoder;
 use image::DynamicImage;
-use cubby_core::Language;
-use crate::unstructured_ocr::perform_ocr_cloud;
 use serde::Deserialize;
 use serde::Deserializer;
 use serde::Serialize;
@@ -578,7 +578,11 @@ impl UIFrame {
     }
 }
 
-fn get_active_browser_url_sync(app_name: &str, process_id: i32, window_title: &str) -> Result<String, std::io::Error> {
+fn get_active_browser_url_sync(
+    app_name: &str,
+    process_id: i32,
+    window_title: &str,
+) -> Result<String, std::io::Error> {
     let detector = create_url_detector();
     match detector.get_active_url(app_name, process_id, window_title) {
         Ok(Some(url)) => Ok(url),

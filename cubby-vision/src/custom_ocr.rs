@@ -1,8 +1,8 @@
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
-use image::DynamicImage;
 use cubby_core::Language;
 use cubby_db::CustomOcrConfig as DbCustomOcrConfig;
+use image::DynamicImage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

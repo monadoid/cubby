@@ -1,6 +1,5 @@
 use crate::UIFrame;
 use anyhow::Result;
-use tracing::{debug, error, info, warn};
 use cubby_events::send_event;
 use std::fs;
 use std::io;
@@ -13,6 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use tokio::signal;
 use tokio::time::{sleep, timeout, Duration};
+use tracing::{debug, error, info, warn};
 use which::which;
 
 pub async fn run_ui() -> Result<()> {
@@ -50,7 +50,9 @@ pub async fn run_ui() -> Result<()> {
         // No fallback path - ui_monitor must be in one of the standard locations
         return Err(anyhow::anyhow!(
             "ui_monitor binary not found in any expected location. Searched: {:?}, {:?}, {:?}",
-            bin_path, current_dir_path, exe_dir_path
+            bin_path,
+            current_dir_path,
+            exe_dir_path
         ));
     };
 

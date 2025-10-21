@@ -1,10 +1,10 @@
 use anyhow::Result;
-use dirs::{self, home_dir};
 use cubby_core::Language;
 use cubby_server::video_utils::extract_frames_from_video;
 use cubby_vision::capture_screenshot_by_window::CapturedWindow;
 #[cfg(target_os = "macos")]
 use cubby_vision::perform_ocr_apple;
+use dirs::{self, home_dir};
 use std::path::PathBuf;
 use tokio::fs;
 use tracing::info;
@@ -38,9 +38,7 @@ async fn create_test_video() -> Result<PathBuf> {
         }
     }
 
-    Err(anyhow::anyhow!(
-        "no monitor video found in cubby data dir"
-    ))
+    Err(anyhow::anyhow!("no monitor video found in cubby data dir"))
 }
 
 #[tokio::test]

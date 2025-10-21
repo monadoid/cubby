@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use futures::pin_mut;
 use cubby_audio::{audio_manager::AudioManagerBuilder, core::device::list_audio_devices};
 use cubby_core::Language;
 use cubby_db::DatabaseManager;
+use futures::pin_mut;
 use tokio::signal::{self};
 
 #[derive(Parser, Debug)]

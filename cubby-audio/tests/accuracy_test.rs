@@ -1,4 +1,3 @@
-use futures::future::join_all;
 use cubby_audio::core::device::default_input_device;
 use cubby_audio::core::engine::AudioTranscriptionEngine;
 use cubby_audio::speaker::embedding::EmbeddingExtractor;
@@ -11,6 +10,7 @@ use cubby_audio::transcription::whisper::model::{
 use cubby_audio::vad::{silero::SileroVad, VadEngine};
 use cubby_audio::{resample, stt, AudioInput};
 use cubby_core::Language;
+use futures::future::join_all;
 use std::path::PathBuf;
 use std::sync::Arc;
 use strsim::levenshtein;

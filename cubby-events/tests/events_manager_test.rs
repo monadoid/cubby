@@ -1,5 +1,5 @@
-use futures::StreamExt;
 use cubby_events::{send_event, subscribe_to_all_events, subscribe_to_event};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};

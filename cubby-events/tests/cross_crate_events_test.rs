@@ -1,5 +1,5 @@
-use futures::StreamExt;
 use cubby_events::{send_event, subscribe_to_event};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
 // Simulate crate A's types and events

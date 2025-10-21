@@ -1,10 +1,10 @@
-use futures::StreamExt;
 use cubby_audio::core::device::AudioDevice;
 use cubby_audio::core::device::DeviceType;
 use cubby_audio::pcm_decode;
 use cubby_audio::transcription::deepgram::streaming::start_deepgram_stream;
 use cubby_audio::transcription::deepgram::streaming::RealtimeTranscriptionEvent;
 use cubby_events::subscribe_to_event;
+use futures::StreamExt;
 use std::{
     sync::{atomic::AtomicBool, Arc},
     time::Duration,

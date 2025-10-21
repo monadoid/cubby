@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use clap::ValueEnum;
-use log::debug;
 use cubby_core::Language;
+use log::debug;
 use whisper_rs::{get_lang_str, get_lang_str_full};
 
 pub fn detect_language<'a>(tokens: Vec<f32>, languages: Vec<Language>) -> Option<&'a str> {
