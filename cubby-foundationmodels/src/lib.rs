@@ -9,6 +9,7 @@
 
 pub mod schema;
 pub mod version;
+pub mod speech;
 
 use anyhow::{anyhow, Result};
 use async_stream::stream;

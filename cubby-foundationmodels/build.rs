@@ -11,7 +11,8 @@ fn main() {
     #[cfg(target_os = "macos")]
     {
         // 1. Use `swift-bridge-build` to generate Swift/C FFI glue.
-        let bridge_files = vec!["src/lib.rs"];
+        // Include additional Rust bridge files that declare Swift externs.
+        let bridge_files = vec!["src/lib.rs", "src/speech.rs"];
         swift_bridge_build::parse_bridges(bridge_files)
             .write_all_concatenated(swift_bridge_out_dir(), "foundationmodels-bridge");
 
@@ -46,9 +47,10 @@ fn main() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", swift_lib_path);
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
         
-        // Link FoundationModels framework (requires macOS 26.0+ / SDK 26.0+)
+        // Link frameworks (requires macOS 26.0+)
         println!("cargo:rustc-link-lib=framework=FoundationModels");
         println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=Speech");
     }
 }
 

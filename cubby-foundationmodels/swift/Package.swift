@@ -18,7 +18,8 @@ let package = Package(
             dependencies: [],
             linkerSettings: [
                 .linkedFramework("FoundationModels"),
-                .linkedFramework("Foundation")
+                .linkedFramework("Foundation"),
+                .linkedFramework("Speech")
             ]
         )
     ]
