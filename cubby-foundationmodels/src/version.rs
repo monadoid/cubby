@@ -23,7 +23,7 @@ impl MacOSVersion {
     /// Parse from version string like "26.0.1" or "27.1.0"
     pub fn parse(version_str: &str) -> Option<Self> {
         let parts: Vec<&str> = version_str.trim().split('.').collect();
-        
+
         if parts.is_empty() {
             return None;
         }
@@ -42,7 +42,7 @@ impl MacOSVersion {
     /// Get current macOS version by calling sw_vers
     pub fn current() -> Option<Self> {
         static CACHED_VERSION: OnceLock<Option<MacOSVersion>> = OnceLock::new();
-        
+
         *CACHED_VERSION.get_or_init(|| {
             let output = Command::new("sw_vers")
                 .arg("-productVersion")
@@ -196,4 +196,3 @@ mod tests {
         assert_eq!(format!("{}", v), "26.0.1");
     }
 }
-

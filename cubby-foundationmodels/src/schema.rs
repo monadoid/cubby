@@ -7,10 +7,10 @@ use serde_json::Value;
 pub trait GenerableSchema: Sized + Send + 'static {
     /// Name of the schema (must match Swift struct name)
     fn schema_name() -> &'static str;
-    
+
     /// Parse from JSON value returned by Swift
     fn from_json(value: Value) -> Result<Self>;
-    
+
     /// Convert to JSON (for serialization if needed)
     fn to_json(&self) -> Result<Value>;
 }
@@ -26,19 +26,17 @@ impl GenerableSchema for PersonInfo {
     fn schema_name() -> &'static str {
         "PersonInfo"
     }
-    
+
     fn from_json(v: Value) -> Result<Self> {
         Ok(PersonInfo {
             name: v["name"]
                 .as_str()
                 .context("missing 'name' field")?
                 .to_string(),
-            age: v["age"]
-                .as_i64()
-                .context("missing 'age' field")? as i32,
+            age: v["age"].as_i64().context("missing 'age' field")? as i32,
         })
     }
-    
+
     fn to_json(&self) -> Result<Value> {
         Ok(serde_json::to_value(self)?)
     }
@@ -56,7 +54,7 @@ impl GenerableSchema for ArticleSummary {
     fn schema_name() -> &'static str {
         "ArticleSummary"
     }
-    
+
     fn from_json(v: Value) -> Result<Self> {
         Ok(ArticleSummary {
             title: v["title"]
@@ -75,9 +73,8 @@ impl GenerableSchema for ArticleSummary {
                 .collect(),
         })
     }
-    
+
     fn to_json(&self) -> Result<Value> {
         Ok(serde_json::to_value(self)?)
     }
 }
-

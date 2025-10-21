@@ -54,8 +54,13 @@ struct PreheatEnvelope {
 pub async fn preheat_speech() -> Result<()> {
     use crate::version::{is_foundationmodels_supported, MacOSVersion};
     if !is_foundationmodels_supported() {
-        let ver = MacOSVersion::current().map(|v| v.to_string()).unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!("speech requires macos 26.0+, detected {}", ver)));
+        let ver = MacOSVersion::current()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unknown".into());
+        return Err(anyhow!(format!(
+            "speech requires macos 26.0+, detected {}",
+            ver
+        )));
     }
 
     let json = tokio::task::spawn_blocking(|| ffi::fm_speech_preheat()).await?;
@@ -78,30 +83,47 @@ struct InstallEnvelope {
 pub async fn install_speech_assets() -> Result<()> {
     use crate::version::{is_foundationmodels_supported, MacOSVersion};
     if !is_foundationmodels_supported() {
-        let ver = MacOSVersion::current().map(|v| v.to_string()).unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!("speech requires macos 26.0+, detected {}", ver)));
+        let ver = MacOSVersion::current()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unknown".into());
+        return Err(anyhow!(format!(
+            "speech requires macos 26.0+, detected {}",
+            ver
+        )));
     }
 
     let json = tokio::task::spawn_blocking(|| ffi::fm_speech_install_assets()).await?;
     let env: InstallEnvelope = serde_json::from_str(&json)?;
-    if let Some(err) = env.error { return Err(anyhow!(err)); }
-    if env.ok != Some(true) { return Err(anyhow!("speech assets install failed")); }
+    if let Some(err) = env.error {
+        return Err(anyhow!(err));
+    }
+    if env.ok != Some(true) {
+        return Err(anyhow!("speech assets install failed"));
+    }
     Ok(())
 }
 
 #[derive(Debug, Deserialize)]
-struct LocaleEnvelope<'a> { locale: Option<&'a str>, error: Option<String> }
+struct LocaleEnvelope<'a> {
+    locale: Option<&'a str>,
+    error: Option<String>,
+}
 
 pub async fn supported_locale() -> Result<String> {
     use crate::version::{is_foundationmodels_supported, MacOSVersion};
     if !is_foundationmodels_supported() {
-        let ver = MacOSVersion::current().map(|v| v.to_string()).unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!("speech requires macos 26.0+, detected {}", ver)));
+        let ver = MacOSVersion::current()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unknown".into());
+        return Err(anyhow!(format!(
+            "speech requires macos 26.0+, detected {}",
+            ver
+        )));
     }
     let json = tokio::task::spawn_blocking(|| ffi::fm_speech_supported_locale()).await?;
     let env: LocaleEnvelope = serde_json::from_str(&json)?;
-    if let Some(err) = env.error { return Err(anyhow!(err)); }
+    if let Some(err) = env.error {
+        return Err(anyhow!(err));
+    }
     Ok(env.locale.unwrap_or("").to_string())
 }
-
-

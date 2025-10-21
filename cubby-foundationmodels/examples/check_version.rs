@@ -1,10 +1,10 @@
 //! example: check macOS version compatibility
 
-use cubby_foundationmodels::version::{MacOSVersion, is_foundationmodels_supported};
+use cubby_foundationmodels::version::{is_foundationmodels_supported, MacOSVersion};
 
 fn main() {
     println!("=== macos version check ===\n");
-    
+
     // get current version
     match MacOSVersion::current() {
         Some(version) => {
@@ -12,11 +12,11 @@ fn main() {
             println!("  major: {}", version.major);
             println!("  minor: {}", version.minor);
             println!("  patch: {}\n", version.patch);
-            
+
             // check if foundationmodels is supported
             let supported = version.supports_foundationmodels();
             println!("foundationmodels supported: {}", supported);
-            
+
             if supported {
                 println!("✓ you can use cubby-foundationmodels apis!");
             } else {
@@ -31,8 +31,10 @@ fn main() {
             println!("  - running on non-macOS system");
         }
     }
-    
-    println!("\n=== global check ===");
-    println!("is_foundationmodels_supported(): {}", is_foundationmodels_supported());
-}
 
+    println!("\n=== global check ===");
+    println!(
+        "is_foundationmodels_supported(): {}",
+        is_foundationmodels_supported()
+    );
+}

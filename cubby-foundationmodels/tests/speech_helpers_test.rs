@@ -1,4 +1,4 @@
-use cubby_foundationmodels::speech::{preheat_speech, install_speech_assets, supported_locale};
+use cubby_foundationmodels::speech::{install_speech_assets, preheat_speech, supported_locale};
 
 #[tokio::test]
 async fn test_speech_supported_locale() {
@@ -7,7 +7,10 @@ async fn test_speech_supported_locale() {
             println!("supported locale: {}", locale);
             assert!(!locale.is_empty(), "locale should not be empty");
             // locale format should be like "en_US", "en_CA", etc.
-            assert!(locale.contains('_') || locale.len() >= 2, "locale should be valid identifier");
+            assert!(
+                locale.contains('_') || locale.len() >= 2,
+                "locale should be valid identifier"
+            );
         }
         Err(e) => {
             let msg = e.to_string();
@@ -48,7 +51,8 @@ async fn test_speech_preheat() {
         Err(e) => {
             let msg = e.to_string();
             // skip if platform unsupported, assets unavailable, or locale unsupported
-            if msg.contains("macos 26.0+") || msg.contains("unsupported") || msg.contains("assets") {
+            if msg.contains("macos 26.0+") || msg.contains("unsupported") || msg.contains("assets")
+            {
                 println!("⚠️  SKIPPED: {}", msg);
                 return;
             }
@@ -68,17 +72,16 @@ async fn test_speech_workflow_preheat_then_transcribe() {
             return;
         }
     }
-    
+
     // 2. transcribe (using existing fixture)
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let test_file = std::path::PathBuf::from(&manifest_dir)
-        .join("tests/fixtures/test_audio.m4a");
-    
+    let test_file = std::path::PathBuf::from(&manifest_dir).join("tests/fixtures/test_audio.m4a");
+
     if !test_file.exists() {
         println!("⚠️  SKIPPED: test fixture not found");
         return;
     }
-    
+
     match cubby_foundationmodels::speech::transcribe_file(test_file.to_str().unwrap()).await {
         Ok(text) => {
             println!("transcript after preheat: {} chars", text.len());
@@ -94,4 +97,3 @@ async fn test_speech_workflow_preheat_then_transcribe() {
         }
     }
 }
-
