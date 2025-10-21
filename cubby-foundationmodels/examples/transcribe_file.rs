@@ -2,7 +2,9 @@ use cubby_foundationmodels::speech::transcribe_file;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let path = std::env::args().nth(1).expect("usage: transcribe_file <path>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: transcribe_file <path>");
     match transcribe_file(&path).await {
         Ok(text) => {
             println!("transcript: {}", text);
@@ -15,5 +17,3 @@ async fn main() -> anyhow::Result<()> {
     }
     Ok(())
 }
-
-

@@ -5,6 +5,7 @@ Cargo.lock
 # swift build artifacts
 swift/.build/
 swift/Package.resolved
+swift/.module-cache/
 
 # swift-bridge generated code (regenerated during build)
 swift/Sources/FoundationModelsBridge/generated/
@@ -27,4 +28,3 @@ swift/Sources/FoundationModelsBridge/generated/
 # temporary files
 *.tmp
 *.log
-

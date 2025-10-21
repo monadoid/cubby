@@ -6,9 +6,8 @@ use std::time::Duration;
 async fn test_speech_transcribe_file() {
     // use test fixture (both formats available)
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-    let test_file = PathBuf::from(&manifest_dir)
-        .join("tests/fixtures/test_audio.m4a");
-    
+    let test_file = PathBuf::from(&manifest_dir).join("tests/fixtures/test_audio.m4a");
+
     if !test_file.exists() {
         println!("⚠️  SKIPPED: test fixture not found at {:?}", test_file);
         return;
@@ -17,8 +16,9 @@ async fn test_speech_transcribe_file() {
     // wrap in timeout to avoid indefinite hangs
     let timeout_result = tokio::time::timeout(
         Duration::from_secs(120),
-        transcribe_file(test_file.to_str().unwrap())
-    ).await;
+        transcribe_file(test_file.to_str().unwrap()),
+    )
+    .await;
 
     match timeout_result {
         Ok(Ok(text)) => {
@@ -28,7 +28,8 @@ async fn test_speech_transcribe_file() {
         Ok(Err(e)) => {
             let msg = e.to_string();
             // gracefully skip if assets unavailable or locale unsupported
-            if msg.contains("assets") || msg.contains("unsupported") || msg.contains("speech error") {
+            if msg.contains("assets") || msg.contains("unsupported") || msg.contains("speech error")
+            {
                 println!("⚠️  SKIPPED: {}", msg);
                 return;
             }
@@ -44,5 +45,3 @@ async fn test_speech_transcribe_file() {
         }
     }
 }
-
-
