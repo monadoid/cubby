@@ -15,7 +15,11 @@ this installs the cubby binary and starts recording your screen and audio in the
 
 ## how it works
 
-cubby continuously records your screen (ocr + screenshots) and audio (transcriptions). everything is stored in a local database.
+a local rust server runs on `localhost:3030` and a secure tunnel is created for you, which you can access at `api.cubby.sh`. the server continuously records screen (ocr + screenshots) and audio (transcriptions + speaker identification). everything is stored in sqlite.
+
+### to get started fast, deploy this cubby + cloudflare agents starter
+
+build an ai agent with access to your personal memory system. check out the starter: [github.com/monadoid/cubby-starter](https://github.com/monadoid/cubby-starter)
 
 you can then access your data in three ways:
 
@@ -110,10 +114,35 @@ full sdk docs at [npmjs.com/package/@cubby/js](https://www.npmjs.com/package/@cu
 
 **local:** `http://localhost:3030/mcp` (no auth)
 
+add to your mcp config:
+```json
+{
+  "mcpServers": {
+    "cubby": {
+      "type": "streamable-http",
+      "url": "http://localhost:3030/mcp"
+    }
+  }
+}
+```
+
 **remote:** `https://api.cubby.sh/mcp` (requires access token)
 - get credentials at [cubby.sh/dashboard](https://cubby.sh/dashboard)
 - exchange for token: `curl -X POST https://api.cubby.sh/oauth/token -H "Content-Type: application/x-www-form-urlencoded" -d "grant_type=client_credentials&client_id=YOUR_ID&client_secret=YOUR_SECRET&scope=read:cubby"`
-- add to mcp config: `"headers": { "Authorization": "Bearer YOUR_TOKEN" }`
+- add to mcp config:
+```json
+{
+  "mcpServers": {
+    "cubby": {
+      "type": "streamable-http",
+      "url": "https://api.cubby.sh/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}
+```
 
 **available tools:**
 - `devices/list` - list your enrolled devices

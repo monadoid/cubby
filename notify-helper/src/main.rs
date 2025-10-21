@@ -22,6 +22,6 @@ fn main() -> Result<()> {
         .content_image("./cubby_logo_black.png")
         .send()
         .context("send mac notification")?;
-    
+
     Ok(())
 }

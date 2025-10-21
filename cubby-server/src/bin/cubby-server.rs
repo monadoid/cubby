@@ -159,7 +159,6 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
-
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
 

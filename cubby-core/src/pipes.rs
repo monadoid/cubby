@@ -1040,10 +1040,7 @@ fn download_github_folder(
             .with(Cache(HttpCache {
                 mode: CacheMode::Default,
                 manager: CACacheManager {
-                    path: home_dir()
-                        .unwrap()
-                        .join(".cubby")
-                        .join(".http-cacache"),
+                    path: home_dir().unwrap().join(".cubby").join(".http-cacache"),
                 },
                 options: HttpCacheOptions::default(),
             }))

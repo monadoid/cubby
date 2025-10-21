@@ -1,8 +1,8 @@
 mod tests {
-    use log::LevelFilter;
     use cubby_audio::speaker::embedding::EmbeddingExtractor;
     use cubby_audio::speaker::embedding_manager::EmbeddingManager;
     use cubby_audio::speaker::segment::get_segments;
+    use log::LevelFilter;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
@@ -47,8 +47,7 @@ mod tests {
             .join("test_data/speaker_identification/6_speakers.wav");
 
         let (mut multiple_speakers_data, multiple_speakers_sample_rate) =
-            cubby_audio::pcm_decode(&multiple_speakers_path)
-                .expect("Failed to decode audio file");
+            cubby_audio::pcm_decode(&multiple_speakers_path).expect("Failed to decode audio file");
 
         // reesample if not 16000
         if multiple_speakers_sample_rate != 16000 {

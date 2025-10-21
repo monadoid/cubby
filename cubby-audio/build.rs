@@ -72,7 +72,9 @@ fn find_unzip() -> Option<std::path::PathBuf> {
         // check PATH first
         which::which("unzip").ok(),
         // fallback to common GnuWin32 location
-        Some(std::path::PathBuf::from(r"C:\Program Files (x86)\GnuWin32\bin\unzip.exe")),
+        Some(std::path::PathBuf::from(
+            r"C:\Program Files (x86)\GnuWin32\bin\unzip.exe",
+        )),
     ];
 
     paths.into_iter().flatten().find(|p| p.exists())
@@ -99,12 +101,12 @@ fn find_unzip() -> Option<std::path::PathBuf> {
 //     let body = resp.bytes().expect("body invalid");
 //     fs::write("./onnxruntime-win-x64-gpu-1.19.2.zip", &body).expect("failed to write");
 //     let unzip_path = find_unzip().expect("could not find unzip executable - please install it via GnuWin32 or add it to PATH");
-//     
+//
 //     let status = Command::new(unzip_path)
 //         .args(["-o", "onnxruntime-win-x64-gpu-1.19.2.zip"])
 //         .status()
 //         .expect("failed to execute unzip");
-//     
+//
 //     if !status.success() {
 //         panic!("failed to install onnx binary");
 //     }

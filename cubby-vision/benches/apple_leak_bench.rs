@@ -1,9 +1,9 @@
 #[cfg(target_os = "macos")]
 mod apple_leak_bench {
     use criterion::{criterion_group, criterion_main, Criterion};
+    use cubby_vision::perform_ocr_apple;
     use image::GenericImageView;
     use memory_stats::memory_stats;
-    use cubby_vision::perform_ocr_apple;
     use std::path::PathBuf;
 
     fn bytes_to_mb(bytes: usize) -> f64 {
