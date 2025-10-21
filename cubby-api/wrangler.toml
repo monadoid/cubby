@@ -17,6 +17,9 @@ head_sampling_rate = 1
 [assets]
 directory = "public"
 
+[dev]
+port=8787
+
 
 
 

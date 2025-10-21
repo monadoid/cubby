@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import SwiftRs
 
 // Define schemas that conform to Generable for structured output
 
@@ -22,8 +23,8 @@ struct ArticleSummary: Codable {
 /// - status: "available" | "unavailable" | "unknown"
 /// - reason: optional localized description for unavailable state
 /// - reason_code: optional debug identifier for unavailable state
-@_cdecl("fm_checkModelAvailability")
-func fm_checkModelAvailability() -> String {
+@_cdecl("fm_check_model_availability")
+public func fm_check_model_availability() -> SRString {
     let model = SystemLanguageModel()
     
     enum AvailabilityStatus: String {
@@ -48,11 +49,11 @@ func fm_checkModelAvailability() -> String {
     
     if let jsonData = try? JSONSerialization.data(withJSONObject: payload),
        let jsonString = String(data: jsonData, encoding: .utf8) {
-        return jsonString
+        return SRString(jsonString)
     }
     
     // Fallback JSON on serialization failure
-    return "{\"status\":\"unknown\",\"reason\":\"failed to encode availability\"}"
+    return SRString("{\"status\":\"unknown\",\"reason\":\"failed to encode availability\"}")
 }
 
 /// Synchronous wrapper for FoundationModels async API
@@ -64,8 +65,8 @@ func fm_checkModelAvailability() -> String {
 /// - Never from UI/main thread
 ///
 /// Returns JSON string on success, or error JSON {"error": "..."} on failure
-@_cdecl("fm_generatePerson_sync")
-func fm_generatePerson(prompt: RustStr) -> String {
+@_cdecl("fm_generate_person")
+public func fm_generate_person(prompt: SRString) -> SRString {
     let promptString = prompt.toString()
     
     // Use async let with runBlocking pattern
@@ -80,22 +81,22 @@ func fm_generatePerson(prompt: RustStr) -> String {
     
     switch result {
     case .success(let json):
-        return json
+        return SRString(json)
     case .failure(let error):
         // Return error as JSON
         let errorDict = ["error": error.localizedDescription]
         if let errorData = try? JSONEncoder().encode(errorDict),
            let errorJson = String(data: errorData, encoding: .utf8) {
-            return errorJson
+            return SRString(errorJson)
         }
-        return "{\"error\":\"unknown error\"}"
+        return SRString("{\"error\":\"unknown error\"}")
     }
 }
 
 /// Helper to run async code synchronously
 /// 
 /// This uses a semaphore to block the calling thread until the async operation completes.
-/// This is necessary because swift-bridge does not support importing async Swift functions into Rust.
+/// This is necessary because the exported C functions must be synchronous for Rust FFI entry points.
 /// 
 /// The Sendable constraint ensures thread-safety across the async boundary.
 func runAsyncAndWait<T: Sendable>(_ operation: @Sendable @escaping () async -> T) -> T {
@@ -162,8 +163,8 @@ typealias StreamCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoint
 /// - context: user-provided context pointer
 /// - content_json: JSON string of partial PersonInfo (nil signals completion/error)
 /// - raw_content: raw text generated so far (nil for error, empty for completion)
-@_cdecl("fm_generatePersonStream_sync")
-func fm_generatePersonStream(
+@_cdecl("fm_generate_person_stream_sync")
+func fm_generate_person_stream(
     prompt: UnsafePointer<CChar>,
     callback: StreamCallback,
     context: UnsafeMutableRawPointer?

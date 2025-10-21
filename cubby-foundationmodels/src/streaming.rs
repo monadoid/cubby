@@ -5,23 +5,24 @@ use std::sync::{
 
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
+use swift_rs::{Int, SRString};
 use tokio::sync::mpsc;
 
 use crate::version::{is_macos_26_or_newer, MacOSVersion};
 
-#[swift_bridge::bridge]
 mod ffi {
-    extern "Swift" {
-        fn fm_speech_stream_create() -> String;
-        fn fm_speech_stream_push_f32(
-            session_id: &str,
-            samples: Vec<f32>,
-            sample_rate: i32,
-        ) -> String;
-        fn fm_speech_stream_finish(session_id: &str) -> String;
-        fn fm_speech_stream_cancel(session_id: &str) -> String;
-        fn fm_speech_stream_next_result(session_id: &str, timeout_ms: i32) -> String;
-    }
+    use swift_rs::{swift, Int, SRString};
+
+    swift!(pub fn fm_speech_stream_create() -> SRString);
+    swift!(pub fn fm_speech_stream_push_f32(
+        session_id: &SRString,
+        samples_ptr: *const u8,
+        samples_len: Int,
+        sample_rate: i32
+    ) -> SRString);
+    swift!(pub fn fm_speech_stream_finish(session_id: &SRString) -> SRString);
+    swift!(pub fn fm_speech_stream_cancel(session_id: &SRString) -> SRString);
+    swift!(pub fn fm_speech_stream_next_result(session_id: &SRString, timeout_ms: i32) -> SRString);
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +69,9 @@ impl SpeechStreamingSession {
     pub async fn create() -> Result<Self> {
         ensure_supported()?;
 
-        let json = tokio::task::spawn_blocking(ffi::fm_speech_stream_create).await?;
+        let json =
+            tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_stream_create() }.to_string())
+                .await?;
 
         let env: CreateEnvelope = serde_json::from_str(&json)?;
         if let Some(err) = env.error {
@@ -89,7 +92,6 @@ impl SpeechStreamingSession {
     pub fn id(&self) -> &str {
         &self.inner.id
     }
-
 
     pub fn subscribe(&self) -> mpsc::UnboundedReceiver<Result<SpeechStreamSnapshot>> {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -127,9 +129,15 @@ impl SpeechStreamingSession {
         let vec = samples.to_vec();
         let rate = i32::try_from(sample_rate).map_err(|_| anyhow!("sample rate out of range"))?;
 
-        let json =
-            tokio::task::spawn_blocking(move || ffi::fm_speech_stream_push_f32(&id, vec, rate))
-                .await?;
+        let json = tokio::task::spawn_blocking(move || {
+            let id_sr = SRString::from(id.as_str());
+            let byte_len = vec.len().saturating_mul(std::mem::size_of::<f32>());
+            let len: Int = byte_len.try_into().unwrap_or(isize::MAX);
+            let ptr = vec.as_ptr() as *const u8;
+            let result = unsafe { ffi::fm_speech_stream_push_f32(&id_sr, ptr, len, rate) };
+            result.to_string()
+        })
+        .await?;
 
         parse_ok(json.as_str())
     }
@@ -141,7 +149,11 @@ impl SpeechStreamingSession {
         }
 
         let id = self.inner.id.clone();
-        let json = tokio::task::spawn_blocking(move || ffi::fm_speech_stream_finish(&id)).await?;
+        let json = tokio::task::spawn_blocking(move || {
+            let id_sr = SRString::from(id.as_str());
+            unsafe { ffi::fm_speech_stream_finish(&id_sr) }.to_string()
+        })
+        .await?;
         parse_ok(json.as_str())
     }
 
@@ -152,16 +164,22 @@ impl SpeechStreamingSession {
         }
 
         let id = self.inner.id.clone();
-        let json = tokio::task::spawn_blocking(move || ffi::fm_speech_stream_cancel(&id)).await?;
+        let json = tokio::task::spawn_blocking(move || {
+            let id_sr = SRString::from(id.as_str());
+            unsafe { ffi::fm_speech_stream_cancel(&id_sr) }.to_string()
+        })
+        .await?;
         parse_ok(json.as_str())
     }
 
     async fn poll_next(&self, timeout_ms: i32) -> Result<StreamEvent> {
         let id = self.inner.id.clone();
         let timeout = timeout_ms.max(0);
-        let json =
-            tokio::task::spawn_blocking(move || ffi::fm_speech_stream_next_result(&id, timeout))
-                .await?;
+        let json = tokio::task::spawn_blocking(move || {
+            let id_sr = SRString::from(id.as_str());
+            unsafe { ffi::fm_speech_stream_next_result(&id_sr, timeout) }.to_string()
+        })
+        .await?;
         let env: StreamEventEnvelope = serde_json::from_str(&json)?;
         if let Some(err) = env.error {
             return Err(anyhow!(err));
