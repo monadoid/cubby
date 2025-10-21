@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use futures::StreamExt;
 use cubby_events::{send_event, subscribe_to_event};
+use futures::StreamExt;
 use tokio::runtime::Runtime;
 
 fn benchmark_event_system(c: &mut Criterion) {

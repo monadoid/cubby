@@ -4,9 +4,9 @@ use std::{
 };
 
 use anyhow::Result;
-use dirs::home_dir;
 use cubby_db::DatabaseManager;
 use cubby_server::{cli::OutputFormat, handle_index_command};
+use dirs::home_dir;
 use tempfile::tempdir;
 use tokio::fs;
 use tracing::debug;

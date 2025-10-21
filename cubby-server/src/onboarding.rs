@@ -76,17 +76,17 @@ async fn run_authentication_flow() -> Result<AuthResult> {
 /// Create M2M client credentials and print access token for API/MCP usage
 async fn create_api_credentials(session_jwt: &str) -> Result<()> {
     cliclack::log::step("generating api credentials...")?;
-    
+
     let client = CubbyApiClient::new();
-    
+
     // Create M2M client
     let m2m_response = client.create_m2m_client(session_jwt).await?;
-    
+
     // Exchange for access token
     let token_response = client
         .exchange_for_token(&m2m_response.client_id, &m2m_response.client_secret)
         .await?;
-    
+
     cliclack::log::success("api credentials generated!")?;
     cliclack::outro_note(
         "api access token",
@@ -105,6 +105,6 @@ async fn create_api_credentials(session_jwt: &str) -> Result<()> {
             token_response.access_token,
         ),
     )?;
-    
+
     Ok(())
 }

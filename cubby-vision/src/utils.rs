@@ -4,12 +4,12 @@ use crate::capture_screenshot_by_window::{
 use crate::core::MaxAverageFrame;
 use crate::custom_ocr::CustomOcrConfig;
 use crate::monitor::SafeMonitor;
+use cubby_db::{CustomOcrConfig as DbCustomOcrConfig, OcrEngine as DbOcrEngine};
 use image::DynamicImage;
 use image_compare::{Algorithm, Metric, Similarity};
-use tracing::{debug, warn};
-use cubby_db::{OcrEngine as DbOcrEngine, CustomOcrConfig as DbCustomOcrConfig};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::{Duration, Instant};
+use tracing::{debug, warn};
 
 #[derive(Clone, Debug, Default)]
 pub enum OcrEngine {
@@ -28,9 +28,7 @@ impl From<OcrEngine> for DbOcrEngine {
             OcrEngine::Tesseract => DbOcrEngine::Tesseract,
             OcrEngine::WindowsNative => DbOcrEngine::WindowsNative,
             OcrEngine::AppleNative => DbOcrEngine::AppleNative,
-            OcrEngine::Custom(config) => {
-                DbOcrEngine::Custom(DbCustomOcrConfig::from(config))
-            }
+            OcrEngine::Custom(config) => DbOcrEngine::Custom(DbCustomOcrConfig::from(config)),
         }
     }
 }
