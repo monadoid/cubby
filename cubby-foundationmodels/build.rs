@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::{fs, path::PathBuf, process::Command};
 
 fn main() {
     // This crate only works on macOS 26.0+ (which provides FoundationModels framework)
@@ -12,7 +12,7 @@ fn main() {
     {
         // 1. Use `swift-bridge-build` to generate Swift/C FFI glue.
         // Include additional Rust bridge files that declare Swift externs.
-        let bridge_files = vec!["src/lib.rs", "src/speech.rs"];
+        let bridge_files = vec!["src/lib.rs", "src/speech.rs", "src/streaming.rs"];
         swift_bridge_build::parse_bridges(bridge_files)
             .write_all_concatenated(swift_bridge_out_dir(), "foundationmodels-bridge");
 
@@ -38,36 +38,54 @@ fn main() {
         } else {
             "/Applications/Xcode.app/Contents/Developer".to_string()
         };
-        
-        let swift_lib_path = format!("{}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/", &xcode_path);
+
+        let swift_lib_path = format!(
+            "{}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/",
+            &xcode_path
+        );
         println!("cargo:rustc-link-search={}", swift_lib_path);
         println!("cargo:rustc-link-search={}", "/usr/lib/swift");
-        
+
         // Set rpath for Swift dynamic libraries
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", swift_lib_path);
         println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
-        
+
         // Link frameworks (requires macOS 26.0+)
         println!("cargo:rustc-link-lib=framework=FoundationModels");
         println!("cargo:rustc-link-lib=framework=Foundation");
         println!("cargo:rustc-link-lib=framework=Speech");
+        println!("cargo:rustc-link-lib=framework=AVFoundation");
     }
 }
 
 #[cfg(target_os = "macos")]
 fn compile_swift() {
     let swift_package_dir = manifest_dir().join("swift");
+    let module_cache_dir = swift_package_dir.join(".module-cache");
+    let _ = fs::create_dir_all(&module_cache_dir);
 
     let mut cmd = Command::new("swift");
 
+    cmd.env("CLANG_MODULE_CACHE_PATH", &module_cache_dir);
+    cmd.env("SWIFT_MODULE_CACHE_PATH", &module_cache_dir);
+    cmd.env("SWIFT_PM_MODULECACHE_OVERRIDE", &module_cache_dir);
+    cmd.env("SWIFTPM_DISABLE_SANDBOX", "1");
+
     cmd.current_dir(&swift_package_dir)
         .arg("build")
+        .arg("--disable-sandbox")
         .args(&[
-            "-Xswiftc", "-import-objc-header",
-            "-Xswiftc", swift_source_dir()
+            "-Xswiftc",
+            "-import-objc-header",
+            "-Xswiftc",
+            swift_source_dir()
                 .join("bridging-header.h")
                 .to_str()
                 .unwrap(),
+            "-Xswiftc",
+            "-module-cache-path",
+            "-Xswiftc",
+            module_cache_dir.to_str().unwrap(),
         ]);
 
     if is_release_build() {

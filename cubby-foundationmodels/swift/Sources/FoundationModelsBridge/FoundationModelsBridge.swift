@@ -16,6 +16,45 @@ struct ArticleSummary: Codable {
     var key_points: [String]
 }
 
+/// Check availability of the default system language model
+///
+/// Returns JSON string with fields:
+/// - status: "available" | "unavailable" | "unknown"
+/// - reason: optional localized description for unavailable state
+/// - reason_code: optional debug identifier for unavailable state
+@_cdecl("fm_checkModelAvailability")
+func fm_checkModelAvailability() -> String {
+    let model = SystemLanguageModel()
+    
+    enum AvailabilityStatus: String {
+        case available
+        case unavailable
+        case unknown
+    }
+    
+    var payload: [String: Any] = [:]
+    
+    switch model.availability {
+    case .available:
+        payload["status"] = AvailabilityStatus.available.rawValue
+    case .unavailable(let reason):
+        payload["status"] = AvailabilityStatus.unavailable.rawValue
+        let reasonDescription = String(describing: reason)
+        payload["reason"] = reasonDescription
+        payload["reason_code"] = String(reflecting: reason)
+    @unknown default:
+        payload["status"] = AvailabilityStatus.unknown.rawValue
+    }
+    
+    if let jsonData = try? JSONSerialization.data(withJSONObject: payload),
+       let jsonString = String(data: jsonData, encoding: .utf8) {
+        return jsonString
+    }
+    
+    // Fallback JSON on serialization failure
+    return "{\"status\":\"unknown\",\"reason\":\"failed to encode availability\"}"
+}
+
 /// Synchronous wrapper for FoundationModels async API
 /// 
 /// **WARNING: This function blocks the calling thread** until the async operation completes.
@@ -213,4 +252,3 @@ private func generatePersonStreamAsync(
         }
     }
 }
-

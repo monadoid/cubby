@@ -30,4 +30,4 @@ swift-bridge-build = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
-
+hound = "3"

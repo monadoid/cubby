@@ -8,13 +8,17 @@
 #![cfg(target_os = "macos")]
 
 pub mod schema;
-pub mod version;
 pub mod speech;
+pub mod streaming;
+pub mod version;
+
+pub use streaming::{start_streaming_session, SpeechStreamSnapshot, SpeechStreamingSession};
 
 use anyhow::{anyhow, Result};
 use async_stream::stream;
 use futures::Stream;
 use schema::GenerableSchema;
+use serde::Deserialize;
 use serde_json::Value;
 use std::ffi::{c_void, CStr};
 use std::pin::Pin;
@@ -28,6 +32,9 @@ mod ffi {
     extern "Swift" {
         #[swift_bridge(swift_name = "fm_generatePerson")]
         fn fm_generate_person(prompt: &str) -> String;
+
+        #[swift_bridge(swift_name = "fm_checkModelAvailability")]
+        fn fm_check_model_availability() -> String;
     }
 }
 
@@ -40,13 +47,26 @@ extern "C" {
     );
 }
 
+// MARK: - Availability
+
+/// Check whether the default SystemLanguageModel is available.
+///
+/// Returns a structured summary bridged from Swift, including an optional reason when
+/// the model is unavailable (e.g. assets not downloaded).
+pub fn language_model_availability() -> Result<LanguageModelAvailability> {
+    check_version_support()?;
+
+    let availability_json = ffi::fm_check_model_availability();
+    parse_availability(&availability_json)
+}
+
 // MARK: - Non-streaming APIs (original)
 
 /// Generate structured JSON output using Apple's FoundationModels SDK
-/// 
+///
 /// This is an async function that spawns the blocking FFI call on a dedicated thread pool,
 /// ensuring the tokio runtime remains responsive.
-/// 
+///
 /// # Example
 /// ```no_run
 /// # use cubby_foundationmodels::generate_person;
@@ -59,20 +79,20 @@ extern "C" {
 /// ```
 pub async fn generate_person(prompt: &str) -> Result<Value> {
     check_version_support()?;
-    
+
     let prompt = prompt.to_string();
-    
+
     // spawn_blocking ensures the blocking Swift call doesn't block the tokio runtime
     let json_str = tokio::task::spawn_blocking(move || ffi::fm_generate_person(&prompt)).await?;
-    
+
     parse_response(&json_str)
 }
 
 /// Synchronous version - generates structured JSON output (blocking)
-/// 
+///
 /// **WARNING**: This blocks the calling thread until the Swift SDK completes.
 /// Prefer using the async `generate_person` function in async contexts.
-/// 
+///
 /// # Example
 /// ```no_run
 /// # use cubby_foundationmodels::generate_person_blocking;
@@ -83,7 +103,7 @@ pub async fn generate_person(prompt: &str) -> Result<Value> {
 /// ```
 pub fn generate_person_blocking(prompt: &str) -> Result<Value> {
     check_version_support()?;
-    
+
     let json_str = ffi::fm_generate_person(prompt);
     parse_response(&json_str)
 }
@@ -99,6 +119,33 @@ pub struct StreamSnapshot {
     pub raw_content: String,
 }
 
+/// Status values returned when checking language model availability
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageModelAvailabilityStatus {
+    Available,
+    Unavailable,
+    Unknown,
+}
+
+/// Availability details for the system language model.
+///
+/// These values are bridged from the Swift `SystemLanguageModel` availability API.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct LanguageModelAvailability {
+    pub status: LanguageModelAvailabilityStatus,
+    pub reason: Option<String>,
+    #[serde(rename = "reason_code")]
+    pub reason_code: Option<String>,
+}
+
+impl LanguageModelAvailability {
+    /// Returns `true` when the model is available for use.
+    pub fn is_available(&self) -> bool {
+        matches!(self.status, LanguageModelAvailabilityStatus::Available)
+    }
+}
+
 /// Generate structured output with streaming updates
 ///
 /// Returns a `Stream` that yields partial results as they arrive from the model.
@@ -111,7 +158,7 @@ pub struct StreamSnapshot {
 /// # #[tokio::main]
 /// # async fn main() -> anyhow::Result<()> {
 /// let mut stream = generate_person_stream("generate alice, age 28");
-/// 
+///
 /// while let Some(result) = stream.next().await {
 ///     let snapshot = result?;
 ///     println!("partial: {}", snapshot.raw_content);
@@ -119,20 +166,22 @@ pub struct StreamSnapshot {
 /// # Ok(())
 /// # }
 /// ```
-pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<StreamSnapshot>> + Send>> {
+pub fn generate_person_stream(
+    prompt: &str,
+) -> Pin<Box<dyn Stream<Item = Result<StreamSnapshot>> + Send>> {
     // check version once before starting stream
     if let Err(e) = check_version_support() {
         return Box::pin(stream! {
             yield Err(e);
         });
     }
-    
+
     let prompt = prompt.to_string();
-    
+
     Box::pin(stream! {
-        let (tx, mut rx): (mpsc::UnboundedSender<Result<(Option<String>, Option<String>)>>, _) = 
+        let (tx, mut rx): (mpsc::UnboundedSender<Result<(Option<String>, Option<String>)>>, _) =
             mpsc::unbounded_channel();
-        
+
         // Callback that Swift will invoke for each snapshot
         extern "C" fn stream_callback(
             ctx: *mut c_void,
@@ -140,7 +189,7 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
             raw_content: *const i8,
         ) {
             let tx = unsafe { &*(ctx as *const mpsc::UnboundedSender<Result<(Option<String>, Option<String>)>>) };
-            
+
             // nil content_json signals completion or error
             if content_json.is_null() {
                 if raw_content.is_null() {
@@ -151,11 +200,11 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
                     return;
                 }
             }
-            
+
             let content_str = unsafe {
                 CStr::from_ptr(content_json).to_string_lossy().into_owned()
             };
-            
+
             let raw_str = if raw_content.is_null() {
                 None
             } else {
@@ -163,10 +212,10 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
                     CStr::from_ptr(raw_content).to_string_lossy().into_owned()
                 })
             };
-            
+
             let _ = tx.send(Ok((Some(content_str), raw_str)));
         }
-        
+
         // Spawn blocking task for FFI call
         let tx_clone = tx.clone();
         let handle = tokio::task::spawn_blocking(move || {
@@ -176,9 +225,9 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
                 fm_generatePersonStream_sync(prompt_cstr.as_ptr(), stream_callback, tx_ptr);
             }
         });
-        
+
         drop(tx); // close sender so stream ends naturally
-        
+
         // Yield snapshots as they arrive
         while let Some(result) = rx.recv().await {
             match result {
@@ -191,13 +240,13 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
                             break;
                         }
                     };
-                    
+
                     // Check for error
                     if let Some(err_msg) = content_value.get("error").and_then(|v| v.as_str()) {
                         yield Err(anyhow!("foundationmodels error: {}", err_msg));
                         break;
                     }
-                    
+
                     yield Ok(StreamSnapshot {
                         content: content_value,
                         raw_content: raw_opt.unwrap_or_default(),
@@ -213,7 +262,7 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
                 }
             }
         }
-        
+
         // Wait for FFI task to finish
         let _ = handle.await;
     })
@@ -238,17 +287,19 @@ pub fn generate_person_stream(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<
 /// ```
 pub async fn generate<T: GenerableSchema>(prompt: &str) -> Result<T> {
     let schema_name = T::schema_name();
-    
+
     // Route to appropriate Swift wrapper based on schema name
     let json_value = match schema_name {
         "PersonInfo" => generate_person(prompt).await?,
         "ArticleSummary" => {
             // TODO: implement ArticleSummary Swift wrapper
-            return Err(anyhow!("ArticleSummary schema not yet implemented in Swift bridge"));
+            return Err(anyhow!(
+                "ArticleSummary schema not yet implemented in Swift bridge"
+            ));
         }
         _ => return Err(anyhow!("unknown schema: {}", schema_name)),
     };
-    
+
     T::from_json(json_value)
 }
 
@@ -263,7 +314,7 @@ pub async fn generate<T: GenerableSchema>(prompt: &str) -> Result<T> {
 /// # #[tokio::main]
 /// # async fn main() -> anyhow::Result<()> {
 /// let mut stream = generate_stream::<PersonInfo>("generate alice");
-/// 
+///
 /// while let Some(result) = stream.next().await {
 ///     let person = result?;
 ///     println!("partial: {}", person.name);
@@ -275,16 +326,16 @@ pub fn generate_stream<T: GenerableSchema>(
     prompt: &str,
 ) -> Pin<Box<dyn Stream<Item = Result<T>> + Send>> {
     let schema_name = T::schema_name();
-    
+
     // Only PersonInfo is implemented currently
     if schema_name != "PersonInfo" {
         return Box::pin(stream! {
             yield Err(anyhow!("schema {} not yet implemented for streaming", schema_name));
         });
     }
-    
+
     let raw_stream = generate_person_stream(prompt);
-    
+
     Box::pin(stream! {
         for await snapshot_result in raw_stream {
             match snapshot_result {
@@ -310,31 +361,37 @@ pub fn generate_stream<T: GenerableSchema>(
 
 /// Check if the current macOS version supports FoundationModels
 fn check_version_support() -> Result<()> {
-    use version::{MacOSVersion, is_foundationmodels_supported};
-    
+    use version::{is_foundationmodels_supported, MacOSVersion};
+
     if !is_foundationmodels_supported() {
         let current = MacOSVersion::current()
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unknown".to_string());
-        
+
         return Err(anyhow!(
             "foundationmodels requires macOS 26.0+, but detected version {}. \
              please upgrade to macOS sequoia 26.0 or later (with apple intelligence).",
             current
         ));
     }
-    
+
     Ok(())
+}
+
+/// Parse availability JSON returned from Swift bridge
+fn parse_availability(json_str: &str) -> Result<LanguageModelAvailability> {
+    let availability: LanguageModelAvailability = serde_json::from_str(json_str)?;
+    Ok(availability)
 }
 
 /// Parse the JSON response and check for errors
 fn parse_response(json_str: &str) -> Result<Value> {
     let value: Value = serde_json::from_str(json_str)?;
-    
+
     // check if the response contains an error
     if let Some(error_msg) = value.get("error").and_then(|v| v.as_str()) {
         return Err(anyhow!("foundationmodels error: {}", error_msg));
     }
-    
+
     Ok(value)
 }
