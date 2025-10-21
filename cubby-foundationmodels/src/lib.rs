@@ -12,6 +12,12 @@ pub mod speech;
 pub mod streaming;
 pub mod version;
 
+pub use speech::{
+    ensure_speech_assets_installed,
+    speech_asset_status,
+    SpeechAssetEnsureResponse,
+    SpeechAssetStatus,
+};
 pub use streaming::{start_streaming_session, SpeechStreamSnapshot, SpeechStreamingSession};
 
 use anyhow::{anyhow, Result};
@@ -361,9 +367,9 @@ pub fn generate_stream<T: GenerableSchema>(
 
 /// Check if the current macOS version supports FoundationModels
 fn check_version_support() -> Result<()> {
-    use version::{is_foundationmodels_supported, MacOSVersion};
+    use version::{is_macos_26_or_newer, MacOSVersion};
 
-    if !is_foundationmodels_supported() {
+    if !is_macos_26_or_newer() {
         let current = MacOSVersion::current()
             .map(|v| v.to_string())
             .unwrap_or_else(|| "unknown".to_string());

@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
-use crate::version::{is_foundationmodels_supported, MacOSVersion};
+use crate::version::{is_macos_26_or_newer, MacOSVersion};
 
 #[swift_bridge::bridge]
 mod ffi {
@@ -197,7 +197,7 @@ pub async fn start_streaming_session() -> Result<(
 }
 
 fn ensure_supported() -> Result<()> {
-    if is_foundationmodels_supported() {
+    if is_macos_26_or_newer() {
         return Ok(());
     }
     let ver = MacOSVersion::current()
@@ -228,4 +228,3 @@ fn parse_ok(json: &str) -> Result<()> {
         Err(anyhow!("unexpected response from foundationmodels"))
     }
 }
-

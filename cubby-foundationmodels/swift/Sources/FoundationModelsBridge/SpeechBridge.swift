@@ -29,6 +29,61 @@ private func okJSONBool() -> String {
     return String(data: data ?? Data("{}".utf8), encoding: .utf8) ?? "{}"
 }
 
+private func statusString(for status: AssetInventory.Status) -> String {
+    switch status {
+    case .unsupported:
+        return "unsupported"
+    case .supported:
+        return "supported"
+    case .downloading:
+        return "downloading"
+    case .installed:
+        return "installed"
+    @unknown default:
+        return "unknown"
+    }
+}
+
+private func statusJSON(_ status: AssetInventory.Status, installedNow: Bool?) -> String {
+    var obj: [String: Any] = [
+        "status": statusString(for: status)
+    ]
+    if let installedNow = installedNow {
+        obj["installed_now"] = installedNow
+    }
+    let data = try? JSONSerialization.data(withJSONObject: obj, options: [])
+    return String(data: data ?? Data("{}".utf8), encoding: .utf8) ?? "{}"
+}
+
+@Sendable
+private func ensureSpeechAssets(debugEnabled: Bool) async throws -> (initial: AssetInventory.Status, final: AssetInventory.Status, installedNow: Bool) {
+    let (_, transcriber) = try await makeTranscriber()
+
+    let initialStatus = await AssetInventory.status(forModules: [transcriber])
+    if debugEnabled {
+        print("[speech] assets: initial status \(statusString(for: initialStatus))")
+    }
+
+    var installedNow = false
+    if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+        if debugEnabled {
+            print("[speech] assets: downloading/installing...")
+        }
+        try await request.downloadAndInstall()
+        installedNow = true
+    } else if debugEnabled {
+        print("[speech] assets: already satisfied")
+    }
+
+    let finalStatus = await AssetInventory.status(forModules: [transcriber])
+    if debugEnabled {
+        print("[speech] assets: final status \(statusString(for: finalStatus))")
+    }
+
+    let installedFlag = installedNow && finalStatus == .installed
+    return (initial: initialStatus, final: finalStatus, installedNow: installedFlag)
+}
+
 public func fm_speech_preheat() -> String {
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
 
@@ -43,7 +98,7 @@ public func fm_speech_preheat() -> String {
 
             // Enable volatile results for more responsive streaming
             let transcriber = SpeechTranscriber(
-                locale: locale, 
+                locale: locale,
                 transcriptionOptions: [],
                 reportingOptions: [.volatileResults],
                 attributeOptions: [.audioTimeRange]
@@ -74,30 +129,62 @@ public func fm_speech_preheat() -> String {
     }
 }
 
+public func fm_speech_assets_status() -> String {
+    let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
+
+    return runAsyncAndWait { () async -> String in
+        do {
+            if debugEnabled { print("[speech] assets status: begin") }
+            let (_, transcriber) = try await makeTranscriber()
+            let status = await AssetInventory.status(forModules: [transcriber])
+            if debugEnabled { print("[speech] assets status: \(statusString(for: status))") }
+            return statusJSON(status, installedNow: nil)
+        } catch {
+            if debugEnabled { print("[speech] assets status error: \(error)") }
+            return errJSON("speech assets status error: \(error)")
+        }
+    }
+}
+
+public func fm_speech_ensure_assets() -> String {
+    let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
+
+    return runAsyncAndWait { () async -> String in
+        do {
+            if debugEnabled { print("[speech] ensure assets: begin") }
+            let result = try await ensureSpeechAssets(debugEnabled: debugEnabled)
+            if debugEnabled {
+                print("[speech] ensure assets: installed now = \(result.installedNow)")
+            }
+            return statusJSON(result.final, installedNow: result.installedNow)
+        } catch {
+            if debugEnabled { print("[speech] ensure assets error: \(error)") }
+            return errJSON("speech ensure assets error: \(error)")
+        }
+    }
+}
+
 public func fm_speech_install_assets() -> String {
     let debugEnabled = ProcessInfo.processInfo.environment["CUBBY_SPEECH_DEBUG"] != nil
 
     return runAsyncAndWait { () async -> String in
         do {
             if debugEnabled { print("[speech] assets: begin") }
-            guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
-                return errJSON("unsupported locale")
-            }
-            // Enable volatile results for more responsive streaming
-            let transcriber = SpeechTranscriber(
-                locale: locale, 
-                transcriptionOptions: [],
-                reportingOptions: [.volatileResults],
-                attributeOptions: [.audioTimeRange]
-            )
-            if let req = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-                if debugEnabled { print("[speech] assets: downloading/installing...") }
-                try await req.downloadAndInstall()
+            let result = try await ensureSpeechAssets(debugEnabled: debugEnabled)
+            switch result.final {
+            case .installed:
                 if debugEnabled { print("[speech] assets: ready") }
-            } else {
-                if debugEnabled { print("[speech] assets: already installed") }
+                return okJSONBool()
+            case .downloading:
+                if debugEnabled { print("[speech] assets: download still in progress") }
+                return okJSONBool()
+            case .supported, .unsupported:
+                if debugEnabled { print("[speech] assets: final status \(statusString(for: result.final))") }
+                return errJSON("speech assets error: final status \(statusString(for: result.final))")
+            @unknown default:
+                if debugEnabled { print("[speech] assets: unexpected status \(statusString(for: result.final))") }
+                return errJSON("speech assets error: unexpected status \(statusString(for: result.final))")
             }
-            return okJSONBool()
         } catch {
             if debugEnabled { print("[speech] assets error: \(error)") }
             return errJSON("speech assets error: \(error)")
