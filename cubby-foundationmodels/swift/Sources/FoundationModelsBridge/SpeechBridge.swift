@@ -41,7 +41,13 @@ public func fm_speech_preheat() -> String {
             }
             if debugEnabled { print("[speech] preheat: locale \(locale.identifier)") }
 
-            let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+            // Enable volatile results for more responsive streaming
+            let transcriber = SpeechTranscriber(
+                locale: locale, 
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults],
+                attributeOptions: [.audioTimeRange]
+            )
 
             if debugEnabled { print("[speech] preheat: checking assets...") }
             if let req = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
@@ -77,7 +83,13 @@ public func fm_speech_install_assets() -> String {
             guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
                 return errJSON("unsupported locale")
             }
-            let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+            // Enable volatile results for more responsive streaming
+            let transcriber = SpeechTranscriber(
+                locale: locale, 
+                transcriptionOptions: [],
+                reportingOptions: [.volatileResults],
+                attributeOptions: [.audioTimeRange]
+            )
             if let req = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
                 if debugEnabled { print("[speech] assets: downloading/installing...") }
                 try await req.downloadAndInstall()
@@ -174,7 +186,13 @@ private func makeTranscriber() async throws -> (Locale, SpeechTranscriber) {
     guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
         throw NSError(domain: "SpeechBridge", code: 1, userInfo: [NSLocalizedDescriptionKey: "unsupported locale"])
     }
-    let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+    // Enable volatile results for more responsive streaming
+    let transcriber = SpeechTranscriber(
+        locale: locale, 
+        transcriptionOptions: [],
+        reportingOptions: [.volatileResults],
+        attributeOptions: [.audioTimeRange]
+    )
     return (locale, transcriber)
 }
 
@@ -315,13 +333,18 @@ private actor StreamingSession {
 
     func cancel() async {
         guard !inputFinished else {
+            print("[Swift] Session already cancelled, ensuring done is enqueued")
             await ensureDoneEnqueued()
             return
         }
+        print("[Swift] Cancelling session...")
         inputFinished = true
         inputContinuation.finish()
+        print("[Swift] Calling analyzer.cancelAndFinishNow()")
         await analyzer.cancelAndFinishNow()
+        print("[Swift] Ensuring done is enqueued")
         await ensureDoneEnqueued()
+        print("[Swift] Session cancellation complete")
     }
 
     func nextResult(timeout: Duration) async -> TranscriberResultEnvelope {
@@ -485,7 +508,13 @@ private actor StreamingSessionManager {
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             throw StreamingError.unsupportedLocale
         }
-        let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+        // Enable volatile results for more responsive streaming
+        let transcriber = SpeechTranscriber(
+            locale: locale, 
+            transcriptionOptions: [],
+            reportingOptions: [.volatileResults],
+            attributeOptions: [.audioTimeRange]
+        )
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             try await request.downloadAndInstall()
         }
@@ -523,11 +552,15 @@ private actor StreamingSessionManager {
     }
 
     func cancel(id: UUID) async {
+        print("[Swift] StreamingSessionManager: Cancelling session \(id)")
         guard let session = sessions[id] else {
+            print("[Swift] StreamingSessionManager: Session \(id) not found")
             return
         }
+        print("[Swift] StreamingSessionManager: Found session, calling cancel()")
         await session.cancel()
         sessions[id] = nil
+        print("[Swift] StreamingSessionManager: Session \(id) removed from sessions")
     }
 
     func nextResult(id: UUID, timeoutMs: Int) async -> TranscriberResultEnvelope {

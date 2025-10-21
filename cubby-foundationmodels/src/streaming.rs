@@ -62,7 +62,7 @@ struct StreamEventEnvelope {
     error: Option<String>,
 }
 
-const DEFAULT_POLL_TIMEOUT_MS: i32 = 250;
+const DEFAULT_POLL_TIMEOUT_MS: i32 = 250; // Balanced timeout to reduce race conditions while maintaining responsiveness
 
 impl SpeechStreamingSession {
     pub async fn create() -> Result<Self> {
@@ -89,6 +89,7 @@ impl SpeechStreamingSession {
     pub fn id(&self) -> &str {
         &self.inner.id
     }
+
 
     pub fn subscribe(&self) -> mpsc::UnboundedReceiver<Result<SpeechStreamSnapshot>> {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -227,3 +228,4 @@ fn parse_ok(json: &str) -> Result<()> {
         Err(anyhow!("unexpected response from foundationmodels"))
     }
 }
+

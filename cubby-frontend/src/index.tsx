@@ -508,7 +508,7 @@ app.get("/docs", (c) => {
           `}
         </style>
       </head>
-      <body hx-boost="true" data-theme="dark">
+      <body hx-boost="true">
         <TopBar />
         <div class="fixed top-12 left-0 w-full h-[calc(100vh-48px)] flex bg-base-100">
           {/* Sidebar */}
@@ -517,9 +517,9 @@ app.get("/docs", (c) => {
               <h2 class="text-lg font-bold mb-4 text-base-content">documentation</h2>
               <nav>
                 <a href="#getting-started" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">getting started</a>
-                <a href="#data-shape" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">what your data looks like</a>
-                <a href="#typescript-sdk" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">typescript sdk</a>
-                <a href="#mcp-integration" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">mcp server</a>
+                <a href="#data-shape" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">how it works</a>
+                <a href="#typescript-sdk" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">build with cubby</a>
+                <a href="#mcp-integration" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">use with ai assistants</a>
                 <a href="#rest-api" class="block p-3 rounded-lg hover:bg-base-300 text-base-content transition-colors mb-1">rest api</a>
                 <div class="divider my-4"></div>
                 <a href="/docs/api" data-hx-boost="false" class="block p-3 rounded-lg bg-accent text-accent-content font-medium">full api reference →</a>
@@ -530,93 +530,53 @@ app.get("/docs", (c) => {
           {/* Main Content */}
           <div class="flex-1 overflow-y-auto bg-base-100">
             <div class="max-w-4xl mx-auto p-8 pt-16">
-              <div class="mb-8">
-                <h1 class="text-4xl font-bold pixelated mb-2 text-base-content">What is cubby?</h1>
-                {/*<p class="text-base-content/70 text-lg">comprehensive guide to using cubby</p>*/}
+              {/* Hero Section */}
+              <div class="mb-16">
+                <h1 class="text-5xl font-bold pixelated mb-8 text-base-content text-center">
+                  cubby turns your screen and microphone data into context, so you can let your favorite AI know what you're working on.
+                </h1>
+                <img src="/cubby_explainer_no_bg.png" alt="cubby overview" class="w-full h-auto pixelated mb-8" />
+                <div class="prose prose-lg max-w-none text-center">
+                  <p class="text-xl text-base-content/80 mb-4">
+                    don't panic - your data is only stored locally, and cubby is completely open source.
+                  </p>
+                </div>
               </div>
-              {/* Header Image */}
-              {/*<div class="card bg-base-200 shadow-xl mb-6">*/}
-              {/*  <div class="card-body p-0">*/}
-                  <img src="/cubby_explainer_no_bg.png" alt="cubby overview" class="w-full h-auto pixelated" />
-                {/*</div>*/}
-              {/*</div>*/}
-              <p class="text-base-content/80 mt-4"><strong>cubby captures your screen and audio context and lets you decide which apps you want to share it with.</strong> <br />Don't panic - your data is only stored locally, and cubby is completely open source.<br/></p>
-              {/*<p class="text-base-content/80 mt-4"><strong>local-first data with cloud access</strong> - your screen and audio recordings stay on your device, but you control who can access them securely via oauth and mcp tools. use it locally for instant access, or connect remotely from ai assistants and custom apps.</p>*/}
 
-              {/* Getting Started Section */}
-              <div id="getting-started" class="card bg-base-200 shadow-xl mb-6">
+              {/* Why Use Cubby Section */}
+              <div class="card bg-base-200 shadow-xl mb-12">
                 <div class="card-body">
-                  <h2 class="card-title text-3xl font-bold text-base-content mb-6">getting started</h2>
-                  
-                  <div class="space-y-8">
-                    {/* Step 1 */}
-                    <div>
-                      <div class="flex items-center gap-3 mb-3">
-                        <span class="badge badge-lg badge-primary font-bold">step 1</span>
-                        <h3 class="text-xl font-bold text-base-content">install cubby</h3>
-                      </div>
-                      <p class="text-base-content/80 mb-3">run the install script to get your credentials and start capturing. works on macos & linux.</p>
-                      <div class="mockup-code w-full mb-3">
-                        <pre data-prefix="$"><code>curl -fsSL https://cubby.sh/install.sh | sh</code></pre>
-                      </div>
-                      <div class="bg-base-300 rounded-lg p-4 space-y-2 text-sm">
-                        <p class="text-base-content/80">✓ installs cubby binary and starts background recording</p>
-                        <p class="text-base-content/80">✓ provides your <code class="bg-base-100 px-1 rounded">CLIENT_ID</code> and <code class="bg-base-100 px-1 rounded">CLIENT_SECRET</code></p>
-                        <p class="text-base-content/80">✓ stores all data locally in <code class="bg-base-100 px-1 rounded">~/.cubby/</code></p>
-                        <p class="text-base-content/80">✓ starts local server on <code class="bg-base-100 px-1 rounded">localhost:3030</code></p>
-                        <p class="text-base-content/80">✓ creates secure tunnel at <code class="bg-base-100 px-1 rounded">api.cubby.sh</code></p>
-                      </div>
-                      <p class="text-base-content/70 text-sm mt-3">save your credentials - you'll need them for step 2</p>
-                    </div>
-
-                    {/* Step 2 */}
-                    <div>
-                      <div class="flex items-center gap-3 mb-3">
-                        <span class="badge badge-lg badge-secondary font-bold">step 2</span>
-                        <h3 class="text-xl font-bold text-base-content">deploy ai agent with memory</h3>
-                      </div>
-                      <p class="text-base-content/80 mb-3">use the cloudflare starter to build an ai agent with access to your personal memory. it includes:</p>
-                      <div class="bg-base-300 rounded-lg p-4 mb-3">
-                        <ul class="space-y-1 text-sm text-base-content/80">
-                          <li>→ search your screen and audio history</li>
-                          <li>→ send desktop notifications to your devices</li>
-                          <li>→ open applications and urls on your devices</li>
-                          <li>→ human-in-the-loop confirmations for sensitive actions</li>
-                        </ul>
-                      </div>
-                      <div class="flex flex-col gap-3">
-                        <a href="https://github.com/monadoid/cubby-starter" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-block">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                          view cubby-starter on github
-                        </a>
-                        <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/monadoid/cubby-starter" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-block">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 16 16 12 12 8"></polyline><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-                          deploy to cloudflare (one-click)
-                        </a>
-                      </div>
-                      <p class="text-base-content/70 text-sm mt-3">you'll use the credentials from step 1 to configure the agent</p>
-                    </div>
-
-                    {/* Alternative: Build Your Own */}
-                    <div class="divider text-base-content/50">or build your own</div>
-                    
-                    <div>
-                      <p class="text-base-content/80 mb-3">access your data using:</p>
-                      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div class="bg-base-300 p-4 rounded-lg">
-                          <h4 class="font-bold text-base-content mb-2">typescript sdk</h4>
-                          <code class="text-xs bg-base-100 px-2 py-1 rounded">npm i @cubby/js</code>
-                          <p class="text-xs text-base-content/70 mt-2">node, cloudflare, browser</p>
+                  <h2 class="card-title text-3xl font-bold mb-6">why use cubby?</h2>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                      <div class="flex items-start gap-3">
+                        <span class="text-primary text-xl">→</span>
+                        <div>
+                          <h3 class="font-semibold text-lg">ai with memory</h3>
+                          <p class="text-base-content/80 text-sm">your ai assistant knows what you're working on, what you've read, and what you've discussed</p>
                         </div>
-                        <div class="bg-base-300 p-4 rounded-lg">
-                          <h4 class="font-bold text-base-content mb-2">rest api</h4>
-                          <code class="text-xs bg-base-100 px-2 py-1 rounded">api.cubby.sh</code>
-                          <p class="text-xs text-base-content/70 mt-2">openapi spec available</p>
+                      </div>
+                      <div class="flex items-start gap-3">
+                        <span class="text-primary text-xl">→</span>
+                        <div>
+                          <h3 class="font-semibold text-lg">local-first privacy</h3>
+                          <p class="text-base-content/80 text-sm">all data stays on your device. you control who accesses it</p>
                         </div>
-                        <div class="bg-base-300 p-4 rounded-lg">
-                          <h4 class="font-bold text-base-content mb-2">mcp server</h4>
-                          <code class="text-xs bg-base-100 px-2 py-1 rounded">localhost:3030/mcp</code>
-                          <p class="text-xs text-base-content/70 mt-2">claude, cursor, etc</p>
+                      </div>
+                    </div>
+                    <div class="space-y-4">
+                      <div class="flex items-start gap-3">
+                        <span class="text-primary text-xl">→</span>
+                        <div>
+                          <h3 class="font-semibold text-lg">instant setup</h3>
+                          <p class="text-base-content/80 text-sm">one install command. works with claude, cursor, and any ai tool</p>
+                        </div>
+                      </div>
+                      <div class="flex items-start gap-3">
+                        <span class="text-primary text-xl">→</span>
+                        <div>
+                          <h3 class="font-semibold text-lg">open source</h3>
+                          <p class="text-base-content/80 text-sm">fully transparent. self-host or use our cloud tunnel</p>
                         </div>
                       </div>
                     </div>
@@ -624,13 +584,131 @@ app.get("/docs", (c) => {
                 </div>
               </div>
 
-              {/* Data Shape Section */}
-              <div id="data-shape" class="card bg-base-200 shadow-xl mb-6">
+              {/* Getting Started Section */}
+              <div id="getting-started" class="card bg-base-200 shadow-xl mb-12">
                 <div class="card-body">
-                  <h2 class="card-title text-2xl font-bold text-base-content">what your data looks like</h2>
-                  <p class="text-base-content/80 mb-4">concise examples of live events streamed over websockets</p>
-                  <div class="mockup-code w-full">
-                    <pre data-prefix="$"><code>{`// ocr event
+                  <h2 class="card-title text-3xl font-bold mb-8">getting started</h2>
+                          
+                          <div class="space-y-12">
+                            {/* Step 1 */}
+                            <div class="card bg-base-100 shadow-lg">
+                              <div class="card-body">
+                                <div class="flex items-center gap-4 mb-6">
+                                  <span class="badge badge-lg badge-primary font-bold text-lg px-4 py-2">step 1</span>
+                                  <h3 class="text-2xl font-bold">install cubby</h3>
+                                </div>
+                                <p class="text-lg mb-6">one command installs everything. works on macos & linux.</p>
+                                <div class="mockup-code w-full mb-6">
+                                  <pre data-prefix="$"><code>curl -fsSL https://cubby.sh/install.sh | sh</code></pre>
+                                </div>
+                                <div class="alert alert-info">
+                                  <div>
+                                    <div class="font-bold">what you get:</div>
+                                    <ul class="text-sm mt-2 space-y-1">
+                                      <li>✓ installs cubby binary and starts background recording</li>
+                                      <li>✓ provides your <code class="bg-base-200 px-1 rounded">CLIENT_ID</code> and <code class="bg-base-200 px-1 rounded">CLIENT_SECRET</code></li>
+                                      <li>✓ stores all data locally in <code class="bg-base-200 px-1 rounded">~/.cubby/</code></li>
+                                      <li>✓ starts local server on <code class="bg-base-200 px-1 rounded">localhost:3030</code></li>
+                                      <li>✓ creates secure tunnel at <code class="bg-base-200 px-1 rounded">api.cubby.sh</code></li>
+                                    </ul>
+                                  </div>
+                                </div>
+                                <div class="alert alert-warning">
+                                  <span>save your credentials - you'll need them for step 2</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Step 2 */}
+                            <div class="card bg-base-100 shadow-lg">
+                              <div class="card-body">
+                                <div class="flex items-center gap-4 mb-6">
+                                  <span class="badge badge-lg badge-secondary font-bold text-lg px-4 py-2">step 2</span>
+                                  <h3 class="text-2xl font-bold">deploy ai agent</h3>
+                                </div>
+                                <p class="text-lg mb-6">one-click deploy gives your ai access to your personal memory:</p>
+                                <div class="bg-base-200 rounded-lg p-6 mb-6">
+                                  <ul class="space-y-2 text-base">
+                                    <li class="flex items-center gap-2">
+                                      <span class="text-primary">→</span>
+                                      search your screen and audio history
+                                    </li>
+                                    <li class="flex items-center gap-2">
+                                      <span class="text-primary">→</span>
+                                      send desktop notifications to your devices
+                                    </li>
+                                    <li class="flex items-center gap-2">
+                                      <span class="text-primary">→</span>
+                                      open applications and urls on your devices
+                                    </li>
+                                    <li class="flex items-center gap-2">
+                                      <span class="text-primary">→</span>
+                                      human-in-the-loop confirmations for sensitive actions
+                                    </li>
+                                  </ul>
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-4">
+                                  <a href="https://github.com/monadoid/cubby-starter" target="_blank" rel="noopener noreferrer" class="btn btn-primary flex-1">
+                                    view cubby-starter on github
+                                  </a>
+                                  <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/monadoid/cubby-starter" target="_blank" rel="noopener noreferrer" class="btn btn-accent flex-1">
+                                    deploy to cloudflare (one-click)
+                                  </a>
+                                </div>
+                                <div class="alert alert-info mt-4">
+                                  <span>you'll use the credentials from step 1 to configure the agent</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Alternative: Build Your Own */}
+                            <div class="divider text-base-content/50">or build your own</div>
+                            
+                            <div class="card bg-base-100 shadow-lg">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-6">access your data using:</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                  <div class="card bg-base-200 shadow-md">
+                                    <div class="card-body">
+                                      <h4 class="card-title text-lg">typescript sdk</h4>
+                                      <div class="mockup-code w-full mb-3">
+                                        <pre data-prefix="$"><code>npm i @cubby/js</code></pre>
+                                      </div>
+                                      <p class="text-sm text-base-content/70">node, cloudflare, browser</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-md">
+                                    <div class="card-body">
+                                      <h4 class="card-title text-lg">rest api</h4>
+                                      <div class="mockup-code w-full mb-3">
+                                        <pre data-prefix="$"><code>api.cubby.sh</code></pre>
+                                      </div>
+                                      <p class="text-sm text-base-content/70">openapi spec available</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-md">
+                                    <div class="card-body">
+                                      <h4 class="card-title text-lg">mcp server</h4>
+                                      <div class="mockup-code w-full mb-3">
+                                        <pre data-prefix="$"><code>localhost:3030/mcp</code></pre>
+                                      </div>
+                                      <p class="text-sm text-base-content/70">claude, cursor, etc</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Data Shape Section */}
+                      <div id="data-shape" class="card bg-base-200 shadow-xl mb-12">
+                        <div class="card-body">
+                          <h2 class="card-title text-3xl font-bold mb-6">how it works</h2>
+                          <p class="text-lg mb-6">live events streamed from your screen and microphone</p>
+                          <div class="mockup-code w-full">
+                            <pre data-prefix="$"><code>{`// ocr event
 const ocrEvent = {
   name: 'ocr_result',
   data: {
@@ -646,7 +724,7 @@ const ocrEvent = {
 const transcriptionEvent = {
   name: 'realtime_transcription',
   data: {
-    transcription: 'let’s ship this today',
+    transcription: 'let's ship this today',
     timestamp: '2025-10-18T12:35:10Z',
     device: 'macbook-pro',
     is_input: false,
@@ -665,40 +743,43 @@ const uiFrameEvent = {
     initial_traversal_at: '2025-10-18T12:35:20Z'
   }
 };`}</code></pre>
-                  </div>
-                </div>
-              </div>
-
-              {/* TypeScript SDK Section */}
-              <div id="typescript-sdk" class="card bg-base-200 shadow-xl mb-6">
-                <div class="card-body">
-                  <h2 class="card-title text-2xl font-bold text-base-content">typescript sdk</h2>
-                  <p class="text-base-content/80 mb-6">the cubby js sdk works in node, cloudflare workers, and browsers. published as <code class="bg-base-100 px-1 rounded">@cubby/js</code></p>
-                  
-                  <div>
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">installation</h3>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>npm i @cubby/js</code></pre>
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">authentication</h3>
-                      <p class="text-sm text-base-content/70 mb-2">get credentials at <a href="https://cubby.sh/dashboard" class="link">cubby.sh/dashboard</a></p>
-                      <div class="mockup-code w-full mb-2">
-                        <pre data-prefix="$"><code>export CUBBY_CLIENT_ID="your_client_id"</code></pre>
-                        <pre data-prefix="$"><code>export CUBBY_CLIENT_SECRET="your_client_secret"</code></pre>
-                      </div>
-                    </div>
+                      {/* TypeScript SDK Section */}
+                      <div id="typescript-sdk" class="card bg-base-200 shadow-xl mb-12">
+                        <div class="card-body">
+                          <h2 class="card-title text-3xl font-bold mb-6">build with cubby</h2>
+                          <p class="text-lg mb-8">use the cubby js sdk in node, cloudflare workers, and browsers. published as <code class="bg-base-100 px-2 py-1 rounded">@cubby/js</code></p>
+                          
+                          <div class="space-y-8">
+                            <div>
+                              <h3 class="text-2xl font-bold mb-4">installation</h3>
+                              <div class="mockup-code w-full">
+                                <pre data-prefix="$"><code>npm i @cubby/js</code></pre>
+                              </div>
+                            </div>
 
-                    <p class="text-base-content/80 mb-4">common ways to use cubby:</p>
-                    
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">search</h3>
-                      <p class="text-sm text-base-content/70 mb-2">query your history</p>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`import { createClient } from '@cubby/js';
+                            <div>
+                              <h3 class="text-2xl font-bold mb-4">authentication</h3>
+                              <p class="text-base mb-4">get credentials at <a href="https://cubby.sh/dashboard" class="link link-primary">cubby.sh/dashboard</a></p>
+                              <div class="mockup-code w-full">
+                                <pre data-prefix="$"><code>export CUBBY_CLIENT_ID="your_client_id"</code></pre>
+                                <pre data-prefix="$"><code>export CUBBY_CLIENT_SECRET="your_client_secret"</code></pre>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h3 class="text-2xl font-bold mb-4">common ways to use cubby:</h3>
+                              
+                              <div class="space-y-8">
+                                <div class="card bg-base-100 shadow-md">
+                                  <div class="card-body">
+                                    <h4 class="card-title text-xl">search</h4>
+                                    <p class="text-sm text-base-content/70 mb-4">query your history</p>
+                                    <div class="mockup-code w-full">
+                                      <pre data-prefix="$"><code>{`import { createClient } from '@cubby/js';
 
 // credentials auto-detected from env
 const client = createClient({ 
@@ -717,14 +798,16 @@ const results = await client.search({
   content_type: 'ocr',
   limit: 5
 });`}</code></pre>
-                      </div>
-                    </div>
+                                    </div>
+                                  </div>
+                                </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">watch</h3>
-                      <p class="text-sm text-base-content/70 mb-2">process live events and trigger actions</p>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`// auto-create todoist tasks from spoken todos
+                                <div class="card bg-base-100 shadow-md">
+                                  <div class="card-body">
+                                    <h4 class="card-title text-xl">watch</h4>
+                                    <p class="text-sm text-base-content/70 mb-4">process live events and trigger actions</p>
+                                    <div class="mockup-code w-full">
+                                      <pre data-prefix="$"><code>{`// auto-create todoist tasks from spoken todos
 for await (const event of client.streamTranscriptions()) {
   if (event.text?.toLowerCase().includes('todo')) {
     const task = await ai.generateStructuredOutput({
@@ -738,14 +821,16 @@ for await (const event of client.streamTranscriptions()) {
     });
   }
 }`}</code></pre>
-                      </div>
-                    </div>
+                                    </div>
+                                  </div>
+                                </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">contextualize</h3>
-                      <p class="text-sm text-base-content/70 mb-2">power ai with your personal context</p>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`// smart email responses based on recent chats
+                                <div class="card bg-base-100 shadow-md">
+                                  <div class="card-body">
+                                    <h4 class="card-title text-xl">contextualize</h4>
+                                    <p class="text-sm text-base-content/70 mb-4">power ai with your personal context</p>
+                                    <div class="mockup-code w-full">
+                                      <pre data-prefix="$"><code>{`// smart email responses based on recent chats
 const recentChats = await client.search({
   q: 'slack messages project alpha',
   content_type: 'ocr',
@@ -759,14 +844,16 @@ const draft = await ai.chat.completions.create({
   ]
 });
 await gmail.users.messages.send({ raw: encodeDraft(draft) });`}</code></pre>
-                      </div>
-                    </div>
+                                    </div>
+                                  </div>
+                                </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">automate</h3>
-                      <p class="text-sm text-base-content/70 mb-2">build smart automations</p>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`// auto-log work hours when specific apps are active
+                                <div class="card bg-base-100 shadow-md">
+                                  <div class="card-body">
+                                    <h4 class="card-title text-xl">automate</h4>
+                                    <p class="text-sm text-base-content/70 mb-4">build smart automations</p>
+                                    <div class="mockup-code w-full">
+                                      <pre data-prefix="$"><code>{`// auto-log work hours when specific apps are active
 for await (const event of client.streamVision()) {
   if (event.data.app_name === 'Linear' && event.data.text?.match(/ENG-\\d+/)) {
     const ticketId = event.data.text.match(/ENG-\\d+/)[0];
@@ -774,134 +861,212 @@ for await (const event of client.streamVision()) {
     await client.notify({ title: 'timer started', body: \`tracking time on \${ticketId}\` });
   }
 }`}</code></pre>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
-              {/* MCP Integration Section */}
-              <div id="mcp-integration" class="card bg-base-200 shadow-xl mb-6">
-                <div class="card-body">
-                  <h2 class="card-title text-2xl font-bold text-base-content">mcp server</h2>
-                  <p class="text-base-content/80 mb-6">model context protocol (mcp) allows ai assistants to access cubby tools directly.</p>
-                  
-                  <div>
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">local access (claude desktop, cursor)</h3>
-                      <p class="text-base-content/80 mb-3">add to your mcp config:</p>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`{
+                      {/* MCP Integration Section */}
+                      <div id="mcp-integration" class="card bg-base-200 shadow-xl mb-12">
+                        <div class="card-body">
+                          <h2 class="card-title text-3xl font-bold mb-6">use with ai assistants</h2>
+                          <p class="text-lg mb-8">model context protocol (mcp) gives ai assistants direct access to your cubby data.</p>
+                          
+                          <div class="space-y-8">
+                            <div class="card bg-base-100 shadow-md">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-4">local access (claude desktop, cursor)</h3>
+                                <p class="text-base mb-4">add to your mcp config:</p>
+                                <div class="mockup-code w-full mb-4">
+                                  <pre data-prefix="$"><code>{`{
   "mcpServers": {
     "cubby": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-fetch", "http://localhost:3030/mcp"]
+      "type": "streamable-http",
+      "url": "http://localhost:3030/mcp"
     }
   }
 }`}</code></pre>
+                                </div>
+                                <div class="alert alert-success">
+                                  <span>no authentication required for local use</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div class="card bg-base-100 shadow-md">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-4">remote access</h3>
+                                <p class="text-base mb-4">use <code class="bg-base-200 px-2 py-1 rounded">https://api.cubby.sh/mcp</code> with bearer token authentication</p>
+                                <ol class="list-decimal list-inside space-y-2 text-base mb-4">
+                                  <li>get credentials at <a href="https://cubby.sh/dashboard" class="link link-primary">cubby.sh/dashboard</a></li>
+                                  <li>exchange for token: <code class="text-sm bg-base-200 px-2 py-1 rounded">curl -X POST https://api.cubby.sh/oauth/token -d "grant_type=client_credentials&client_id=ID&client_secret=SECRET&scope=read:cubby"</code></li>
+                                  <li>add to mcp config:</li>
+                                </ol>
+                                <div class="mockup-code w-full mb-4">
+                                  <pre data-prefix="$"><code>{`{
+  "mcpServers": {
+    "cubby": {
+      "type": "streamable-http",
+      "url": "https://api.cubby.sh/mcp",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN"
+      }
+    }
+  }
+}`}</code></pre>
+                                </div>
+                                <div class="alert alert-info">
+                                  <span>remote tools require <code class="bg-base-200 px-1 rounded">deviceId</code> parameter</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div class="card bg-base-100 shadow-md">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-6">available tools</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">devices/list</span>
+                                      <p class="text-sm text-base-content/70 mt-1">list enrolled devices</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">devices/set</span>
+                                      <p class="text-sm text-base-content/70 mt-1">select device for calls</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/search</span>
+                                      <p class="text-sm text-base-content/70 mt-1">search content</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/search-keyword</span>
+                                      <p class="text-sm text-base-content/70 mt-1">fast keyword search</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/speakers/search</span>
+                                      <p class="text-sm text-base-content/70 mt-1">find speakers by name</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/open-application</span>
+                                      <p class="text-sm text-base-content/70 mt-1">launch applications</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/open-url</span>
+                                      <p class="text-sm text-base-content/70 mt-1">open urls in browser</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/notify</span>
+                                      <p class="text-sm text-base-content/70 mt-1">send notifications</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/audio/list</span>
+                                      <p class="text-sm text-base-content/70 mt-1">list audio devices</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">device/vision/list</span>
+                                      <p class="text-sm text-base-content/70 mt-1">list monitors</p>
+                                    </div>
+                                  </div>
+                                  <div class="card bg-base-200 shadow-sm">
+                                    <div class="card-body p-4">
+                                      <span class="font-semibold text-base-content">+ more</span>
+                                      <p class="text-sm text-base-content/70 mt-1">frames, tags, embeddings</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <p class="text-base-content/80 mt-3">no authentication required for local use</p>
-                    </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">remote access</h3>
-                      <p class="text-base-content/80 mb-3">use <code class="bg-base-100 px-1 rounded">https://api.cubby.sh/mcp</code> with bearer token authentication</p>
-                      <ol class="list-decimal list-inside space-y-1 text-sm text-base-content/80 mb-3">
-                        <li>get credentials at <a href="https://cubby.sh/dashboard" class="link">cubby.sh/dashboard</a></li>
-                        <li>exchange for token: <code class="text-xs bg-base-100 px-1">curl -X POST https://api.cubby.sh/oauth/token -d "grant_type=client_credentials&client_id=ID&client_secret=SECRET&scope=read:cubby"</code></li>
-                        <li>add to mcp config: <code class="text-xs bg-base-100 px-1">"headers": {{"Authorization": "Bearer TOKEN"}}</code></li>
-                      </ol>
-                      <p class="text-base-content/80 text-sm">remote tools require <code class="bg-base-100 px-1 rounded">deviceId</code> parameter</p>
-                    </div>
-
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">available tools</h3>
-                      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">devices/list</span>
-                          <p class="text-base-content/70 mt-1">list enrolled devices</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">devices/set</span>
-                          <p class="text-base-content/70 mt-1">select device for calls</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/search</span>
-                          <p class="text-base-content/70 mt-1">search content</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/search-keyword</span>
-                          <p class="text-base-content/70 mt-1">fast keyword search</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/speakers/search</span>
-                          <p class="text-base-content/70 mt-1">find speakers by name</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/open-application</span>
-                          <p class="text-base-content/70 mt-1">launch applications</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/open-url</span>
-                          <p class="text-base-content/70 mt-1">open urls in browser</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/notify</span>
-                          <p class="text-base-content/70 mt-1">send notifications</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/audio/list</span>
-                          <p class="text-base-content/70 mt-1">list audio devices</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">device/vision/list</span>
-                          <p class="text-base-content/70 mt-1">list monitors</p>
-                        </div>
-                        <div class="bg-base-300 p-3 rounded">
-                          <span class="font-semibold text-base-content">+ more</span>
-                          <p class="text-base-content/70 mt-1">frames, tags, embeddings</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* REST API Section */}
-              <div id="rest-api" class="card bg-base-200 shadow-xl mb-6">
-                <div class="card-body">
-                  <h2 class="card-title text-2xl font-bold text-base-content">rest api</h2>
-                  <p class="text-base-content/80 mb-6">full openapi spec available for custom integrations</p>
-                  
-                  <div>
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">local server</h3>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`# runs on localhost:3030 after install
+                      {/* REST API Section */}
+                      <div id="rest-api" class="card bg-base-200 shadow-xl mb-12">
+                        <div class="card-body">
+                          <h2 class="card-title text-3xl font-bold mb-6">rest api</h2>
+                          <p class="text-lg mb-8">full openapi spec for custom integrations</p>
+                          
+                          <div class="space-y-8">
+                            <div class="card bg-base-100 shadow-md">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-4">local server</h3>
+                                <div class="mockup-code w-full">
+                                  <pre data-prefix="$"><code>{`# runs on localhost:3030 after install
 curl http://localhost:3030/openapi.json
 
 # example: search content
 curl "http://localhost:3030/search?q=project&limit=10"`}</code></pre>
-                      </div>
-                    </div>
+                                </div>
+                              </div>
+                            </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">key endpoints</h3>
-                      <ul class="text-sm text-base-content/80 space-y-2">
-                        <li><code class="bg-base-100 px-1 rounded">GET /search</code> - search across screen, audio, ui</li>
-                        <li><code class="bg-base-100 px-1 rounded">GET /search/keyword</code> - fast keyword search</li>
-                        <li><code class="bg-base-100 px-1 rounded">GET /speakers/search</code> - find speakers</li>
-                        <li><code class="bg-base-100 px-1 rounded">POST /open-application</code> - launch apps</li>
-                        <li><code class="bg-base-100 px-1 rounded">POST /open-url</code> - open urls</li>
-                        <li><code class="bg-base-100 px-1 rounded">POST /notify</code> - desktop notifications</li>
-                        <li><code class="bg-base-100 px-1 rounded">WS /events</code> - stream live events</li>
-                      </ul>
-                    </div>
+                            <div class="card bg-base-100 shadow-md">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-4">key endpoints</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div class="space-y-2">
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">GET /search</code>
+                                      <span class="text-sm text-base-content/70">search across screen, audio, ui</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">GET /search/keyword</code>
+                                      <span class="text-sm text-base-content/70">fast keyword search</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">GET /speakers/search</code>
+                                      <span class="text-sm text-base-content/70">find speakers</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">POST /open-application</code>
+                                      <span class="text-sm text-base-content/70">launch apps</span>
+                                    </div>
+                                  </div>
+                                  <div class="space-y-2">
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">POST /open-url</code>
+                                      <span class="text-sm text-base-content/70">open urls</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">POST /notify</code>
+                                      <span class="text-sm text-base-content/70">desktop notifications</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                      <code class="bg-base-200 px-2 py-1 rounded text-sm">WS /events</code>
+                                      <span class="text-sm text-base-content/70">stream live events</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
 
-                    <div class="mb-6">
-                      <h3 class="text-xl font-bold mb-3 text-base-content">remote api</h3>
-                      <div class="mockup-code w-full">
-                        <pre data-prefix="$"><code>{`# authenticate
+                            <div class="card bg-base-100 shadow-md">
+                              <div class="card-body">
+                                <h3 class="text-2xl font-bold mb-4">remote api</h3>
+                                <div class="mockup-code w-full">
+                                  <pre data-prefix="$"><code>{`# authenticate
 curl -X POST https://api.cubby.sh/login \\
   -H "Content-Type: application/json" \\
   -d '{"email": "you@email.com", "password": "pass"}'
@@ -913,15 +1078,16 @@ curl -H "Authorization: Bearer TOKEN" \\
 # search on specific device
 curl -H "Authorization: Bearer TOKEN" \\
   "https://api.cubby.sh/devices/DEVICE_ID/search?q=hello"`}</code></pre>
-                      </div>
-                    </div>
+                                </div>
+                              </div>
+                            </div>
 
-                    <div class="mb-6">
-                      <p class="text-base-content/80">full api reference: <a href="/docs/api" class="link">api.cubby.sh/openapi.json</a></p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                            <div class="alert alert-info">
+                              <span>full api reference: <a href="/docs/api" class="link link-primary">api.cubby.sh/openapi.json</a></span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
 
               {/* Footer Navigation */}
               <div class="pt-8 text-center">

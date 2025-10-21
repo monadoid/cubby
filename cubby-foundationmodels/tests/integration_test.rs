@@ -92,6 +92,11 @@ async fn test_generate_person() {
                 // Mark as skipped but don't fail CI
                 return;
             }
+            if error_msg.contains("Detected content likely to be unsafe") {
+                println!("⚠️  SKIPPED: content moderation blocked the request");
+                println!("consider using a different prompt for local verification");
+                return;
+            }
 
             // Any other error should fail the test
             panic!("test failed with unexpected error: {}", error_msg);

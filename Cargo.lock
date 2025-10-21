@@ -1846,6 +1846,7 @@ version = "0.2.75"
 dependencies = [
  "anyhow",
  "async-stream",
+ "cubby-audio",
  "futures",
  "hound",
  "serde",

@@ -1,8 +1,9 @@
 use std::{env, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use cubby_foundationmodels::{
-    start_streaming_session, SpeechStreamSnapshot, SpeechStreamingSession,
+    language_model_availability, start_streaming_session, LanguageModelAvailabilityStatus,
+    SpeechStreamSnapshot, SpeechStreamingSession,
 };
 use hound::{SampleFormat, WavReader};
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -17,11 +18,39 @@ async fn main() -> Result<()> {
     println!("streaming file: {}", path.display());
 
     let (samples, sample_rate) = load_wav(&path)?;
-    let chunk_size = (sample_rate as usize / 100).max(1); // ~10ms chunks
+    let chunk_size = (sample_rate as usize / 200).max(1); // ~5ms chunks for faster streaming
+
+    println!("checking SystemLanguageModel availability...");
+    let availability = language_model_availability().map_err(|err| {
+        anyhow!(
+            "failed to query model availability: {err}. \
+             ensure macOS 26.0+ with Apple Intelligence enabled."
+        )
+    })?;
+    println!("status: {:?}", availability.status);
+    if let Some(reason) = availability.reason.as_deref() {
+        println!("reason: {}", reason);
+    }
+    if let Some(code) = availability.reason_code.as_deref() {
+        println!("reason_code: {}", code);
+    }
+
+    match availability.status {
+        LanguageModelAvailabilityStatus::Available => {
+            println!("✓ model available, starting streaming session\n");
+        }
+        LanguageModelAvailabilityStatus::Unavailable => {
+            println!("✗ model unavailable; aborting");
+            return Ok(());
+        }
+        LanguageModelAvailabilityStatus::Unknown => {
+            println!("⚠️  availability unknown; attempting to stream\n");
+        }
+    }
 
     let (session, mut rx) = start_streaming_session().await?;
-    let sender = session.clone();
 
+    let sender = session.clone();
     let send_handle =
         tokio::spawn(async move { stream_audio(sender, samples, sample_rate, chunk_size).await });
 
@@ -34,21 +63,53 @@ async fn main() -> Result<()> {
 }
 
 async fn drain_results(rx: &mut UnboundedReceiver<Result<SpeechStreamSnapshot>>) {
+    let mut final_transcript = String::new();
+    let start_time = Instant::now();
+    let mut partial_count = 0;
+    let mut final_count = 0;
+    
+    println!("🎤 Starting real-time speech transcription...\n");
+    
     while let Some(item) = rx.recv().await {
         match item {
             Ok(snapshot) => {
+                let elapsed = start_time.elapsed();
+                let result_arrival_time = elapsed.as_secs_f64();
+                
                 if snapshot.is_final {
-                    println!("[final] {}", snapshot.text);
+                    final_count += 1;
+                    // Clear the line and print final result
+                    print!("\r\x1b[K"); // Clear current line
+                    println!("✓ [final] ({:.2}s) {}", 
+                             result_arrival_time, snapshot.text);
+                    final_transcript.push_str(&snapshot.text);
+                    if !snapshot.text.ends_with(' ') {
+                        final_transcript.push(' ');
+                    }
                 } else {
-                    println!("[partial] {}", snapshot.text);
+                    partial_count += 1;
+                    // Show partial result on same line (live updating)
+                    print!("\r\x1b[K"); // Clear current line
+                    print!("⏳ [partial] ({:.2}s) {}", 
+                           result_arrival_time, snapshot.text);
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
                 }
             }
             Err(err) => {
-                eprintln!("[error] {err:#}");
+                print!("\r\x1b[K"); // Clear current line
+                eprintln!("❌ [error] {err:#}");
                 break;
             }
         }
     }
+    
+    // Print final transcript summary
+    let total_time = start_time.elapsed();
+    if !final_transcript.trim().is_empty() {
+        println!("\n📝 Final transcript: {}", final_transcript.trim());
+    }
+    println!("📊 Stats: {} partial updates, {} final updates in {:.2}s", 
+             partial_count, final_count, total_time.as_secs_f64());
 }
 
 fn load_wav(path: &PathBuf) -> Result<(Vec<f32>, u32)> {
