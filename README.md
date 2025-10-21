@@ -15,7 +15,11 @@ this installs the cubby binary and starts recording your screen and audio in the
 
 ## how it works
 
-cubby continuously records your screen (ocr + screenshots) and audio (transcriptions). everything is stored in a local database.
+a local rust server runs on `localhost:3030` and a secure tunnel is created for you, which you can access at `api.cubby.sh`. the server continuously records screen (ocr + screenshots) and audio (transcriptions + speaker identification). everything is stored in sqlite.
+
+### to get started fast, deploy this cubby + cloudflare agents starter
+
+build an ai agent with access to your personal memory system. check out the starter: [github.com/monadoid/cubby-starter](https://github.com/monadoid/cubby-starter)
 
 you can then access your data in three ways:
 
