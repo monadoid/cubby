@@ -1847,6 +1847,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "futures",
+ "hound",
  "serde",
  "serde_json",
  "swift-bridge",

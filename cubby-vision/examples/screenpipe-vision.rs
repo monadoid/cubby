@@ -1,8 +1,6 @@
 use clap::Parser;
 use cubby_core::Language;
-use cubby_vision::{
-    capture_screenshot_by_window::WindowFilters, continuous_capture, OcrEngine,
-};
+use cubby_vision::{capture_screenshot_by_window::WindowFilters, continuous_capture, OcrEngine};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc::channel;
 use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};

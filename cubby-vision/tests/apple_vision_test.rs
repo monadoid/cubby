@@ -1,9 +1,9 @@
 #[cfg(target_os = "macos")]
 #[cfg(test)]
 mod tests {
-    use image::GenericImageView;
     use cubby_core::Language;
     use cubby_vision::perform_ocr_apple;
+    use image::GenericImageView;
     use std::path::PathBuf;
 
     #[tokio::test]

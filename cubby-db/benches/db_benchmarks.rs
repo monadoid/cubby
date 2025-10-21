@@ -1,8 +1,8 @@
 // cargo bench --bench db_benchmarks
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use rand::Rng;
 use cubby_db::{AudioDevice, ContentType, DatabaseManager, DeviceType, OcrEngine};
+use rand::Rng;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 

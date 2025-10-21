@@ -1,12 +1,10 @@
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
+use cubby_vision::capture_screenshot_by_window::WindowFilters;
+use cubby_vision::{continuous_capture, monitor::get_default_monitor, CaptureResult, OcrEngine};
 use futures_util::{SinkExt, StreamExt};
 use image::ImageEncoder;
-use cubby_vision::capture_screenshot_by_window::WindowFilters;
-use cubby_vision::{
-    continuous_capture, monitor::get_default_monitor, CaptureResult, OcrEngine,
-};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use cubby_db::{DatabaseManager, Speaker, AudioDevice as DbAudioDevice, DeviceType as DbDeviceType};
+use cubby_db::{
+    AudioDevice as DbAudioDevice, DatabaseManager, DeviceType as DbDeviceType, Speaker,
+};
 use tracing::{debug, error, info};
 
 use crate::core::engine::AudioTranscriptionEngine;
@@ -100,12 +102,8 @@ pub async fn process_transcription_result(
                     &DbAudioDevice {
                         name: result.input.device.name.clone(),
                         device_type: match result.input.device.device_type {
-                            crate::core::device::DeviceType::Input => {
-                                DbDeviceType::Input
-                            }
-                            crate::core::device::DeviceType::Output => {
-                                DbDeviceType::Output
-                            }
+                            crate::core::device::DeviceType::Input => DbDeviceType::Input,
+                            crate::core::device::DeviceType::Output => DbDeviceType::Output,
                         },
                     },
                     Some(speaker.id),

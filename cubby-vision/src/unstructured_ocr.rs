@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
+use cubby_core::{Language, TESSERACT_LANGUAGES};
 use image::{codecs::png::PngEncoder, DynamicImage, ImageEncoder};
 use log::error;
 use reqwest::multipart::{Form, Part};
 use reqwest::Client;
-use cubby_core::{Language, TESSERACT_LANGUAGES};
 use serde_json;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -186,4 +186,3 @@ pub async fn unstructured_chunking(text: &str) -> Result<Vec<String>> {
         Err(anyhow!("Error: {}", response.status()))
     }
 }
-

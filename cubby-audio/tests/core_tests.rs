@@ -2,7 +2,6 @@
 mod tests {
     use anyhow::anyhow;
     use chrono::Utc;
-    use log::{debug, LevelFilter};
     use cubby_audio::core::device::{
         default_input_device, default_output_device, list_audio_devices, parse_audio_device,
     };
@@ -18,6 +17,7 @@ mod tests {
     use cubby_audio::vad::{silero::SileroVad, VadEngine};
     use cubby_audio::{pcm_decode, stt, AudioInput};
     use cubby_core::Language;
+    use log::{debug, LevelFilter};
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::str::FromStr;
@@ -226,8 +226,8 @@ mod tests {
         let vad_engine: Arc<tokio::sync::Mutex<Box<dyn VadEngine + Send>>> = Arc::new(
             tokio::sync::Mutex::new(Box::new(SileroVad::new().await.unwrap())),
         );
-        let audio_data = cubby_audio::pcm_decode("test_data/Arifi.wav")
-            .expect("Failed to decode audio file");
+        let audio_data =
+            cubby_audio::pcm_decode("test_data/Arifi.wav").expect("Failed to decode audio file");
 
         let audio_input = AudioInput {
             data: Arc::new(audio_data.0),

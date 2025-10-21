@@ -55,17 +55,17 @@ async def read_ocr(payload: dict):
 #
 # Configure your "CustomOcrConfig" in Rust to point to http://localhost:8000/ocr
 
-# Clean up 
+# Clean up
 deactivate
 rm -rf venv app.py
 */
 
 #[cfg(test)]
 mod tests {
-    use image::GenericImageView;
     use cubby_core::Language;
     use cubby_vision::custom_ocr::{perform_ocr_custom, CustomOcrConfig};
     use cubby_vision::utils::OcrEngine;
+    use image::GenericImageView;
     use std::path::PathBuf;
 
     #[tokio::test]
