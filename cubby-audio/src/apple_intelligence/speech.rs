@@ -2,6 +2,8 @@ use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use swift_rs::SRString;
 
+use super::version::{is_macos_26_or_newer, MacOSVersion};
+
 mod ffi {
     use swift_rs::{swift, SRString};
 
@@ -28,19 +30,9 @@ fn parse(json: &str) -> Result<String> {
     Ok(env.transcript.unwrap_or_default().to_string())
 }
 
+#[allow(dead_code)]
 pub async fn transcribe_file(path: &str) -> Result<String> {
-    // version check via existing helper in lib
-    #[allow(unused_imports)]
-    use crate::version::{is_macos_26_or_newer, MacOSVersion};
-    if !is_macos_26_or_newer() {
-        let ver = MacOSVersion::current()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        return Err(anyhow!(format!(
-            "speech requires macos 26.0+, detected {}",
-            ver
-        )));
-    }
+    ensure_supported()?;
 
     let path = path.to_string();
     let json = tokio::task::spawn_blocking(move || {
@@ -58,17 +50,9 @@ struct PreheatEnvelope {
     error: Option<String>,
 }
 
+#[allow(dead_code)]
 pub async fn preheat_speech() -> Result<()> {
-    use crate::version::{is_macos_26_or_newer, MacOSVersion};
-    if !is_macos_26_or_newer() {
-        let ver = MacOSVersion::current()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!(
-            "speech requires macos 26.0+, detected {}",
-            ver
-        )));
-    }
+    ensure_supported()?;
 
     let json =
         tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_preheat() }.to_string()).await?;
@@ -105,6 +89,7 @@ pub struct SpeechAssetEnsureResponse {
     pub installed_now: bool,
 }
 
+#[allow(dead_code)]
 pub async fn install_speech_assets() -> Result<()> {
     let response = ensure_speech_assets_installed().await?;
     match response.status {
@@ -124,17 +109,10 @@ struct LocaleEnvelope<'a> {
     error: Option<String>,
 }
 
+#[allow(dead_code)]
 pub async fn supported_locale() -> Result<String> {
-    use crate::version::{is_macos_26_or_newer, MacOSVersion};
-    if !is_macos_26_or_newer() {
-        let ver = MacOSVersion::current()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!(
-            "speech requires macos 26.0+, detected {}",
-            ver
-        )));
-    }
+    ensure_supported()?;
+
     let json =
         tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_supported_locale() }.to_string())
             .await?;
@@ -145,17 +123,9 @@ pub async fn supported_locale() -> Result<String> {
     Ok(env.locale.unwrap_or("").to_string())
 }
 
+#[allow(dead_code)]
 pub async fn speech_asset_status() -> Result<SpeechAssetStatus> {
-    use crate::version::{is_macos_26_or_newer, MacOSVersion};
-    if !is_macos_26_or_newer() {
-        let ver = MacOSVersion::current()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!(
-            "speech requires macos 26.0+, detected {}",
-            ver
-        )));
-    }
+    ensure_supported()?;
 
     let json =
         tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_assets_status() }.to_string())
@@ -166,16 +136,7 @@ pub async fn speech_asset_status() -> Result<SpeechAssetStatus> {
 }
 
 pub async fn ensure_speech_assets_installed() -> Result<SpeechAssetEnsureResponse> {
-    use crate::version::{is_macos_26_or_newer, MacOSVersion};
-    if !is_macos_26_or_newer() {
-        let ver = MacOSVersion::current()
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| "unknown".into());
-        return Err(anyhow!(format!(
-            "speech requires macos 26.0+, detected {}",
-            ver
-        )));
-    }
+    ensure_supported()?;
 
     let json =
         tokio::task::spawn_blocking(|| unsafe { ffi::fm_speech_ensure_assets() }.to_string())
@@ -196,4 +157,17 @@ fn parse_status_envelope(json: &str) -> Result<AssetStatusEnvelope> {
         return Err(anyhow!(err));
     }
     Ok(env)
+}
+
+fn ensure_supported() -> Result<()> {
+    if !is_macos_26_or_newer() {
+        let ver = MacOSVersion::current()
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        return Err(anyhow!(format!(
+            "speech requires macos 26.0+, detected {}",
+            ver
+        )));
+    }
+    Ok(())
 }

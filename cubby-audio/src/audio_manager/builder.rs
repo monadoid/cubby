@@ -15,6 +15,13 @@ use crate::{
 
 use crate::audio_manager::AudioManager;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RealtimeBackend {
+    Deepgram,
+    #[cfg(target_os = "macos")]
+    SpeechAnalyzer,
+}
+
 #[derive(Clone)]
 pub struct AudioManagerOptions {
     pub transcription_engine: Arc<AudioTranscriptionEngine>,
@@ -32,6 +39,7 @@ pub struct AudioManagerOptions {
     pub deepgram_url: Option<String>,
     pub deepgram_websocket_url: Option<String>,
     pub output_path: Option<PathBuf>,
+    pub realtime_backend: Option<RealtimeBackend>,
 }
 
 impl Default for AudioManagerOptions {
@@ -56,6 +64,7 @@ impl Default for AudioManagerOptions {
             db_path: None,
             deepgram_url,
             deepgram_websocket_url,
+            realtime_backend: None,
         }
     }
 }
@@ -137,6 +146,11 @@ impl AudioManagerBuilder {
         self
     }
 
+    pub fn realtime_backend(mut self, backend: RealtimeBackend) -> Self {
+        self.options.realtime_backend = Some(backend);
+        self
+    }
+
     pub async fn build(&mut self, db: Arc<DatabaseManager>) -> Result<AudioManager> {
         self.validate_options()?;
         let options = &mut self.options;
@@ -158,6 +172,11 @@ impl AudioManagerBuilder {
 
     // TODO: Make sure the custom urls work
     pub fn validate_options(&self) -> Result<()> {
+        let realtime_backend = self
+            .options
+            .realtime_backend
+            .unwrap_or(RealtimeBackend::Deepgram);
+
         if self.options.transcription_engine == Arc::new(AudioTranscriptionEngine::Deepgram)
             && (self.options.deepgram_api_key.is_none() && CUSTOM_DEEPGRAM_API_TOKEN.is_empty())
         {
@@ -171,6 +190,7 @@ impl AudioManagerBuilder {
         }
 
         if self.options.enable_realtime
+            && realtime_backend == RealtimeBackend::Deepgram
             && (self.options.deepgram_api_key.is_none() && CUSTOM_DEEPGRAM_API_TOKEN.is_empty())
         {
             return Err(anyhow::anyhow!(

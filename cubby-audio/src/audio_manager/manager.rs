@@ -15,7 +15,7 @@ use whisper_rs::WhisperContext;
 
 use cubby_db::DatabaseManager;
 
-use super::{start_device_monitor, stop_device_monitor, AudioManagerOptions};
+use super::{start_device_monitor, stop_device_monitor, AudioManagerOptions, RealtimeBackend};
 use crate::{
     core::{
         device::{parse_audio_device, AudioDevice},
@@ -26,6 +26,7 @@ use crate::{
     transcription::{
         deepgram::streaming::stream_transcription_deepgram,
         handle_new_transcript,
+        speech_analyzer::stream_transcription_speech_analyzer,
         stt::process_audio_input,
         whisper::model::{create_whisper_context_parameters, download_whisper_model},
     },
@@ -243,6 +244,9 @@ impl AudioManager {
         let languages = options.languages.clone();
         let deepgram_api_key = options.deepgram_api_key.clone();
         let realtime_enabled = options.enable_realtime;
+        let realtime_backend = options
+            .realtime_backend
+            .unwrap_or(RealtimeBackend::Deepgram);
         let device_clone = device.clone();
 
         let recording_handle = tokio::spawn(async move {
@@ -254,12 +258,20 @@ impl AudioManager {
             ));
 
             let realtime_handle = if realtime_enabled {
-                Some(tokio::spawn(stream_transcription_deepgram(
-                    stream,
-                    languages,
-                    is_running,
-                    deepgram_api_key,
-                )))
+                let realtime_stream = stream.clone();
+                let realtime_is_running = is_running.clone();
+                match realtime_backend {
+                    RealtimeBackend::Deepgram => Some(tokio::spawn(stream_transcription_deepgram(
+                        realtime_stream,
+                        languages,
+                        realtime_is_running,
+                        deepgram_api_key,
+                    ))),
+                    #[cfg(target_os = "macos")]
+                    RealtimeBackend::SpeechAnalyzer => Some(tokio::spawn(
+                        stream_transcription_speech_analyzer(realtime_stream, realtime_is_running),
+                    )),
+                }
             } else {
                 None
             };

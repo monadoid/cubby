@@ -12,6 +12,8 @@ pub struct SetupState {
     pub tunnel_token: Option<String>,
     pub session_jwt: Option<String>,
     pub audio_enabled: Option<bool>,
+    #[serde(default)]
+    pub preferred_transcription_backend: Option<TranscriptionBackendPreference>,
 }
 
 impl Default for SetupState {
@@ -25,6 +27,7 @@ impl Default for SetupState {
             tunnel_token: None,
             session_jwt: None,
             audio_enabled: None,
+            preferred_transcription_backend: None,
         }
     }
 }
@@ -51,4 +54,11 @@ impl SetupState {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptionBackendPreference {
+    Deepgram,
+    SpeechAnalyzer,
 }

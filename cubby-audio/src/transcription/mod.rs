@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::core::device::AudioDevice;
 
 pub mod deepgram;
+pub mod speech_analyzer;
 pub mod stt;
 pub mod whisper;
 

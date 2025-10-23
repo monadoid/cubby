@@ -2,19 +2,18 @@ use clap::Parser;
 #[allow(unused_imports)]
 use colored::Colorize;
 use cubby_audio::{
-    audio_manager::AudioManagerBuilder,
+    audio_manager::{AudioManagerBuilder, RealtimeBackend},
     core::device::{default_input_device, default_output_device, parse_audio_device},
 };
 use cubby_core::find_ffmpeg_path;
 use cubby_db::DatabaseManager;
-use cubby_server::mac_notifications;
 use cubby_server::{
     cli::{
         Cli, CliApp, CliAudioTranscriptionEngine, CliCommand, CliOcrEngine, CliVadEngine,
         CliVadSensitivity,
     },
     permission_checker::{trigger_and_check_microphone, trigger_and_check_screen_recording},
-    setup_state::SetupState,
+    setup_state::{SetupState, TranscriptionBackendPreference},
     start_continuous_recording, ResourceMonitor, SCServer,
 };
 use cubby_vision::monitor::list_monitors;
@@ -152,13 +151,13 @@ async fn main() -> anyhow::Result<()> {
         CliCommand::Service(cli) => {
             let mut setup_state = SetupState::load().unwrap_or_default();
             ensure_permissions_in_service(&cli, &mut setup_state).await?;
-            run_service(&cli, setup_state).await
+            run_service(&cli).await
         }
         CliCommand::Uninstall => handle_uninstall().await,
     }
 }
 
-async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
+async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
 
@@ -207,6 +206,17 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
 
     let mut realtime_audio_devices = Vec::new();
 
+    #[cfg(target_os = "macos")]
+    let cli_requests_speech_analyzer = matches!(
+        cli.audio_transcription_engine,
+        Some(CliAudioTranscriptionEngine::SpeechAnalyzer)
+    );
+    #[cfg(not(target_os = "macos"))]
+    let cli_requests_speech_analyzer = false;
+
+    let enable_realtime_audio =
+        cli.enable_realtime_audio_transcription || cli_requests_speech_analyzer;
+
     if !cli.disable_audio {
         if cli.audio_device.is_empty() {
             // Use default devices
@@ -228,7 +238,7 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
             warn!("no audio devices available.");
         }
 
-        if cli.enable_realtime_audio_transcription {
+        if enable_realtime_audio {
             if cli.realtime_audio_device.is_empty() {
                 // Use default devices
                 if let Ok(input_device) = default_input_device() {
@@ -279,7 +289,6 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
     let languages_clone = languages.clone();
 
     let ocr_engine_clone = cli.ocr_engine.clone();
-    let vad_engine = cli.vad_engine.as_ref();
     let vad_engine_clone = cli.vad_engine.as_ref();
     let vad_sensitivity_clone = cli.vad_sensitivity.as_ref();
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
@@ -314,7 +323,7 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
     };
 
     let mut audio_manager_builder = AudioManagerBuilder::new()
-        .realtime(cli.enable_realtime_audio_transcription)
+        .realtime(enable_realtime_audio)
         .enabled_devices(audio_devices)
         .deepgram_api_key(cli.deepgram_api_key.clone())
         .output_path(PathBuf::from(output_path_clone.clone().to_string()))
@@ -333,8 +342,19 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
             audio_manager_builder.vad_sensitivity(vad_sensitivity.clone().into());
     }
     if let Some(ref transcription_engine) = cli.audio_transcription_engine {
-        audio_manager_builder =
-            audio_manager_builder.transcription_engine(transcription_engine.clone().into());
+        audio_manager_builder = match transcription_engine {
+            #[cfg(target_os = "macos")]
+            CliAudioTranscriptionEngine::SpeechAnalyzer => {
+                audio_manager_builder.realtime_backend(RealtimeBackend::SpeechAnalyzer)
+            }
+            _ => audio_manager_builder.transcription_engine(transcription_engine.clone().into()),
+        };
+    } else if cli_requests_speech_analyzer {
+        #[cfg(target_os = "macos")]
+        {
+            audio_manager_builder =
+                audio_manager_builder.realtime_backend(RealtimeBackend::SpeechAnalyzer);
+        }
     }
 
     let audio_manager = match audio_manager_builder.build(db.clone()).await {
@@ -441,10 +461,7 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
         format!("{} seconds", cli.video_chunk_duration)
     );
     println!("│ port                   │ {:<34} │", cli.port);
-    println!(
-        "│ realtime audio enabled │ {:<34} │",
-        cli.enable_realtime_audio_transcription
-    );
+    println!("│ realtime audio enabled │ {:<34} │", enable_realtime_audio);
     println!("│ audio disabled         │ {:<34} │", cli.disable_audio);
     println!("│ vision disabled        │ {:<34} │", cli.disable_vision);
     println!(
@@ -613,7 +630,7 @@ async fn run_service(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()> {
     println!("├────────────────────────┼────────────────────────────────────┤");
     println!("│ realtime audio devices │                                    │");
 
-    if cli.disable_audio || !cli.enable_realtime_audio_transcription {
+    if cli.disable_audio || !enable_realtime_audio {
         println!("│ {:<22} │ {:<34} │", "", "disabled");
     } else if realtime_audio_devices_clone.is_empty() {
         println!("│ {:<22} │ {:<34} │", "", "no devices available");
@@ -746,6 +763,7 @@ async fn run_setup_flow(cli: &Cli, setup_state: SetupState) -> anyhow::Result<()
 
     ensure_account(cli, &mut setup_state).await?;
     ensure_audio_preference(cli, &mut setup_state)?;
+    ensure_transcription_backend(cli, &mut setup_state).await?;
     ensure_cloudflared_installation(&mut setup_state).await?;
 
     let current_exe = std::env::current_exe()?;
@@ -919,6 +937,137 @@ fn ensure_audio_preference(cli: &Cli, state: &mut SetupState) -> anyhow::Result<
     } else {
         cliclack::log::info("audio recording will remain disabled")?;
     }
+    Ok(())
+}
+
+async fn ensure_transcription_backend(cli: &Cli, state: &mut SetupState) -> anyhow::Result<()> {
+    let audio_enabled = state.audio_enabled.unwrap_or(!cli.disable_audio);
+
+    if !audio_enabled {
+        if state.preferred_transcription_backend.is_some() {
+            state.preferred_transcription_backend = None;
+            state.store()?;
+        }
+        return Ok(());
+    }
+
+    if let Some(cli_engine) = &cli.audio_transcription_engine {
+        let pref = match cli_engine {
+            #[cfg(target_os = "macos")]
+            CliAudioTranscriptionEngine::SpeechAnalyzer => {
+                Some(TranscriptionBackendPreference::SpeechAnalyzer)
+            }
+            _ => Some(TranscriptionBackendPreference::Deepgram),
+        };
+        if state.preferred_transcription_backend != pref {
+            state.preferred_transcription_backend = pref;
+            state.store()?;
+        }
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        if state.preferred_transcription_backend.is_some() {
+            state.preferred_transcription_backend = None;
+            state.store()?;
+        }
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use cliclack::log;
+        use cubby_audio::apple_intelligence::{
+            is_macos_26_or_newer, language_model_availability, LanguageModelAvailabilityStatus,
+        };
+
+        if !is_macos_26_or_newer() {
+            if state.preferred_transcription_backend.is_some() {
+                state.preferred_transcription_backend = None;
+                state.store()?;
+            }
+            return Ok(());
+        }
+
+        if let Some(pref) = state.preferred_transcription_backend {
+            if pref == TranscriptionBackendPreference::SpeechAnalyzer {
+                let availability_result = language_model_availability();
+                if let Ok(availability) = availability_result {
+                    if availability.status == LanguageModelAvailabilityStatus::Available {
+                        return Ok(());
+                    }
+
+                    if let Some(reason) = availability.reason.as_deref() {
+                        log::info(format!(
+                            "Apple Speech Analyzer not currently available ({reason}); reverting to Deepgram realtime backend."
+                        ))?;
+                    } else {
+                        log::info(
+                            "Apple Speech Analyzer not currently available; reverting to Deepgram realtime backend.",
+                        )?;
+                    }
+                } else if let Err(err) = availability_result {
+                    log::warning(format!(
+                        "Unable to validate Speech Analyzer availability ({err}); defaulting to Deepgram."
+                    ))?;
+                }
+
+                state.preferred_transcription_backend =
+                    Some(TranscriptionBackendPreference::Deepgram);
+                state.store()?;
+                return Ok(());
+            } else {
+                return Ok(());
+            }
+        }
+
+        let availability = match language_model_availability() {
+            Ok(avail) => avail,
+            Err(err) => {
+                log::warning(format!(
+                    "Unable to check Speech Analyzer availability ({err}); continuing with Deepgram."
+                ))?;
+                state.preferred_transcription_backend =
+                    Some(TranscriptionBackendPreference::Deepgram);
+                state.store()?;
+                return Ok(());
+            }
+        };
+
+        if availability.status != LanguageModelAvailabilityStatus::Available {
+            if let Some(reason) = availability.reason.as_deref() {
+                log::info(format!(
+                    "Speech Analyzer unavailable ({reason}); keeping Deepgram realtime backend."
+                ))?;
+            } else {
+                log::info(
+                    "Speech Analyzer reports unavailable status; keeping Deepgram realtime backend.",
+                )?;
+            }
+            state.preferred_transcription_backend = Some(TranscriptionBackendPreference::Deepgram);
+            state.store()?;
+            return Ok(());
+        }
+
+        let use_speech_analyzer = cliclack::confirm(
+            "Use Apple's on-device Speech Analyzer for realtime audio transcription (recommended on macOS 26+)?",
+        )
+        .initial_value(true)
+        .interact()?;
+
+        state.preferred_transcription_backend = Some(if use_speech_analyzer {
+            log::info(
+                "Speech Analyzer selected. We'll enable realtime audio transcription during service setup.",
+            )?;
+            TranscriptionBackendPreference::SpeechAnalyzer
+        } else {
+            log::info("Keeping Deepgram as the realtime transcription backend.")?;
+            TranscriptionBackendPreference::Deepgram
+        });
+        state.store()?;
+    }
+
     Ok(())
 }
 
@@ -1119,7 +1268,6 @@ async fn handle_uninstall() -> anyhow::Result<()> {
 
     #[cfg(not(debug_assertions))]
     {
-        use cliclack::log;
         cliclack::outro("Uninstall complete!")?;
     }
 
@@ -1157,6 +1305,26 @@ fn build_service_args(cli: &Cli, state: &SetupState) -> Vec<String> {
         args.push("--disable-audio".to_string());
     }
 
+    #[cfg(target_os = "macos")]
+    let state_requests_speech = cli.audio_transcription_engine.is_none()
+        && matches!(
+            state.preferred_transcription_backend,
+            Some(TranscriptionBackendPreference::SpeechAnalyzer)
+        );
+    #[cfg(not(target_os = "macos"))]
+    let state_requests_speech = false;
+
+    #[cfg(target_os = "macos")]
+    let cli_requests_speech = matches!(
+        cli.audio_transcription_engine,
+        Some(CliAudioTranscriptionEngine::SpeechAnalyzer)
+    );
+    #[cfg(not(target_os = "macos"))]
+    let cli_requests_speech = false;
+
+    let enable_realtime =
+        cli.enable_realtime_audio_transcription || state_requests_speech || cli_requests_speech;
+
     if cli.disable_vision {
         args.push("--disable-vision".to_string());
     }
@@ -1185,7 +1353,7 @@ fn build_service_args(cli: &Cli, state: &SetupState) -> Vec<String> {
         args.push("--capture-unfocused-windows".to_string());
     }
 
-    if cli.enable_realtime_audio_transcription {
+    if enable_realtime {
         args.push("--enable-realtime-audio-transcription".to_string());
     }
 
@@ -1233,23 +1401,38 @@ fn build_service_args(cli: &Cli, state: &SetupState) -> Vec<String> {
         args.push(window.clone());
     }
 
-    // Audio transcription engine (only if explicitly set)
-    if let Some(engine) = &cli.audio_transcription_engine {
-        args.push("--audio-transcription-engine".to_string());
-        args.push(
-            match engine {
-                CliAudioTranscriptionEngine::Deepgram => "deepgram",
-                CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny",
-                CliAudioTranscriptionEngine::WhisperTinyQuantized => "whisper-tiny-quantized",
-                CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large",
-                CliAudioTranscriptionEngine::WhisperLargeV3Quantized => "whisper-large-quantized",
-                CliAudioTranscriptionEngine::WhisperLargeV3Turbo => "whisper-large-v3-turbo",
-                CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
-                    "whisper-large-v3-turbo-quantized"
-                }
+    // Audio transcription engine (explicit flag or derived from setup state)
+    let mut engine_arg = cli
+        .audio_transcription_engine
+        .as_ref()
+        .map(|engine| match engine {
+            CliAudioTranscriptionEngine::Deepgram => "deepgram".to_string(),
+            CliAudioTranscriptionEngine::WhisperTiny => "whisper-tiny".to_string(),
+            CliAudioTranscriptionEngine::WhisperTinyQuantized => {
+                "whisper-tiny-quantized".to_string()
             }
-            .to_string(),
-        );
+            CliAudioTranscriptionEngine::WhisperLargeV3 => "whisper-large".to_string(),
+            CliAudioTranscriptionEngine::WhisperLargeV3Quantized => {
+                "whisper-large-quantized".to_string()
+            }
+            CliAudioTranscriptionEngine::WhisperLargeV3Turbo => {
+                "whisper-large-v3-turbo".to_string()
+            }
+            CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
+                "whisper-large-v3-turbo-quantized".to_string()
+            }
+            #[cfg(target_os = "macos")]
+            CliAudioTranscriptionEngine::SpeechAnalyzer => "speech-analyzer".to_string(),
+        });
+
+    #[cfg(target_os = "macos")]
+    if engine_arg.is_none() && state_requests_speech {
+        engine_arg = Some("speech-analyzer".to_string());
+    }
+
+    if let Some(engine) = engine_arg {
+        args.push("--audio-transcription-engine".to_string());
+        args.push(engine);
     }
 
     // OCR engine

@@ -1,7 +1,5 @@
 use crate::server::{AppState, SearchQuery, SearchResponse};
 use axum::extract::{Query, State};
-use chrono::{DateTime, Utc};
-use cubby_db::ContentType;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::*;
 use rmcp::service::{RequestContext, RoleServer};

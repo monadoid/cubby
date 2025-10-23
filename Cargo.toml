@@ -6,7 +6,6 @@ members = [
     "cubby-server",
     "cubby-events",
     "cubby-db",
-    "cubby-foundationmodels",
     "notify-helper",
 ]
 resolver = "2"

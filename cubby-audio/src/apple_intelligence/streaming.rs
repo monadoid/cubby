@@ -8,7 +8,7 @@ use serde::Deserialize;
 use swift_rs::{Int, SRString};
 use tokio::sync::mpsc;
 
-use crate::version::{is_macos_26_or_newer, MacOSVersion};
+use super::version::{is_macos_26_or_newer, MacOSVersion};
 
 mod ffi {
     use swift_rs::{swift, Int, SRString};
@@ -63,7 +63,7 @@ struct StreamEventEnvelope {
     error: Option<String>,
 }
 
-const DEFAULT_POLL_TIMEOUT_MS: i32 = 250; // Balanced timeout to reduce race conditions while maintaining responsiveness
+const DEFAULT_POLL_TIMEOUT_MS: i32 = 250;
 
 impl SpeechStreamingSession {
     pub async fn create() -> Result<Self> {

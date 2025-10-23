@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use cubby_foundationmodels::{start_streaming_session, version};
+use cubby_audio::apple_intelligence::{start_streaming_session, version};
 use hound::{SampleFormat, WavReader};
 use tokio::time::timeout;
 

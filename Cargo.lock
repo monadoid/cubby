@@ -1709,6 +1709,7 @@ name = "cubby-audio"
 version = "0.2.75"
 dependencies = [
  "anyhow",
+ "async-stream",
  "bytemuck",
  "bytes",
  "chrono",
@@ -1746,6 +1747,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strsim 0.10.0",
+ "swift-rs",
  "symphonia",
  "tempfile",
  "tokio",
@@ -1838,22 +1840,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
-]
-
-[[package]]
-name = "cubby-foundationmodels"
-version = "0.2.75"
-dependencies = [
- "anyhow",
- "async-stream",
- "cubby-audio",
- "futures",
- "hound",
- "serde",
- "serde_json",
- "swift-rs",
- "tokio",
- "tokio-stream",
 ]
 
 [[package]]
