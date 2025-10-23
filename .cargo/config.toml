@@ -17,7 +17,28 @@ rustflags = [
 rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]
 
 [target.aarch64-apple-darwin]
-rustflags = "-lc++ -l framework=Accelerate"
+rustflags = [
+  "-C",
+  "link-arg=-Wl,-rpath,/usr/lib/swift",
+  "-C",
+  "link-arg=-Wl,-rpath,/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx",
+  "-l",
+  "c++",
+  "-l",
+  "framework=Accelerate",
+]
+
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C",
+  "link-arg=-Wl,-rpath,/usr/lib/swift",
+  "-C",
+  "link-arg=-Wl,-rpath,/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx",
+  "-l",
+  "c++",
+  "-l",
+  "framework=Accelerate",
+]
 
 [env]
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"

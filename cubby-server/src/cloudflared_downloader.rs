@@ -28,11 +28,6 @@ enum Archive {
     Tgz(&'static str), // tar.gz; inner binary to extract
 }
 
-#[derive(Deserialize)]
-struct Release {
-    tag_name: String,
-}
-
 #[derive(Serialize)]
 struct Meta {
     tag: String,

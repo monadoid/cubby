@@ -85,20 +85,27 @@ pub async fn start_continuous_recording(
                             Err(e) => {
                                 error!("record_video for monitor {} failed with error: {}", monitor_id, e);
                                 retry_count += 1;
-                                
+
                                 if retry_count >= MAX_RETRIES {
-                                    error!("Max retries ({}) reached for monitor {}. Giving up on this monitor.", 
-                                           MAX_RETRIES, monitor_id);
+                                    error!(
+                                        "Max retries ({}) reached for monitor {}. Giving up on this monitor.",
+                                        MAX_RETRIES, monitor_id
+                                    );
                                     break;
                                 }
-                                
-                                warn!("Retry {}/{} for monitor {} after {} seconds", 
-                                      retry_count, MAX_RETRIES, monitor_id, RETRY_DELAY.as_secs());
+
+                                warn!(
+                                    "Retry {}/{} for monitor {} after {} seconds",
+                                    retry_count,
+                                    MAX_RETRIES,
+                                    monitor_id,
+                                    RETRY_DELAY.as_secs()
+                                );
                                 tokio::time::sleep(RETRY_DELAY).await;
                             }
                         }
                     }
-                    
+
                     warn!("Vision capture task for monitor {} has stopped", monitor_id);
                     Ok::<(), anyhow::Error>(())
                 })

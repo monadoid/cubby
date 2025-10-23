@@ -10,3 +10,6 @@ pub use utils::audio::resample;
 pub mod audio_manager;
 mod device;
 mod segmentation;
+
+#[cfg(target_os = "macos")]
+pub mod apple_intelligence;

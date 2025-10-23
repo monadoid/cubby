@@ -10,6 +10,8 @@ pub enum AudioTranscriptionEngine {
     WhisperLargeV3TurboQuantized,
     WhisperLargeV3,
     WhisperLargeV3Quantized,
+    #[cfg(target_os = "macos")]
+    SpeechAnalyzer,
 }
 
 impl fmt::Display for AudioTranscriptionEngine {
@@ -26,6 +28,8 @@ impl fmt::Display for AudioTranscriptionEngine {
             AudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
                 write!(f, "WhisperLargeV3TurboQuantized")
             }
+            #[cfg(target_os = "macos")]
+            AudioTranscriptionEngine::SpeechAnalyzer => write!(f, "SpeechAnalyzer"),
         }
     }
 }

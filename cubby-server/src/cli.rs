@@ -26,6 +26,9 @@ pub enum CliAudioTranscriptionEngine {
     WhisperLargeV3Turbo,
     #[clap(name = "whisper-large-v3-turbo-quantized")]
     WhisperLargeV3TurboQuantized,
+    #[cfg(target_os = "macos")]
+    #[clap(name = "speech-analyzer")]
+    SpeechAnalyzer,
 }
 
 impl From<CliAudioTranscriptionEngine> for CoreAudioTranscriptionEngine {
@@ -47,6 +50,10 @@ impl From<CliAudioTranscriptionEngine> for CoreAudioTranscriptionEngine {
             }
             CliAudioTranscriptionEngine::WhisperLargeV3TurboQuantized => {
                 CoreAudioTranscriptionEngine::WhisperLargeV3TurboQuantized
+            }
+            #[cfg(target_os = "macos")]
+            CliAudioTranscriptionEngine::SpeechAnalyzer => {
+                CoreAudioTranscriptionEngine::SpeechAnalyzer
             }
         }
     }
@@ -141,13 +148,7 @@ impl From<CliVadSensitivity> for VadSensitivity {
 }
 
 #[derive(Args, Clone, Debug)]
-#[command(
-    author, 
-    version,
-    about, 
-    long_about = None,
-    name = "cubby"
-)]
+#[command(author, version, about, long_about = None, name = "cubby")]
 pub struct Cli {
     /// FPS for continuous recording
     /// 1 FPS = 30 GB / month
@@ -191,6 +192,7 @@ pub struct Cli {
     /// WhisperTiny is a local, lightweight transcription model, recommended for high data privacy.
     /// WhisperDistilLargeV3 is a local, lightweight transcription model (-a whisper-large), recommended for higher quality audio than tiny.
     /// WhisperLargeV3Turbo is a local, lightweight transcription model (-a whisper-large-v3-turbo), recommended for higher quality audio than tiny.
+    /// SpeechAnalyzer (macOS 26+) streams via Apple's on-device Speech Analyzer for low-latency realtime transcripts.
     #[arg(short = 'a', long, value_enum)]
     pub audio_transcription_engine: Option<CliAudioTranscriptionEngine>,
 

@@ -5,12 +5,101 @@ use std::{
     process::{Command, Output},
 };
 
+#[cfg(target_os = "macos")]
+mod apple_intelligence_link {
+    use std::{
+        env, fs,
+        path::{Path, PathBuf},
+        process::Command,
+    };
+
+    use swift_rs::SwiftLinker;
+
+
+    // TODO: We should move the apple foundation model sdk calls and the speech sdk calls from this code into their own crate(s). I moved it into cubby-audio
+    // while debugging a linker issue, and then I think my only problem was that I needed to have this linking code in *both* crates' build.rs files.
+    pub fn link() {
+        println!("cargo:rerun-if-changed=swift/Package.swift");
+        println!("cargo:rerun-if-changed=swift/Sources/FoundationModelsBridge/FoundationModelsBridge.swift");
+        println!("cargo:rerun-if-changed=swift/Sources/FoundationModelsBridge/SpeechBridge.swift");
+
+        configure_swift_module_cache();
+
+        SwiftLinker::new("26.0")
+            .with_package("FoundationModelsBridge", "swift")
+            .link();
+
+        for path in runtime_rpaths() {
+            println!("cargo:rustc-link-search=native={path}");
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{path}");
+        }
+
+        println!("cargo:rustc-link-lib=framework=FoundationModels");
+        println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=Speech");
+        println!("cargo:rustc-link-lib=framework=AVFoundation");
+    }
+
+    fn configure_swift_module_cache() {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
+        let module_cache = out_dir.join("swift-module-cache");
+        if let Err(err) = fs::create_dir_all(&module_cache) {
+            panic!(
+                "failed to create Swift module cache directory {}: {err}",
+                module_cache.display()
+            );
+        }
+
+        let module_cache_str = module_cache.display().to_string();
+        env::set_var("CLANG_MODULE_CACHE_PATH", &module_cache_str);
+        env::set_var("SWIFT_MODULE_CACHE_PATH", &module_cache_str);
+        env::set_var("SWIFT_PM_MODULECACHE_OVERRIDE", &module_cache_str);
+        env::set_var("SWIFTPM_DISABLE_SANDBOX", "1");
+    }
+
+    fn runtime_rpaths() -> Vec<String> {
+        let mut paths = Vec::new();
+        if let Some(toolchain_path) = toolchain_runtime_path() {
+            paths.push(toolchain_path);
+        }
+        paths.push("/usr/lib/swift".into());
+        paths
+    }
+
+    fn toolchain_runtime_path() -> Option<String> {
+        let output = Command::new("xcode-select")
+            .arg("--print-path")
+            .output()
+            .ok()?;
+
+        if !output.status.success() {
+            return None;
+        }
+
+        let base = String::from_utf8_lossy(&output.stdout);
+        let trimmed = base.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let path = format!("{trimmed}/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx");
+        if Path::new(&path).exists() {
+            Some(path)
+        } else {
+            None
+        }
+    }
+}
+
 fn main() {
     // Windows ONNX runtime support disabled - previously installed to cubby-app-tauri
     // #[cfg(target_os = "windows")]
     // {
     //     install_onnxruntime();
     // }
+
+    #[cfg(target_os = "macos")]
+    apple_intelligence_link::link();
 
     if !is_bun_installed() {
         install_bun();

@@ -79,6 +79,7 @@ futures = "0.3.31"
 deepgram = "0.6.4"
 bytes = { version = "1.9.0", features = ["serde"] }
 rand = "0.9.0"
+async-stream = "0.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ort = { version = "=2.0.0-rc.6", features = [
@@ -94,6 +95,10 @@ libsamplerate-sys = "0.1.10"
 [target.'cfg(target_os = "macos")'.dependencies]
 once_cell = "1.17.1"
 objc = "0.2.7"
+swift-rs = "1.0.7"
+
+[target.'cfg(target_os = "macos")'.build-dependencies]
+swift-rs = { version = "1.0.7", features = ["build"] }
 
 [dev-dependencies]
 tempfile = "3.3.0"
@@ -102,6 +107,7 @@ criterion = { workspace = true }
 strsim = "0.10.0"
 futures = "0.3.31"
 tracing-subscriber = "0.3.16"
+hound = "3"
 
 
 [features]
@@ -109,8 +115,12 @@ metal = ["whisper-rs/metal"]
 cuda = ["whisper-rs/cuda"]
 
 [[example]]
-name = "cubby-audio"
-path = "examples/cubby-audio.rs"
+name = "screenpipe-audio"
+path = "examples/screenpipe-audio.rs"
+
+[[example]]
+name = "apple-intelligence-mic"
+path = "examples/apple-intelligence-mic.rs"
 
 [package.metadata.cargo-machete]
 ignored = ["ort-sys"]
