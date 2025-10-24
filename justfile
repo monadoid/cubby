@@ -148,6 +148,7 @@ token EMAIL:
 
 # generate M2M credentials and update all example .env files
 update-credentials EMAIL PASSWORD="example_pw!":
+
     #!/usr/bin/env bash
     set -euo pipefail
     echo "generating m2m credentials for {{EMAIL}}..."
