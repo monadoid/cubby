@@ -14,6 +14,51 @@ cubby-start:
 cubby-uninstall:
     cargo run -- uninstall
 
+profile-flamegraph:
+    DATA_DIR="${CUBBY_DEV_DATA_DIR:-$PWD/.cubby-dev}" && \
+    mkdir -p "$DATA_DIR" && \
+    CARGO_PROFILE_RELEASE_DEBUG=true \
+    CARGO_PROFILE_RELEASE_STRIP=false \
+    CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed \
+    SAVE_RESOURCE_USAGE=${SAVE_RESOURCE_USAGE:-1} \
+    cargo flamegraph --release --bin cubby -- \
+        service \
+        --data-dir "$DATA_DIR" \
+        --debug \
+        --disable-telemetry \
+        --port "${CUBBY_DEV_PORT:-43030}" \
+        --audio-transcription-engine speech-analyzer \
+        --enable-realtime-audio-transcription
+
+profile-instruments template="Allocations":
+    #!/usr/bin/env bash
+    DATA_DIR="${CUBBY_DEV_DATA_DIR:-$PWD/.cubby-dev}"; mkdir -p "$DATA_DIR"
+    OUTPUT_DIR="${CUBBY_INSTRUMENTS_DIR:-target/instruments}"
+    mkdir -p "$OUTPUT_DIR"
+    CMD=(cargo instruments -t "$template" --release --bin cubby)
+    if [[ "${INSTRUMENTS_NO_OPEN:-0}" == "1" ]]; then
+        CMD+=(--no-open)
+    fi
+    if [[ -n "${INSTRUMENTS_TIME_LIMIT:-}" ]]; then
+        CMD+=(--time-limit "${INSTRUMENTS_TIME_LIMIT}")
+    fi
+    if [[ -n "${INSTRUMENTS_OUTPUT:-}" ]]; then
+        CMD+=(-o "${INSTRUMENTS_OUTPUT}")
+    fi
+    CMD+=(--)
+    CMD+=(
+        --data-dir "$DATA_DIR"
+        --debug
+        --disable-telemetry
+        --port "${CUBBY_DEV_PORT:-43030}"
+        --audio-transcription-engine speech-analyzer
+        --enable-realtime-audio-transcription
+    )
+    echo "Running: ${CMD[*]}"
+    CARGO_PROFILE_RELEASE_DEBUG=true \
+    CARGO_PROFILE_RELEASE_STRIP=false \
+    CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed \
+        "${CMD[@]}"
 # build notify-helper for both macOS architectures and copy to sidecars
 build-notify-helper: ensure-rust-targets
     @echo "building notify-helper for aarch64..."
@@ -249,4 +294,3 @@ release-tag NEW_VERSION:
 	@echo "      • dist/{{NEW_VERSION}}/r2-ready/cubby-darwin-aarch64"
 	@echo "      • dist/{{NEW_VERSION}}/r2-ready/cubby-darwin-x86_64"
 	@echo "   2. linux binaries will be uploaded automatically by github actions"
-
