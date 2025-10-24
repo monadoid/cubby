@@ -33,3 +33,19 @@ impl fmt::Display for AudioTranscriptionEngine {
         }
     }
 }
+
+impl AudioTranscriptionEngine {
+    pub fn requires_whisper_backend(&self) -> bool {
+        match self {
+            AudioTranscriptionEngine::Deepgram
+            | AudioTranscriptionEngine::WhisperTiny
+            | AudioTranscriptionEngine::WhisperTinyQuantized
+            | AudioTranscriptionEngine::WhisperLargeV3Turbo
+            | AudioTranscriptionEngine::WhisperLargeV3TurboQuantized
+            | AudioTranscriptionEngine::WhisperLargeV3
+            | AudioTranscriptionEngine::WhisperLargeV3Quantized => true,
+            #[cfg(target_os = "macos")]
+            AudioTranscriptionEngine::SpeechAnalyzer => false,
+        }
+    }
+}

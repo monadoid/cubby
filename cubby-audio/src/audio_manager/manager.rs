@@ -10,7 +10,7 @@ use tokio::{
     sync::{Mutex, RwLock},
     task::JoinHandle,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use whisper_rs::WhisperContext;
 
 use cubby_db::DatabaseManager;
@@ -24,6 +24,7 @@ use crate::{
     device::device_manager::DeviceManager,
     segmentation::segmentation_manager::SegmentationManager,
     transcription::{
+        backend::{SpeechAnalyzerTranscriptStore, TranscriptionBackend},
         deepgram::streaming::stream_transcription_deepgram,
         handle_new_transcript,
         speech_analyzer::stream_transcription_speech_analyzer,
@@ -58,7 +59,8 @@ pub struct AudioManager {
     transcription_sender: Arc<crossbeam::channel::Sender<TranscriptionResult>>,
     transcription_receiver_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
     recording_receiver_handle: Arc<RwLock<Option<JoinHandle<()>>>>,
-    stt_model_path: PathBuf,
+    stt_model_path: Option<PathBuf>,
+    speech_analyzer_store: Option<Arc<SpeechAnalyzerTranscriptStore>>,
 }
 
 impl AudioManager {
@@ -75,9 +77,14 @@ impl AudioManager {
         let (transcription_sender, transcription_receiver) = crossbeam::channel::bounded(1000);
 
         let recording_handles = DashMap::new();
-        let stt_model_path = download_whisper_model(options.transcription_engine.clone())?;
-
-        whisper_rs::install_logging_hooks();
+        let transcription_engine = options.transcription_engine.clone();
+        let (stt_model_path, speech_analyzer_store) =
+            if transcription_engine.requires_whisper_backend() {
+                whisper_rs::install_logging_hooks();
+                (Some(download_whisper_model(transcription_engine)?), None)
+            } else {
+                (None, Some(Arc::new(SpeechAnalyzerTranscriptStore::new())))
+            };
 
         let manager = Self {
             options: Arc::new(RwLock::new(options)),
@@ -94,6 +101,7 @@ impl AudioManager {
             recording_receiver_handle: Arc::new(RwLock::new(None)),
             transcription_receiver_handle: Arc::new(RwLock::new(None)),
             stt_model_path,
+            speech_analyzer_store,
         };
 
         Ok(manager)
@@ -249,6 +257,16 @@ impl AudioManager {
             .unwrap_or(RealtimeBackend::Deepgram);
         let device_clone = device.clone();
 
+        #[cfg(target_os = "macos")]
+        if realtime_enabled && matches!(realtime_backend, RealtimeBackend::SpeechAnalyzer) {
+            if self.speech_analyzer_store.is_none() {
+                return Err(anyhow!("speech analyzer store not initialized"));
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        let speech_analyzer_store = self.speech_analyzer_store.clone();
+
         let recording_handle = tokio::spawn(async move {
             let record_and_transcribe_handle = tokio::spawn(record_and_transcribe(
                 stream.clone(),
@@ -268,9 +286,17 @@ impl AudioManager {
                         deepgram_api_key,
                     ))),
                     #[cfg(target_os = "macos")]
-                    RealtimeBackend::SpeechAnalyzer => Some(tokio::spawn(
-                        stream_transcription_speech_analyzer(realtime_stream, realtime_is_running),
-                    )),
+                    RealtimeBackend::SpeechAnalyzer => {
+                        let store = speech_analyzer_store
+                            .as_ref()
+                            .expect("speech analyzer store not initialized")
+                            .clone();
+                        Some(tokio::spawn(stream_transcription_speech_analyzer(
+                            realtime_stream,
+                            realtime_is_running,
+                            store,
+                        )))
+                    }
                 }
             } else {
                 None
@@ -324,13 +350,26 @@ impl AudioManager {
         let audio_transcription_engine = options.transcription_engine.clone();
         let vad_engine = self.vad_engine.clone();
         let whisper_receiver = self.recording_receiver.clone();
-        let context_param = create_whisper_context_parameters(audio_transcription_engine.clone())?;
-
-        let quantized_path = self.stt_model_path.clone();
-        let whisper_context = Arc::new(
-            WhisperContext::new_with_params(&quantized_path.to_string_lossy(), context_param)
-                .expect("failed to load model"),
-        );
+        let backend = if let Some(path) = self.stt_model_path.as_ref() {
+            let context_param =
+                create_whisper_context_parameters(audio_transcription_engine.clone())?;
+            let context = Arc::new(
+                WhisperContext::new_with_params(&path.to_string_lossy(), context_param)
+                    .expect("failed to load model"),
+            );
+            debug!("selected whisper backend for audio transcription");
+            TranscriptionBackend::Whisper { context }
+        } else {
+            let store = self
+                .speech_analyzer_store
+                .as_ref()
+                .ok_or_else(|| anyhow!("speech analyzer store not initialized"))?
+                .clone();
+            debug!("selected speech analyzer backend for audio transcription");
+            TranscriptionBackend::SpeechAnalyzer {
+                transcript_store: store,
+            }
+        };
 
         Ok(tokio::spawn(async move {
             while let Ok(audio) = whisper_receiver.recv() {
@@ -346,7 +385,7 @@ impl AudioManager {
                     deepgram_api_key.clone(),
                     languages.clone(),
                     &transcription_sender.clone(),
-                    whisper_context.clone(),
+                    backend.clone(),
                 )
                 .await
                 {

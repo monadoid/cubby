@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::core::device::AudioDevice;
 
+pub mod backend;
 pub mod deepgram;
 pub mod speech_analyzer;
 pub mod stt;

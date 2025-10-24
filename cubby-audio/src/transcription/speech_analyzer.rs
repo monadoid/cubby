@@ -8,7 +8,7 @@ mod inner {
     use anyhow::{anyhow, Result};
     use chrono::Utc;
     use cubby_events::send_event;
-    use tracing::{debug, error, info, warn};
+    use tracing::{debug, error, info, trace, warn};
 
     use crate::apple_intelligence::{
         ensure_speech_assets_installed, start_streaming_session, SpeechAssetStatus,
@@ -16,11 +16,13 @@ mod inner {
 
     use crate::core::device::DeviceType;
     use crate::core::stream::AudioStream;
+    use crate::transcription::backend::SpeechAnalyzerTranscriptStore;
     use crate::transcription::deepgram::streaming::RealtimeTranscriptionEvent;
 
     pub async fn stream_transcription_speech_analyzer(
         stream: Arc<AudioStream>,
         is_running: Arc<AtomicBool>,
+        transcript_store: Arc<SpeechAnalyzerTranscriptStore>,
     ) -> Result<()> {
         let ensure_result = ensure_speech_assets_installed().await?;
         match ensure_result.status {
@@ -115,6 +117,15 @@ mod inner {
                     if let Err(err) = send_event("transcription", event) {
                         warn!("failed to emit speech analyzer transcript: {}", err);
                     }
+
+                    if snapshot.is_final {
+                        transcript_store.push_final(&device_name, snapshot.text.clone(), None);
+                        trace!(
+                            "speech analyzer final transcript stored for {}: {}",
+                            device_name,
+                            snapshot.text
+                        );
+                    }
                 }
                 Some(Err(err)) => {
                     error!(
@@ -160,9 +171,12 @@ mod inner {
     use crate::core::device::DeviceType;
     use crate::core::stream::AudioStream;
 
+    use crate::transcription::backend::SpeechAnalyzerTranscriptStore;
+
     pub async fn stream_transcription_speech_analyzer(
         _stream: Arc<AudioStream>,
         _is_running: Arc<AtomicBool>,
+        _transcript_store: Arc<SpeechAnalyzerTranscriptStore>,
     ) -> Result<()> {
         Err(anyhow!(
             "speech analyzer transcription is only supported on macOS 26.0+"

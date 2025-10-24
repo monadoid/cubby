@@ -64,3 +64,4 @@ todos.md
 test*.sh
 /generate-m2m-credentials.sh
 flamegraph.svg
+.cubby-dev/*

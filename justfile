@@ -15,27 +15,16 @@ cubby-uninstall:
     cargo run -- uninstall
 
 profile-flamegraph:
-    DATA_DIR="${CUBBY_DEV_DATA_DIR:-$PWD/.cubby-dev}" && \
-    mkdir -p "$DATA_DIR" && \
-    CARGO_PROFILE_RELEASE_DEBUG=true \
-    CARGO_PROFILE_RELEASE_STRIP=false \
-    CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed \
-    SAVE_RESOURCE_USAGE=${SAVE_RESOURCE_USAGE:-1} \
-    cargo flamegraph --release --bin cubby -- \
+     samply record ./target/release/cubby \
         service \
-        --data-dir "$DATA_DIR" \
-        --debug \
         --disable-telemetry \
-        --port "${CUBBY_DEV_PORT:-43030}" \
         --audio-transcription-engine speech-analyzer \
         --enable-realtime-audio-transcription
 
 profile-instruments template="Allocations":
     #!/usr/bin/env bash
     DATA_DIR="${CUBBY_DEV_DATA_DIR:-$PWD/.cubby-dev}"; mkdir -p "$DATA_DIR"
-    OUTPUT_DIR="${CUBBY_INSTRUMENTS_DIR:-target/instruments}"
-    mkdir -p "$OUTPUT_DIR"
-    CMD=(cargo instruments -t "$template" --release --bin cubby)
+    CMD=(cargo instruments -t "{{template}}" --release --bin cubby)
     if [[ "${INSTRUMENTS_NO_OPEN:-0}" == "1" ]]; then
         CMD+=(--no-open)
     fi
@@ -47,10 +36,9 @@ profile-instruments template="Allocations":
     fi
     CMD+=(--)
     CMD+=(
+        service
         --data-dir "$DATA_DIR"
-        --debug
         --disable-telemetry
-        --port "${CUBBY_DEV_PORT:-43030}"
         --audio-transcription-engine speech-analyzer
         --enable-realtime-audio-transcription
     )
@@ -148,7 +136,6 @@ token EMAIL:
 
 # generate M2M credentials and update all example .env files
 update-credentials EMAIL PASSWORD="example_pw!":
-
     #!/usr/bin/env bash
     set -euo pipefail
     echo "generating m2m credentials for {{EMAIL}}..."

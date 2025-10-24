@@ -1,5 +1,5 @@
 use crate::core::engine::AudioTranscriptionEngine;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use hf_hub::{api::sync::Api, Cache, Repo, RepoType};
 use std::{path::PathBuf, sync::Arc};
 use tracing::info;
@@ -12,6 +12,12 @@ pub fn download_whisper_model(engine: Arc<AudioTranscriptionEngine>) -> Result<P
         AudioTranscriptionEngine::WhisperTinyQuantized => "ggml-tiny-q8_0.bin",
         AudioTranscriptionEngine::WhisperLargeV3 => "ggml-large-v3.bin",
         AudioTranscriptionEngine::WhisperLargeV3Quantized => "ggml-large-v3-q5_0.bin",
+        #[cfg(target_os = "macos")]
+        AudioTranscriptionEngine::SpeechAnalyzer => {
+            return Err(anyhow!(
+                "Speech Analyzer does not require a Whisper model download"
+            ))
+        }
         _ => "ggml-large-v3-turbo-q8_0.bin",
     };
 

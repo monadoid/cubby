@@ -3,7 +3,10 @@ use clap::Parser;
 use colored::Colorize;
 use cubby_audio::{
     audio_manager::{AudioManagerBuilder, RealtimeBackend},
-    core::device::{default_input_device, default_output_device, parse_audio_device},
+    core::{
+        device::{default_input_device, default_output_device, parse_audio_device},
+        engine::AudioTranscriptionEngine as CoreAudioTranscriptionEngine,
+    },
 };
 use cubby_core::find_ffmpeg_path;
 use cubby_db::DatabaseManager;
@@ -344,16 +347,17 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     if let Some(ref transcription_engine) = cli.audio_transcription_engine {
         audio_manager_builder = match transcription_engine {
             #[cfg(target_os = "macos")]
-            CliAudioTranscriptionEngine::SpeechAnalyzer => {
-                audio_manager_builder.realtime_backend(RealtimeBackend::SpeechAnalyzer)
-            }
+            CliAudioTranscriptionEngine::SpeechAnalyzer => audio_manager_builder
+                .transcription_engine(transcription_engine.clone().into())
+                .realtime_backend(RealtimeBackend::SpeechAnalyzer),
             _ => audio_manager_builder.transcription_engine(transcription_engine.clone().into()),
         };
     } else if cli_requests_speech_analyzer {
         #[cfg(target_os = "macos")]
         {
-            audio_manager_builder =
-                audio_manager_builder.realtime_backend(RealtimeBackend::SpeechAnalyzer);
+            audio_manager_builder = audio_manager_builder
+                .transcription_engine(CoreAudioTranscriptionEngine::SpeechAnalyzer)
+                .realtime_backend(RealtimeBackend::SpeechAnalyzer);
         }
     }
 

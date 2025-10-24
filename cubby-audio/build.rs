@@ -15,7 +15,6 @@ mod apple_intelligence_link {
 
     use swift_rs::SwiftLinker;
 
-
     // TODO: We should move the apple foundation model sdk calls and the speech sdk calls from this code into their own crate(s). I moved it into cubby-audio
     // while debugging a linker issue, and then I think my only problem was that I needed to have this linking code in *both* crates' build.rs files.
     pub fn link() {

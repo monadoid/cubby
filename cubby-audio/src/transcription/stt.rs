@@ -4,12 +4,14 @@ use crate::speaker::embedding::EmbeddingExtractor;
 use crate::speaker::embedding_manager::EmbeddingManager;
 use crate::speaker::prepare_segments;
 use crate::speaker::segment::SpeechSegment;
+use crate::transcription::backend::TranscriptionBackend;
 use crate::transcription::deepgram::batch::transcribe_with_deepgram;
 use crate::transcription::whisper::batch::process_with_whisper;
 use crate::utils::audio::resample;
 use crate::utils::ffmpeg::{get_new_file_path, write_audio_to_file};
 use crate::vad::VadEngine;
 use anyhow::Result;
+use chrono::Utc;
 use cubby_core::Language;
 #[cfg(target_os = "macos")]
 use objc::rc::autoreleasepool;
@@ -20,7 +22,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex;
-use tracing::error;
+use tracing::{error, trace};
 use whisper_rs::WhisperContext;
 
 use crate::{AudioInput, TranscriptionResult};
@@ -101,7 +103,7 @@ pub async fn process_audio_input(
     deepgram_api_key: Option<String>,
     languages: Vec<Language>,
     output_sender: &crossbeam::channel::Sender<TranscriptionResult>,
-    whisper_context: Arc<WhisperContext>,
+    backend: TranscriptionBackend,
 ) -> Result<()> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -145,13 +147,33 @@ pub async fn process_audio_input(
         error!("Error writing audio to file: {:?}", e);
     }
 
-    while let Some(segment) = segments.recv().await {
-        let path = new_file_path.clone();
-        let transcription_result = if cfg!(target_os = "macos") {
-            #[cfg(target_os = "macos")]
-            {
-                let timestamp = timestamp + segment.start.round() as u64;
-                autoreleasepool(|| {
+    match backend {
+        TranscriptionBackend::Whisper { context } => {
+            while let Some(segment) = segments.recv().await {
+                let path = new_file_path.clone();
+                let transcription_result = if cfg!(target_os = "macos") {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let timestamp = timestamp + segment.start.round() as u64;
+                        autoreleasepool(|| {
+                            run_stt(
+                                segment,
+                                audio.device.clone(),
+                                audio_transcription_engine.clone(),
+                                deepgram_api_key.clone(),
+                                languages.clone(),
+                                path,
+                                timestamp,
+                                context.clone(),
+                            )
+                        })
+                        .await?
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        unreachable!("This code should not be reached on non-macOS platforms")
+                    }
+                } else {
                     run_stt(
                         segment,
                         audio.device.clone(),
@@ -160,35 +182,94 @@ pub async fn process_audio_input(
                         languages.clone(),
                         path,
                         timestamp,
-                        whisper_context.clone(),
+                        context.clone(),
                     )
-                })
-                .await?
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                unreachable!("This code should not be reached on non-macOS platforms")
-            }
-        } else {
-            run_stt(
-                segment,
-                audio.device.clone(),
-                audio_transcription_engine.clone(),
-                deepgram_api_key.clone(),
-                languages.clone(),
-                path,
-                timestamp,
-                whisper_context.clone(),
-            )
-            .await?
-        };
+                    .await?
+                };
 
-        if output_sender.send(transcription_result).is_err() {
-            break;
+                if output_sender.send(transcription_result).is_err() {
+                    break;
+                }
+            }
+            Ok(())
+        }
+        TranscriptionBackend::SpeechAnalyzer { transcript_store } => {
+            let mut start_time = None;
+            let mut end_time = None;
+            let mut speaker_embedding = Vec::new();
+
+            while let Some(segment) = segments.recv().await {
+                if start_time.is_none() {
+                    start_time = Some(segment.start);
+                    speaker_embedding = segment.embedding.clone();
+                }
+                end_time = Some(segment.end);
+            }
+
+            let device_name = audio.device.to_string();
+            trace!(
+                "speech analyzer backend draining transcripts for {}",
+                device_name
+            );
+            let transcripts = transcript_store.drain(&device_name);
+            if transcripts.is_empty() {
+                trace!("speech analyzer drain empty for {}", device_name);
+                return Ok(());
+            }
+
+            let non_empty: Vec<_> = transcripts
+                .iter()
+                .filter_map(|entry| {
+                    let text = entry.text.trim();
+                    if text.is_empty() {
+                        None
+                    } else {
+                        Some((entry.timestamp, text.to_owned()))
+                    }
+                })
+                .collect();
+
+            if non_empty.is_empty() {
+                trace!(
+                    "speech analyzer transcripts all empty after trimming for {}",
+                    device_name
+                );
+                return Ok(());
+            }
+
+            let combined = non_empty
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let first_timestamp = non_empty[0].0;
+            trace!(
+                "speech analyzer combined transcript for {} ({} parts)",
+                device_name,
+                non_empty.len()
+            );
+
+            let transcription_result = TranscriptionResult {
+                input: audio.clone(),
+                path: new_file_path,
+                speaker_embedding,
+                transcription: Some(combined),
+                timestamp: first_timestamp.timestamp() as u64,
+                error: None,
+                start_time: start_time.unwrap_or(0.0),
+                end_time: end_time.unwrap_or(audio.data.len() as f64 / SAMPLE_RATE as f64),
+            };
+
+            if output_sender.send(transcription_result).is_err() {
+                trace!(
+                    "speech analyzer failed to send transcription result for {}",
+                    device_name
+                );
+            }
+
+            Ok(())
         }
     }
-
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
