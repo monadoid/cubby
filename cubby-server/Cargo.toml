@@ -63,6 +63,8 @@ clap = { version = "4.3", features = ["derive", "env"] }
 # Memory watchdog
 sysinfo = "0.29.0"
 
+# TUI rendering
+ratatui = { version = "0.28.0", default-features = false, features = ["crossterm"] }
 # Color
 colored = "2.0"
 
@@ -119,6 +121,7 @@ cliclack = "0.3.5"
 
 # Fast random number generator
 fastrand = "2.1.1"
+rand = "0.8"
 port_check = "0.2.1"
 
 walkdir = "2.3.4"

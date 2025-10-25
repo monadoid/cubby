@@ -275,6 +275,16 @@ pub struct FrameRow {
     pub text_json: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct LiveSummaryFrame {
+    pub id: i64,
+    pub timestamp: DateTime<Utc>,
+    pub app_name: Option<String>,
+    pub window_name: Option<String>,
+    pub text: String,
+    pub text_length: i64,
+}
+
 #[derive(Deserialize, OaSchema, PartialEq, Default)]
 pub enum Order {
     #[serde(rename = "ascending")]

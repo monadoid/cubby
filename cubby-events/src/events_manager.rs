@@ -81,11 +81,22 @@ impl<T: DeserializeOwned + Unpin + 'static> Stream for EventSubscription<T> {
             match me.stream.as_mut().poll_next(cx) {
                 std::task::Poll::Ready(Some(Ok(event))) => {
                     if event.name == me.event_name || me.event_name.is_empty() {
-                        if let Ok(data) = serde_json::from_value::<T>(event.data) {
-                            return std::task::Poll::Ready(Some(Event {
-                                name: event.name,
-                                data,
-                            }));
+                        match serde_json::from_value::<T>(event.data.clone()) {
+                            Ok(data) => {
+                                return std::task::Poll::Ready(Some(Event {
+                                    name: event.name,
+                                    data,
+                                }));
+                            }
+                            Err(err) => {
+                                tracing::debug!(
+                                    "failed to deserialize event {}: {} (payload: {:?})",
+                                    event.name,
+                                    err,
+                                    event.data
+                                );
+                                continue;
+                            }
                         }
                     }
                 }

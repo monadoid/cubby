@@ -40,6 +40,7 @@ static SKIP_APPS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         "Window Server",
         "SystemUIServer",
         "ControlCenter",
+        "Control Center",
         "Dock",
         "NotificationCenter",
         "loginwindow",
@@ -197,105 +198,138 @@ pub async fn capture_all_visible_windows(
     let mut all_captured_images = Vec::new();
 
     // Get windows and immediately extract the data we need
-    let windows_data = Window::all()?
-        .into_iter()
-        .filter_map(|window| {
-            // Extract all necessary data from the window while in the main thread
-            let app_name = match window.app_name() {
-                Ok(name) => name.to_string(),
-                Err(e) => {
-                    // Log warning and skip this window
-                    // mostly noise
-                    debug!("Failed to get app_name for window: {}", e);
-                    return None;
-                }
-            };
+    struct WindowCapture {
+        app_name: String,
+        window_name: String,
+        buffer: image::RgbaImage,
+        process_id: i32,
+        is_focused: bool,
+        monitor_id: Option<u32>,
+    }
 
-            let title = match window.title() {
-                Ok(title) => title.to_string(),
-                Err(e) => {
-                    error!("Failed to get title for window {}: {}", app_name, e);
-                    return None;
-                }
-            };
+    let mut windows_data: Vec<WindowCapture> = Vec::new();
 
-            match window.is_minimized() {
-                Ok(is_minimized) => {
-                    if is_minimized {
-                        debug!("Window {} ({}) is_minimized", app_name, title);
-                        return None;
-                    }
-                }
-                Err(e) => {
-                    // Log warning and skip this window
-                    // mostly noise
-                    error!("Failed to get is_minimized for window {}: {}", app_name, e);
-                }
-            };
+    for window in Window::all()? {
+        let app_name = match window.app_name() {
+            Ok(name) => name.to_string(),
+            Err(e) => {
+                // Log warning and skip this window
+                // mostly noise
+                debug!("Failed to get app_name for window: {}", e);
+                continue;
+            }
+        };
 
-            let is_focused = match window.is_focused() {
-                Ok(focused) => focused,
-                Err(e) => {
-                    error!(
-                        "Failed to get focus state for window {} ({}): {}",
-                        app_name, title, e
-                    );
-                    return None;
-                }
-            };
+        let title = match window.title() {
+            Ok(title) => title.to_string(),
+            Err(e) => {
+                error!("Failed to get title for window {}: {}", app_name, e);
+                continue;
+            }
+        };
 
-            let process_id = match window.pid() {
-                Ok(pid) => pid as i32,
-                Err(e) => {
-                    error!(
-                        "Failed to get process ID for window {} ({}): {}",
-                        app_name, title, e
-                    );
-                    -1
-                }
-            };
-
-            // Capture image immediately while we have access to the window
-            match window.capture_image() {
-                Ok(buffer) => Some((app_name, title, is_focused, buffer, process_id)),
-                Err(e) => {
-                    error!(
-                        "Failed to capture image for window {} ({}): {}",
-                        app_name, title, e
-                    );
-                    None
+        match window.is_minimized() {
+            Ok(is_minimized) => {
+                if is_minimized {
+                    debug!("Window {} ({}) is_minimized", app_name, title);
+                    continue;
                 }
             }
-        })
-        .collect::<Vec<_>>();
+            Err(e) => {
+                // Log warning and skip this window
+                // mostly noise
+                error!("Failed to get is_minimized for window {}: {}", app_name, e);
+            }
+        };
+
+        let process_id = match window.pid() {
+            Ok(pid) => pid as i32,
+            Err(e) => {
+                error!(
+                    "Failed to get process ID for window {} ({}): {}",
+                    app_name, title, e
+                );
+                -1
+            }
+        };
+
+        let is_focused = window.is_focused().unwrap_or(false);
+
+        let monitor_id = window.current_monitor().ok().and_then(|m| m.id().ok());
+
+        match window.capture_image() {
+            Ok(buffer) => windows_data.push(WindowCapture {
+                app_name,
+                window_name: title,
+                buffer,
+                process_id,
+                is_focused,
+                monitor_id,
+            }),
+            Err(e) => {
+                error!(
+                    "Failed to capture image for window {} ({}): {}",
+                    app_name, title, e
+                );
+            }
+        }
+    }
 
     if windows_data.is_empty() {
         return Err(Box::new(CaptureError::NoWindows));
     }
 
-    // Process the captured data
-    for (app_name, window_name, is_focused, buffer, process_id) in windows_data {
+    // Filter windows that belong to this monitor and pass skip/include filters.
+    let candidates: Vec<WindowCapture> = windows_data
+        .into_iter()
+        .filter(|capture| {
+            let monitor_matches = capture
+                .monitor_id
+                .map(|id| id == monitor.id())
+                .unwrap_or(true);
+
+            let passes_filters = !SKIP_APPS.contains(capture.app_name.as_str())
+                && !SKIP_TITLES.contains(capture.window_name.as_str())
+                && window_filters.is_valid(&capture.app_name, &capture.window_name);
+
+            monitor_matches && passes_filters
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return Ok(all_captured_images);
+    }
+
+    // Prefer the highest priority candidate that xcap marks as focused.
+    let focused_index = candidates
+        .iter()
+        .position(|capture| capture.is_focused)
+        .or(Some(0));
+
+    // Process candidates in order, keeping only the frontmost focused window unless unfocused capture is enabled.
+    for (idx, capture) in candidates.into_iter().enumerate() {
+        let is_frontmost = Some(idx) == focused_index;
+        if !is_frontmost && !capture_unfocused_windows {
+            continue;
+        }
+
         // Convert to DynamicImage
         let image = DynamicImage::ImageRgba8(
-            image::ImageBuffer::from_raw(buffer.width(), buffer.height(), buffer.into_raw())
-                .unwrap(),
+            image::ImageBuffer::from_raw(
+                capture.buffer.width(),
+                capture.buffer.height(),
+                capture.buffer.into_raw(),
+            )
+            .unwrap(),
         );
 
-        // Apply filters
-        let is_valid = !SKIP_APPS.contains(app_name.as_str())
-            && !SKIP_TITLES.contains(window_name.as_str())
-            && (capture_unfocused_windows || (is_focused && monitor.id() == monitor.id()))
-            && window_filters.is_valid(&app_name, &window_name);
-
-        if is_valid {
-            all_captured_images.push(CapturedWindow {
-                image,
-                app_name,
-                window_name,
-                process_id: process_id as i32,
-                is_focused,
-            });
-        }
+        all_captured_images.push(CapturedWindow {
+            image,
+            app_name: capture.app_name,
+            window_name: capture.window_name,
+            process_id: capture.process_id,
+            is_focused: is_frontmost,
+        });
     }
 
     Ok(all_captured_images)

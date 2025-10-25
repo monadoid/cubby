@@ -15,11 +15,13 @@ cubby-uninstall:
     cargo run -- uninstall
 
 profile-flamegraph:
-     samply record ./target/release/cubby \
+    cargo build --profile profiling
+    samply record ./target/profiling/cubby \
         service \
         --disable-telemetry \
         --audio-transcription-engine speech-analyzer \
-        --enable-realtime-audio-transcription
+        --enable-realtime-audio-transcription \
+        --live-summary-enabled
 
 profile-instruments template="Allocations":
     #!/usr/bin/env bash

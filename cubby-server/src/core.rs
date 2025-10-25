@@ -1,5 +1,6 @@
 use crate::VideoCapture;
 use anyhow::Result;
+use chrono::Utc;
 use cubby_core::pii_removal::remove_pii;
 use cubby_core::Language;
 use cubby_db::{DatabaseManager, Speaker};
@@ -271,10 +272,11 @@ async fn record_video(
 
             for window_result in &frame.window_ocr_results {
                 let insert_frame_start = std::time::Instant::now();
+                let frame_timestamp = Utc::now();
                 let result = db
                     .insert_frame(
                         &device_name,
-                        None,
+                        Some(frame_timestamp),
                         window_result.browser_url.as_deref(),
                         Some(window_result.app_name.as_str()),
                         Some(window_result.window_name.as_str()),
@@ -300,50 +302,17 @@ async fn record_video(
                         let text_json =
                             serde_json::to_string(&window_result.text_json).unwrap_or_default();
 
-                        let text = if use_pii_removal {
-                            &remove_pii(&window_result.text)
+                        let processed_text = if use_pii_removal {
+                            remove_pii(&window_result.text)
                         } else {
-                            &window_result.text
+                            window_result.text.clone()
                         };
-
-                        if realtime_vision {
-                            let send_event_start = std::time::Instant::now();
-                            match send_event(
-                                "ocr_result",
-                                WindowOcr {
-                                    image: if realtime_vision_include_image {
-                                        Some(frame.image.clone())
-                                    } else {
-                                        None
-                                    },
-                                    text: text.clone(),
-                                    text_json: window_result.text_json.clone(),
-                                    app_name: window_result.app_name.clone(),
-                                    window_name: window_result.window_name.clone(),
-                                    focused: window_result.focused,
-                                    confidence: window_result.confidence,
-                                    timestamp: frame.timestamp,
-                                    browser_url: window_result.browser_url.clone(),
-                                },
-                            ) {
-                                Ok(_) => {
-                                    let event_duration = send_event_start.elapsed();
-                                    if event_duration.as_millis() > 100 {
-                                        warn!(
-                                            "Slow event sending: {}ms",
-                                            event_duration.as_millis()
-                                        );
-                                    }
-                                }
-                                Err(e) => error!("Failed to send OCR event: {}", e),
-                            }
-                        }
 
                         let insert_ocr_start = std::time::Instant::now();
                         if let Err(e) = db
                             .insert_ocr_text(
                                 frame_id,
-                                text,
+                                &processed_text,
                                 &text_json,
                                 Arc::new((*ocr_engine).clone().into()),
                             )
@@ -369,6 +338,35 @@ async fn record_video(
                                 frame_id,
                                 ocr_insert_duration.as_millis()
                             );
+                        }
+
+                        if realtime_vision {
+                            let event_payload = WindowOcr {
+                                image: if realtime_vision_include_image {
+                                    Some(frame.image.clone())
+                                } else {
+                                    None
+                                },
+                                text: processed_text.clone(),
+                                text_json: window_result.text_json.clone(),
+                                app_name: window_result.app_name.clone(),
+                                window_name: window_result.window_name.clone(),
+                                focused: window_result.focused,
+                                confidence: window_result.confidence,
+                                timestamp: frame.timestamp,
+                                browser_url: window_result.browser_url.clone(),
+                                frame_id: Some(frame_id),
+                            };
+
+                            let send_event_start = std::time::Instant::now();
+                            if let Err(e) = send_event("ocr_result", event_payload) {
+                                error!("Failed to send OCR event: {}", e);
+                            } else {
+                                let event_duration = send_event_start.elapsed();
+                                if event_duration.as_millis() > 100 {
+                                    warn!("Slow event sending: {}ms", event_duration.as_millis());
+                                }
+                            }
                         }
                     }
                     Err(e) => {

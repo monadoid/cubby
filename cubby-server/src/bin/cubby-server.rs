@@ -1,3 +1,4 @@
+use chrono::Duration as ChronoDuration;
 use clap::Parser;
 #[allow(unused_imports)]
 use colored::Colorize;
@@ -15,6 +16,8 @@ use cubby_server::{
         Cli, CliApp, CliAudioTranscriptionEngine, CliCommand, CliOcrEngine, CliVadEngine,
         CliVadSensitivity,
     },
+    fusion_mode::{start_fusion_mode, FusionModeConfig, FusionModeHandles},
+    live_summary::{spawn_live_summary_worker, SummarizerConfig},
     permission_checker::{trigger_and_check_microphone, trigger_and_check_screen_recording},
     setup_state::{SetupState, TranscriptionBackendPreference},
     start_continuous_recording, ResourceMonitor, SCServer,
@@ -108,34 +111,52 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
         }
     };
 
-    let timer =
-        tracing_subscriber::fmt::time::ChronoLocal::new("%Y-%m-%dT%H:%M:%S%.6fZ".to_string());
+    if cli.show_fusion_mode {
+        let file_layer = fmt::layer()
+            .with_writer(file_writer)
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
+                "%Y-%m-%dT%H:%M:%S%.6fZ".to_string(),
+            ))
+            .with_filter(make_env_filter());
 
-    let tracing_registry = tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                .with_writer(std::io::stdout)
-                .with_timer(timer.clone())
-                .with_filter(make_env_filter()),
-        )
-        .with(
-            fmt::layer()
-                .with_writer(file_writer)
-                .with_timer(timer)
-                .with_filter(make_env_filter()),
-        );
+        tracing_subscriber::registry().with(file_layer).init();
+    } else {
+        let stdout_layer = fmt::layer()
+            .with_writer(std::io::stdout)
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
+                "%Y-%m-%dT%H:%M:%S%.6fZ".to_string(),
+            ))
+            .with_filter(make_env_filter());
 
-    #[cfg(feature = "debug-console")]
-    let tracing_registry = tracing_registry.with(
-        console_subscriber::spawn().with_filter(
-            EnvFilter::from_default_env()
-                .add_directive("tokio=trace".parse().unwrap())
-                .add_directive("runtime=trace".parse().unwrap()),
-        ),
-    );
+        let file_layer = fmt::layer()
+            .with_writer(file_writer)
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
+                "%Y-%m-%dT%H:%M:%S%.6fZ".to_string(),
+            ))
+            .with_filter(make_env_filter());
 
-    // Build the final registry
-    tracing_registry.init();
+        let subscriber = tracing_subscriber::registry()
+            .with(stdout_layer)
+            .with(file_layer);
+
+        #[cfg(feature = "debug-console")]
+        {
+            subscriber
+                .with(
+                    console_subscriber::spawn().with_filter(
+                        EnvFilter::from_default_env()
+                            .add_directive("tokio=trace".parse().unwrap())
+                            .add_directive("runtime=trace".parse().unwrap()),
+                    ),
+                )
+                .init();
+        }
+
+        #[cfg(not(feature = "debug-console"))]
+        {
+            subscriber.init();
+        }
+    }
 
     Ok(guard)
 }
@@ -373,6 +394,37 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
         }
     };
 
+    #[cfg(target_os = "macos")]
+    let live_summary_handle = {
+        let cfg = SummarizerConfig {
+            enabled: cli.live_summary_enabled,
+            tick_secs: cli.live_summary_interval_secs,
+            sampling_rate: 0.5,
+            max_input_tokens: cli.live_summary_max_input_tokens,
+        };
+
+        if cfg.enabled {
+            info!(
+                "starting live summary worker (event-driven, sampling: {:.0}%, tokens: {})",
+                cfg.sampling_rate * 100.0,
+                cfg.max_input_tokens
+            );
+        }
+
+        spawn_live_summary_worker(db.clone(), cfg, shutdown_tx.subscribe())
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let live_summary_handle: Option<tokio::task::JoinHandle<()>> = None;
+
+    let fusion_handles: Option<FusionModeHandles> = if cli.show_fusion_mode {
+        let mut cfg = FusionModeConfig::default();
+        cfg.history = ChronoDuration::hours(2);
+        start_fusion_mode(db.clone(), cfg, shutdown_tx.subscribe()).await?
+    } else {
+        None
+    };
+
     let handle = {
         let runtime = &tokio::runtime::Handle::current();
         runtime.spawn(async move {
@@ -445,96 +497,118 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
         audio_manager.clone(),
     );
 
-    println!(
-        "{}\n\n",
-        "open source | runs locally | developer friendly".bright_green()
-    );
+    if !cli.show_fusion_mode {
+        println!(
+            "{}\n\n",
+            "open source | runs locally | developer friendly".bright_green()
+        );
 
-    println!("┌────────────────────────┬────────────────────────────────────┐");
-    println!("│ setting                │ value                              │");
-    println!("├────────────────────────┼────────────────────────────────────┤");
-    println!("│ fps                    │ {:<34} │", cli.fps);
-    println!(
-        "│ audio chunk duration   │ {:<34} │",
-        cli.audio_chunk_duration
-            .map(|d| format!("{} seconds", d))
-            .unwrap_or_else(|| "default (30 seconds)".to_string())
-    );
-    println!(
-        "│ video chunk duration   │ {:<34} │",
-        format!("{} seconds", cli.video_chunk_duration)
-    );
-    println!("│ port                   │ {:<34} │", cli.port);
-    println!("│ realtime audio enabled │ {:<34} │", enable_realtime_audio);
-    println!("│ audio disabled         │ {:<34} │", cli.disable_audio);
-    println!("│ vision disabled        │ {:<34} │", cli.disable_vision);
-    println!(
-        "│ audio engine           │ {:<34} │",
-        warning_audio_transcription_engine_clone
-            .map(|e| format!("{:?}", e))
-            .unwrap_or_else(|| "default (WhisperTinyQuantized)".to_string())
-    );
-    println!(
-        "│ ocr engine             │ {:<34} │",
-        format!("{:?}", ocr_engine_clone)
-    );
-    println!(
-        "│ vad engine             │ {:<34} │",
-        vad_engine_clone
-            .map(|e| format!("{:?}", e))
-            .unwrap_or_else(|| "default (Silero)".to_string())
-    );
-    println!(
-        "│ vad sensitivity        │ {:<34} │",
-        vad_sensitivity_clone
-            .map(|s| format!("{:?}", s))
-            .unwrap_or_else(|| "default (Low)".to_string())
-    );
-    println!(
-        "│ data directory         │ {:<34} │",
-        local_data_dir_clone.display()
-    );
-    println!("│ debug mode             │ {:<34} │", cli.debug);
-    println!(
-        "│ telemetry              │ {:<34} │",
-        !cli.disable_telemetry
-    );
-    println!("│ local llm              │ {:<34} │", cli.enable_llm);
+        println!("┌────────────────────────┬────────────────────────────────────┐");
+        println!("│ setting                │ value                              │");
+        println!("├────────────────────────┼────────────────────────────────────┤");
+        println!("│ fps                    │ {:<34} │", cli.fps);
+        println!(
+            "│ audio chunk duration   │ {:<34} │",
+            cli.audio_chunk_duration
+                .map(|d| format!("{} seconds", d))
+                .unwrap_or_else(|| "default (30 seconds)".to_string())
+        );
+        println!(
+            "│ video chunk duration   │ {:<34} │",
+            format!("{} seconds", cli.video_chunk_duration)
+        );
+        println!("│ port                   │ {:<34} │", cli.port);
+        println!("│ realtime audio enabled │ {:<34} │", enable_realtime_audio);
+        println!("│ audio disabled         │ {:<34} │", cli.disable_audio);
+        println!("│ vision disabled        │ {:<34} │", cli.disable_vision);
+        println!(
+            "│ audio engine           │ {:<34} │",
+            warning_audio_transcription_engine_clone
+                .map(|e| format!("{:?}", e))
+                .unwrap_or_else(|| "default (WhisperTinyQuantized)".to_string())
+        );
+        println!(
+            "│ ocr engine             │ {:<34} │",
+            format!("{:?}", ocr_engine_clone)
+        );
+        println!(
+            "│ vad engine             │ {:<34} │",
+            vad_engine_clone
+                .map(|e| format!("{:?}", e))
+                .unwrap_or_else(|| "default (Silero)".to_string())
+        );
+        println!(
+            "│ vad sensitivity        │ {:<34} │",
+            vad_sensitivity_clone
+                .map(|s| format!("{:?}", s))
+                .unwrap_or_else(|| "default (Low)".to_string())
+        );
+        println!(
+            "│ data directory         │ {:<34} │",
+            local_data_dir_clone.display()
+        );
+        println!("│ debug mode             │ {:<34} │", cli.debug);
+        println!(
+            "│ telemetry              │ {:<34} │",
+            !cli.disable_telemetry
+        );
+        println!("│ local llm              │ {:<34} │", cli.enable_llm);
 
-    println!("│ use pii removal        │ {:<34} │", cli.use_pii_removal);
-    println!(
-        "│ ignored windows        │ {:<34} │",
-        format_cell(&format!("{:?}", &ignored_windows_clone), VALUE_WIDTH)
-    );
-    println!(
-        "│ included windows       │ {:<34} │",
-        format_cell(&format!("{:?}", &included_windows_clone), VALUE_WIDTH)
-    );
-    println!(
-        "│ ui monitoring          │ {:<34} │",
-        cli.enable_ui_monitoring
-    );
-    println!(
-        "│ frame cache            │ {:<34} │",
-        cli.enable_frame_cache
-    );
-    println!(
-        "│ capture unfocused wins │ {:<34} │",
-        cli.capture_unfocused_windows
-    );
-    println!(
-        "│ auto-destruct pid      │ {:<34} │",
-        cli.auto_destruct_pid.unwrap_or(0)
-    );
-    // For security reasons, you might want to mask the API key if displayed
-    println!(
-        "│ deepgram key           │ {:<34} │",
-        if cli.deepgram_api_key.is_some() {
-            "set (masked)"
-        } else {
-            "not set"
-        }
-    );
+        #[cfg(target_os = "macos")]
+        println!(
+            "│ live summary           │ {:<34} │",
+            cli.live_summary_enabled
+        );
+        #[cfg(target_os = "macos")]
+        println!(
+            "│ live summary interval │ {:<34} │",
+            format!("{} seconds", cli.live_summary_interval_secs)
+        );
+        #[cfg(target_os = "macos")]
+        println!(
+            "│ live summary window   │ {:<34} │",
+            format!("{} seconds", cli.live_summary_window_secs)
+        );
+        #[cfg(target_os = "macos")]
+        println!(
+            "│ live summary tokens   │ {:<34} │",
+            cli.live_summary_max_input_tokens
+        );
+
+        println!("│ use pii removal        │ {:<34} │", cli.use_pii_removal);
+        println!(
+            "│ ignored windows        │ {:<34} │",
+            format_cell(&format!("{:?}", &ignored_windows_clone), VALUE_WIDTH)
+        );
+        println!(
+            "│ included windows       │ {:<34} │",
+            format_cell(&format!("{:?}", &included_windows_clone), VALUE_WIDTH)
+        );
+        println!(
+            "│ ui monitoring          │ {:<34} │",
+            cli.enable_ui_monitoring
+        );
+        println!(
+            "│ frame cache            │ {:<34} │",
+            cli.enable_frame_cache
+        );
+        println!(
+            "│ capture unfocused wins │ {:<34} │",
+            cli.capture_unfocused_windows
+        );
+        println!(
+            "│ auto-destruct pid      │ {:<34} │",
+            cli.auto_destruct_pid.unwrap_or(0)
+        );
+        println!(
+            "│ deepgram key           │ {:<34} │",
+            if cli.deepgram_api_key.is_some() {
+                "set (masked)"
+            } else {
+                "not set"
+            }
+        );
+    }
 
     const VALUE_WIDTH: usize = 34;
 
@@ -556,140 +630,142 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     }
 
     // Add languages section
-    println!("├────────────────────────┼────────────────────────────────────┤");
-    println!("│ languages              │                                    │");
-    const MAX_ITEMS_TO_DISPLAY: usize = 5;
+    if !cli.show_fusion_mode {
+        println!("├────────────────────────┼────────────────────────────────────┤");
+        println!("│ languages              │                                    │");
+        const MAX_ITEMS_TO_DISPLAY: usize = 5;
 
-    if cli.language.is_empty() {
-        println!("│ {:<22} │ {:<34} │", "", "all languages");
-    } else {
-        let total_languages = cli.language.len();
-        for (_, language) in languages.iter().enumerate().take(MAX_ITEMS_TO_DISPLAY) {
-            let language_str = format!("id: {}", language);
-            let formatted_language = format_cell(&language_str, VALUE_WIDTH);
-            println!("│ {:<22} │ {:<34} │", "", formatted_language);
+        if cli.language.is_empty() {
+            println!("│ {:<22} │ {:<34} │", "", "all languages");
+        } else {
+            let total_languages = cli.language.len();
+            for (_, language) in languages.iter().enumerate().take(MAX_ITEMS_TO_DISPLAY) {
+                let language_str = format!("id: {}", language);
+                let formatted_language = format_cell(&language_str, VALUE_WIDTH);
+                println!("│ {:<22} │ {:<34} │", "", formatted_language);
+            }
+            if total_languages > MAX_ITEMS_TO_DISPLAY {
+                println!(
+                    "│ {:<22} │ {:<34} │",
+                    "",
+                    format!("... and {} more", total_languages - MAX_ITEMS_TO_DISPLAY)
+                );
+            }
         }
-        if total_languages > MAX_ITEMS_TO_DISPLAY {
-            println!(
-                "│ {:<22} │ {:<34} │",
-                "",
-                format!("... and {} more", total_languages - MAX_ITEMS_TO_DISPLAY)
-            );
+
+        println!("├────────────────────────┼────────────────────────────────────┤");
+        println!("│ monitors               │                                    │");
+
+        if cli.disable_vision {
+            println!("│ {:<22} │ {:<34} │", "", "vision disabled");
+        } else if monitor_ids.is_empty() {
+            println!("│ {:<22} │ {:<34} │", "", "no monitors available");
+        } else {
+            let total_monitors = monitor_ids.len();
+            for (_, monitor) in monitor_ids.iter().enumerate().take(MAX_ITEMS_TO_DISPLAY) {
+                let monitor_str = format!("id: {}", monitor);
+                let formatted_monitor = format_cell(&monitor_str, VALUE_WIDTH);
+                println!("│ {:<22} │ {:<34} │", "", formatted_monitor);
+            }
+            if total_monitors > MAX_ITEMS_TO_DISPLAY {
+                println!(
+                    "│ {:<22} │ {:<34} │",
+                    "",
+                    format!("... and {} more", total_monitors - MAX_ITEMS_TO_DISPLAY)
+                );
+            }
         }
+
+        println!("├────────────────────────┼────────────────────────────────────┤");
+        println!("│ audio devices          │                                    │");
+
+        if cli.disable_audio {
+            println!("│ {:<22} │ {:<34} │", "", "disabled");
+        } else if audio_devices_clone.is_empty() {
+            println!("│ {:<22} │ {:<34} │", "", "no devices available");
+        } else {
+            let total_devices = audio_devices_clone.len();
+            for (_, device) in audio_devices_clone
+                .iter()
+                .enumerate()
+                .take(MAX_ITEMS_TO_DISPLAY)
+            {
+                let device_str = device.deref().to_string();
+                let formatted_device = format_cell(&device_str, VALUE_WIDTH);
+
+                println!("│ {:<22} │ {:<34} │", "", formatted_device);
+            }
+            if total_devices > MAX_ITEMS_TO_DISPLAY {
+                println!(
+                    "│ {:<22} │ {:<34} │",
+                    "",
+                    format!("... and {} more", total_devices - MAX_ITEMS_TO_DISPLAY)
+                );
+            }
+        }
+
+        println!("├────────────────────────┼────────────────────────────────────┤");
+        println!("│ realtime audio devices │                                    │");
+
+        if cli.disable_audio || !enable_realtime_audio {
+            println!("│ {:<22} │ {:<34} │", "", "disabled");
+        } else if realtime_audio_devices_clone.is_empty() {
+            println!("│ {:<22} │ {:<34} │", "", "no devices available");
+        } else {
+            let total_devices = realtime_audio_devices_clone.len();
+            for (_, device) in realtime_audio_devices_clone
+                .iter()
+                .enumerate()
+                .take(MAX_ITEMS_TO_DISPLAY)
+            {
+                let device_str = device.deref().to_string();
+                let formatted_device = format_cell(&device_str, VALUE_WIDTH);
+
+                println!("│ {:<22} │ {:<34} │", "", formatted_device);
+            }
+            if total_devices > MAX_ITEMS_TO_DISPLAY {
+                println!(
+                    "│ {:<22} │ {:<34} │",
+                    "",
+                    format!("... and {} more", total_devices - MAX_ITEMS_TO_DISPLAY)
+                );
+            }
+        }
+
+        println!("└────────────────────────┴────────────────────────────────────┘");
     }
-
-    // Add monitors section
-    println!("├────────────────────────┼────────────────────────────────────┤");
-    println!("│ monitors               │                                    │");
-
-    if cli.disable_vision {
-        println!("│ {:<22} │ {:<34} │", "", "vision disabled");
-    } else if monitor_ids.is_empty() {
-        println!("│ {:<22} │ {:<34} │", "", "no monitors available");
-    } else {
-        let total_monitors = monitor_ids.len();
-        for (_, monitor) in monitor_ids.iter().enumerate().take(MAX_ITEMS_TO_DISPLAY) {
-            let monitor_str = format!("id: {}", monitor);
-            let formatted_monitor = format_cell(&monitor_str, VALUE_WIDTH);
-            println!("│ {:<22} │ {:<34} │", "", formatted_monitor);
-        }
-        if total_monitors > MAX_ITEMS_TO_DISPLAY {
-            println!(
-                "│ {:<22} │ {:<34} │",
-                "",
-                format!("... and {} more", total_monitors - MAX_ITEMS_TO_DISPLAY)
-            );
-        }
-    }
-
-    // Audio devices section
-    println!("├────────────────────────┼────────────────────────────────────┤");
-    println!("│ audio devices          │                                    │");
-
-    if cli.disable_audio {
-        println!("│ {:<22} │ {:<34} │", "", "disabled");
-    } else if audio_devices_clone.is_empty() {
-        println!("│ {:<22} │ {:<34} │", "", "no devices available");
-    } else {
-        let total_devices = audio_devices_clone.len();
-        for (_, device) in audio_devices_clone
-            .iter()
-            .enumerate()
-            .take(MAX_ITEMS_TO_DISPLAY)
-        {
-            let device_str = device.deref().to_string();
-            let formatted_device = format_cell(&device_str, VALUE_WIDTH);
-
-            println!("│ {:<22} │ {:<34} │", "", formatted_device);
-        }
-        if total_devices > MAX_ITEMS_TO_DISPLAY {
-            println!(
-                "│ {:<22} │ {:<34} │",
-                "",
-                format!("... and {} more", total_devices - MAX_ITEMS_TO_DISPLAY)
-            );
-        }
-    }
-    // Realtime Audio devices section
-    println!("├────────────────────────┼────────────────────────────────────┤");
-    println!("│ realtime audio devices │                                    │");
-
-    if cli.disable_audio || !enable_realtime_audio {
-        println!("│ {:<22} │ {:<34} │", "", "disabled");
-    } else if realtime_audio_devices_clone.is_empty() {
-        println!("│ {:<22} │ {:<34} │", "", "no devices available");
-    } else {
-        let total_devices = realtime_audio_devices_clone.len();
-        for (_, device) in realtime_audio_devices_clone
-            .iter()
-            .enumerate()
-            .take(MAX_ITEMS_TO_DISPLAY)
-        {
-            let device_str = device.deref().to_string();
-            let formatted_device = format_cell(&device_str, VALUE_WIDTH);
-
-            println!("│ {:<22} │ {:<34} │", "", formatted_device);
-        }
-        if total_devices > MAX_ITEMS_TO_DISPLAY {
-            println!(
-                "│ {:<22} │ {:<34} │",
-                "",
-                format!("... and {} more", total_devices - MAX_ITEMS_TO_DISPLAY)
-            );
-        }
-    }
-
-    println!("└────────────────────────┴────────────────────────────────────┘");
 
     // Add warning for cloud arguments and telemetry
-    if warning_audio_transcription_engine_clone == Some(&CliAudioTranscriptionEngine::Deepgram)
-        || warning_ocr_engine_clone == CliOcrEngine::Unstructured
-    {
-        println!(
-            "{}",
-            "warning: you are using cloud now. make sure to understand the data privacy risks."
-                .bright_yellow()
-        );
-    } else {
-        println!(
-            "{}",
-            "you are using local processing. all your data stays on your computer.\n"
-                .bright_green()
-        );
-    }
+    if !cli.show_fusion_mode {
+        if warning_audio_transcription_engine_clone == Some(&CliAudioTranscriptionEngine::Deepgram)
+            || warning_ocr_engine_clone == CliOcrEngine::Unstructured
+        {
+            println!(
+                "{}",
+                "warning: you are using cloud now. make sure to understand the data privacy risks."
+                    .bright_yellow()
+            );
+        } else {
+            println!(
+                "{}",
+                "you are using local processing. all your data stays on your computer.\n"
+                    .bright_green()
+            );
+        }
 
-    if !cli.disable_telemetry {
-        println!(
-            "{}",
-            "warning: telemetry is enabled. only error-level data will be sent.\n\
-            to disable, use the --disable-telemetry flag."
-                .bright_yellow()
-        );
-    } else {
-        println!(
-            "{}",
-            "telemetry is disabled. no data will be sent to external services.".bright_green()
-        );
+        if !cli.disable_telemetry {
+            println!(
+                "{}",
+                "warning: telemetry is enabled. only error-level data will be sent.\n\
+                to disable, use the --disable-telemetry flag."
+                    .bright_yellow()
+            );
+        } else {
+            println!(
+                "{}",
+                "telemetry is disabled. no data will be sent to external services.".bright_green()
+            );
+        }
     }
 
     // start recording after all this text
@@ -747,6 +823,29 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
             info!("received ctrl+c, initiating shutdown");
             audio_manager.shutdown().await?;
             let _ = shutdown_tx.send(());
+        }
+    }
+
+    let _ = shutdown_tx.send(());
+
+    if let Some(handle) = live_summary_handle {
+        if let Err(err) = handle.await {
+            warn!(error = ?err, "live summary worker terminated unexpectedly");
+        }
+    }
+
+    if let Some(handles) = fusion_handles {
+        if let Err(err) = handles.forwarder.await {
+            warn!(error = ?err, "fusion mode forwarder task ended with error");
+        }
+        match handles.ui.await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                warn!(error = ?err, "fusion mode UI exited with error");
+            }
+            Err(err) => {
+                warn!(error = ?err, "failed to join fusion mode UI task");
+            }
         }
     }
 

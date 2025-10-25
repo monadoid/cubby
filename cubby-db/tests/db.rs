@@ -2,7 +2,7 @@
 mod tests {
     use std::sync::Arc;
 
-    use chrono::Utc;
+    use chrono::{DateTime, Utc};
     use cubby_db::{
         AudioDevice, ContentType, DatabaseManager, DeviceType, Frame, OcrEngine, SearchResult,
     };
@@ -27,6 +27,85 @@ mod tests {
         }
 
         db
+    }
+
+    #[tokio::test]
+    async fn test_live_summary_helpers() {
+        let db = setup_test_db().await;
+        let _ = db
+            .insert_video_chunk("summary_video.mp4", "summary_device")
+            .await
+            .unwrap();
+
+        let base_ts = Utc::now();
+
+        let frame_id = db
+            .insert_frame(
+                "summary_device",
+                Some(base_ts),
+                None,
+                Some("VS Code"),
+                Some("lib.rs"),
+                true,
+            )
+            .await
+            .unwrap();
+
+        db.insert_ocr_text(
+            frame_id,
+            "Implementing live summary sampler.",
+            "{}",
+            Arc::new(OcrEngine::Tesseract),
+        )
+        .await
+        .unwrap();
+
+        let summary_id = db
+            .insert_live_summary(
+                frame_id,
+                "test-provider",
+                "test-model",
+                "code_update",
+                "Implemented structured live summary storage.",
+                Some("VS Code"),
+                Some("lib.rs"),
+                Some(0.9),
+                base_ts,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(summary_id > 0);
+
+        let (
+            frame_id_db,
+            provider,
+            model,
+            event_label,
+            event_detail,
+            event_app,
+            event_window,
+            event_confidence,
+            event_time,
+            error,
+        ): (i64, String, String, String, String, Option<String>, Option<String>, Option<f32>, DateTime<Utc>, Option<String>) =
+            sqlx::query_as(
+                "SELECT frame_id, provider, model, event_label, event_detail, event_app, event_window, event_confidence, event_time, error FROM live_summaries WHERE id = ?",
+            )
+            .bind(summary_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+        assert_eq!(frame_id_db, frame_id);
+        assert_eq!(provider, "test-provider");
+        assert_eq!(model, "test-model");
+        assert_eq!(event_label, "code_update");
+        assert_eq!(event_detail, "Implemented structured live summary storage.");
+        assert_eq!(event_app.as_deref(), Some("VS Code"));
+        assert_eq!(event_window.as_deref(), Some("lib.rs"));
+        assert_eq!(event_confidence, Some(0.9));
+        assert_eq!(event_time, base_ts);
+        assert!(error.is_none());
     }
 
     #[tokio::test]

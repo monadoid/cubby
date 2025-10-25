@@ -12,6 +12,7 @@ use crate::utils::OcrEngine;
 use crate::utils::{capture_screenshot, compare_with_previous_image};
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
+use chrono::{DateTime, Utc};
 use cubby_core::Language;
 use image::codecs::jpeg::JpegEncoder;
 use image::DynamicImage;
@@ -61,8 +62,12 @@ fn deserialize_image<'de, D>(deserializer: D) -> Result<Option<DynamicImage>, D:
 where
     D: serde::Deserializer<'de>,
 {
-    // Deserialize the base64 string
-    let base64_string: String = serde::Deserialize::deserialize(deserializer)?;
+    let maybe_string: Option<String> = serde::Deserialize::deserialize(deserializer)?;
+
+    let base64_string = match maybe_string {
+        Some(s) => s,
+        None => return Ok(None),
+    };
 
     // Check if the base64 string is empty or invalid
     if base64_string.trim().is_empty() {
@@ -88,16 +93,16 @@ where
 {
     let duration_since_epoch = UNIX_EPOCH.elapsed().map_err(serde::ser::Error::custom)?;
     let instant_duration = duration_since_epoch - instant.elapsed();
-    let millis = instant_duration.as_millis();
-    serializer.serialize_u128(millis)
+    let millis = instant_duration.as_millis() as u64;
+    serializer.serialize_u64(millis)
 }
 
 fn deserialize_instant<'de, D>(deserializer: D) -> Result<Instant, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let millis: u128 = Deserialize::deserialize(deserializer)?;
-    Ok(Instant::now() - Duration::from_millis(millis as u64))
+    let millis: u64 = Deserialize::deserialize(deserializer)?;
+    Ok(Instant::now() - Duration::from_millis(millis))
 }
 
 pub struct CaptureResult {
@@ -541,6 +546,8 @@ pub struct WindowOcr {
     )]
     pub timestamp: Instant,
     pub browser_url: Option<String>,
+    #[serde(default)]
+    pub frame_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -200,6 +200,31 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub enable_realtime_audio_transcription: bool,
 
+    // HN: called fusion mode because it helps you fuse with the AI faster.
+    /// Enable live OCR summarizer
+    #[cfg(target_os = "macos")]
+    #[arg(long = "live-summary-enabled", default_value_t = false)]
+    pub live_summary_enabled: bool,
+
+    /// Interval between live summaries in seconds
+    #[cfg(target_os = "macos")]
+    #[arg(long = "live-summary-interval-secs", default_value_t = 10)]
+    pub live_summary_interval_secs: u64,
+
+    /// Sliding window size for live summaries in seconds
+    #[cfg(target_os = "macos")]
+    #[arg(long = "live-summary-window-secs", default_value_t = 60)]
+    pub live_summary_window_secs: u64,
+
+    /// Maximum input tokens passed to the live summary model
+    #[cfg(target_os = "macos")]
+    #[arg(long = "live-summary-max-input-tokens", default_value_t = 1500)]
+    pub live_summary_max_input_tokens: usize,
+
+    /// Display fusion mode terminal dashboard with recent live summaries
+    #[arg(long = "show_fusion_mode", default_value_t = false)]
+    pub show_fusion_mode: bool,
+
     /// Enable realtime vision
     #[arg(long, default_value_t = true)]
     pub enable_realtime_vision: bool,

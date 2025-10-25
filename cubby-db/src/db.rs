@@ -386,6 +386,64 @@ impl DatabaseManager {
         Ok(())
     }
 
+    pub async fn insert_live_summary(
+        &self,
+        frame_id: i64,
+        provider: &str,
+        model: &str,
+        event_label: &str,
+        event_detail: &str,
+        event_app: Option<&str>,
+        event_window: Option<&str>,
+        event_confidence: Option<f32>,
+        event_time: DateTime<Utc>,
+        error: Option<&str>,
+    ) -> Result<i64, sqlx::Error> {
+        let id = sqlx::query_scalar::<_, i64>(
+            r#"
+INSERT INTO live_summaries (
+    frame_id,
+    provider,
+    model,
+    event_label,
+    event_detail,
+    event_app,
+    event_window,
+    event_confidence,
+    event_time,
+    error
+)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+ON CONFLICT(frame_id) DO UPDATE SET
+  provider = excluded.provider,
+  model = excluded.model,
+  event_label = excluded.event_label,
+  event_detail = excluded.event_detail,
+  event_app = excluded.event_app,
+  event_window = excluded.event_window,
+  event_confidence = excluded.event_confidence,
+  event_time = excluded.event_time,
+  error = excluded.error,
+  created_at = CURRENT_TIMESTAMP
+RETURNING id
+"#,
+        )
+        .bind(frame_id)
+        .bind(provider)
+        .bind(model)
+        .bind(event_label)
+        .bind(event_detail)
+        .bind(event_app)
+        .bind(event_window)
+        .bind(event_confidence)
+        .bind(event_time)
+        .bind(error)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(id)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn search(
         &self,

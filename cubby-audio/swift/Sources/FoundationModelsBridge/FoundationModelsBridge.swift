@@ -17,6 +17,16 @@ struct ArticleSummary: Codable {
     var key_points: [String]
 }
 
+@Generable
+struct LiveSummaryEvent: Codable {
+    var label: String
+    var detail: String
+    var app: String?
+    var window: String?
+    var confidence: Double?
+    var time: String
+}
+
 /// Check availability of the default system language model
 ///
 /// Returns JSON string with fields:
@@ -65,25 +75,24 @@ public func fm_check_model_availability() -> SRString {
 /// - Never from UI/main thread
 ///
 /// Returns JSON string on success, or error JSON {"error": "..."} on failure
-@_cdecl("fm_generate_person")
-public func fm_generate_person(prompt: SRString) -> SRString {
+@_cdecl("fm_generate_structured")
+public func fm_generate_structured(prompt: SRString, schema: SRString) -> SRString {
     let promptString = prompt.toString()
-    
-    // Use async let with runBlocking pattern
+    let schemaString = schema.toString()
+
     let result: Result<String, Error> = runAsyncAndWait {
         do {
-            let jsonString = try await generatePersonAsync(prompt: promptString)
+            let jsonString = try await generateStructuredAsync(prompt: promptString, schema: schemaString)
             return .success(jsonString)
         } catch {
             return .failure(error)
         }
     }
-    
+
     switch result {
     case .success(let json):
         return SRString(json)
     case .failure(let error):
-        // Return error as JSON
         let errorDict = ["error": error.localizedDescription]
         if let errorData = try? JSONEncoder().encode(errorDict),
            let errorJson = String(data: errorData, encoding: .utf8) {
@@ -148,6 +157,50 @@ private func generatePersonAsync(prompt: String) async throws -> String {
 }
 
 // MARK: - Streaming Support
+
+private func generateStructuredAsync(prompt: String, schema: String) async throws -> String {
+    switch schema {
+    case "PersonInfo":
+        return try await generatePersonAsync(prompt: prompt)
+    case "LiveSummaryEvent":
+        return try await generateLiveSummaryAsync(prompt: prompt)
+    default:
+        throw NSError(
+            domain: "FoundationModelsBridge",
+            code: -4,
+            userInfo: [NSLocalizedDescriptionKey: "unknown schema \(schema)"]
+        )
+    }
+}
+
+private func generateLiveSummaryAsync(prompt: String) async throws -> String {
+    let model = SystemLanguageModel()
+    let session = LanguageModelSession(model: model, tools: [], instructions: nil)
+    let promptObj = Prompt(prompt)
+    let options = GenerationOptions()
+
+    let response = try await session.respond(
+        to: promptObj,
+        generating: LiveSummaryEvent.self,
+        includeSchemaInPrompt: false,
+        options: options
+    )
+
+    let summary = response.content
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = []
+
+    let jsonData = try encoder.encode(summary)
+    guard let jsonString = String(data: jsonData, encoding: .utf8) else {
+        throw NSError(
+            domain: "FoundationModelsBridge",
+            code: -3,
+            userInfo: [NSLocalizedDescriptionKey: "failed to convert live summary json data to string"]
+        )
+    }
+
+    return jsonString
+}
 
 /// Callback type for streaming responses
 /// Parameters: context, content_json, raw_content

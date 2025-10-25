@@ -21,7 +21,7 @@ type StreamCallbackFn = extern "C" fn(*mut c_void, *const i8, *const i8);
 mod ffi {
     use swift_rs::{swift, SRString};
 
-    swift!(pub fn fm_generate_person(prompt: &SRString) -> SRString);
+    swift!(pub fn fm_generate_structured(prompt: &SRString, schema: &SRString) -> SRString);
 }
 
 extern "C" {
@@ -43,25 +43,12 @@ pub struct StreamSnapshot {
 
 /// Generate structured JSON output using Apple's FoundationModels SDK (async).
 pub async fn generate_person(prompt: &str) -> Result<Value> {
-    ensure_supported()?;
-
-    let prompt = prompt.to_string();
-    let json_str = tokio::task::spawn_blocking(move || {
-        let prompt_sr = SRString::from(prompt.as_str());
-        unsafe { ffi::fm_generate_person(&prompt_sr) }.to_string()
-    })
-    .await?;
-
-    parse_response(&json_str)
+    generate_structured(prompt, PersonInfo::schema_name()).await
 }
 
 /// Generate structured JSON output synchronously (blocking).
 pub fn generate_person_blocking(prompt: &str) -> Result<Value> {
-    ensure_supported()?;
-
-    let prompt_sr = SRString::from(prompt);
-    let json_str = unsafe { ffi::fm_generate_person(&prompt_sr) }.to_string();
-    parse_response(&json_str)
+    generate_structured_blocking(prompt, PersonInfo::schema_name())
 }
 
 /// Generate structured output with streaming updates.
@@ -165,15 +152,13 @@ pub fn generate_person_stream(
 pub async fn generate<T: GenerableSchema>(prompt: &str) -> Result<T> {
     let schema_name = T::schema_name();
 
-    let json_value = match schema_name {
-        "PersonInfo" => generate_person(prompt).await?,
-        "ArticleSummary" => {
-            return Err(anyhow!(
-                "ArticleSummary schema not yet implemented in Swift bridge"
-            ));
-        }
-        _ => return Err(anyhow!("unknown schema: {}", schema_name)),
-    };
+    if schema_name == "ArticleSummary" {
+        return Err(anyhow!(
+            "ArticleSummary schema not yet implemented in Swift bridge"
+        ));
+    }
+
+    let json_value = generate_structured(prompt, schema_name).await?;
 
     T::from_json(json_value)
 }
@@ -235,4 +220,29 @@ fn parse_response(json_str: &str) -> Result<Value> {
     }
 
     Ok(value)
+}
+
+pub async fn generate_structured(prompt: &str, schema: &str) -> Result<Value> {
+    ensure_supported()?;
+
+    let prompt = prompt.to_string();
+    let schema = schema.to_string();
+
+    let json_str = tokio::task::spawn_blocking(move || {
+        let prompt_sr = SRString::from(prompt.as_str());
+        let schema_sr = SRString::from(schema.as_str());
+        unsafe { ffi::fm_generate_structured(&prompt_sr, &schema_sr) }.to_string()
+    })
+    .await?;
+
+    parse_response(&json_str)
+}
+
+pub fn generate_structured_blocking(prompt: &str, schema: &str) -> Result<Value> {
+    ensure_supported()?;
+
+    let prompt_sr = SRString::from(prompt);
+    let schema_sr = SRString::from(schema);
+    let json_str = unsafe { ffi::fm_generate_structured(&prompt_sr, &schema_sr) }.to_string();
+    parse_response(&json_str)
 }
