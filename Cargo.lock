@@ -1952,6 +1952,7 @@ dependencies = [
  "serde_json",
  "service-manager",
  "sha2",
+ "signal-hook",
  "sqlx",
  "sysinfo",
  "tar",

@@ -29,6 +29,7 @@ use futures::{
     SinkExt, StreamExt,
 };
 use image::ImageFormat::{self};
+use std::future::Future;
 
 use crate::{
     embedding::embedding_endpoint::create_embeddings,
@@ -950,7 +951,14 @@ impl SCServer {
         }
     }
 
-    pub async fn start(self, enable_frame_cache: bool) -> Result<(), std::io::Error> {
+    pub async fn start_with_shutdown<F>(
+        self,
+        enable_frame_cache: bool,
+        shutdown: F,
+    ) -> Result<(), std::io::Error>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
         // Create the OpenAPI server
         let app = self.create_router(enable_frame_cache).await;
 
@@ -963,10 +971,16 @@ impl SCServer {
             listener,
             app.into_make_service_with_connect_info::<SocketAddr>(),
         )
+        .with_graceful_shutdown(shutdown)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         Ok(())
+    }
+
+    pub async fn start(self, enable_frame_cache: bool) -> Result<(), std::io::Error> {
+        self.start_with_shutdown(enable_frame_cache, std::future::pending())
+            .await
     }
 
     pub async fn create_router(&self, enable_frame_cache: bool) -> Router {

@@ -30,6 +30,7 @@ use futures::pin_mut;
 use port_check::is_local_ipv4_port_free;
 use std::{
     env, fs,
+    io::{self, Write},
     net::SocketAddr,
     net::{IpAddr, Ipv4Addr},
     ops::Deref,
@@ -37,7 +38,11 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{runtime::Runtime, signal, sync::broadcast};
+use tokio::{
+    runtime::Runtime,
+    signal,
+    sync::{broadcast, mpsc},
+};
 use tracing::{debug, error, info, warn};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -60,7 +65,11 @@ fn get_base_dir(custom_path: &Option<String>) -> anyhow::Result<PathBuf> {
     Ok(base_dir)
 }
 
-fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGuard> {
+fn setup_logging(
+    local_data_dir: &PathBuf,
+    cli: &Cli,
+    enable_console_layer: bool,
+) -> anyhow::Result<(WorkerGuard, Option<mpsc::UnboundedReceiver<String>>)> {
     let file_appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix("cubby")
@@ -69,6 +78,7 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
         .build(local_data_dir)?;
 
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
+    let mut ui_log_receiver = None;
 
     let make_env_filter = || {
         let filter = EnvFilter::from_default_env()
@@ -111,7 +121,29 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
         }
     };
 
-    if cli.show_fusion_mode {
+    let console_bind_addr = {
+        if !enable_console_layer {
+            None
+        } else {
+            let addr = env::var("TOKIO_CONSOLE_BIND")
+                .ok()
+                .and_then(|s| s.parse::<SocketAddr>().ok())
+                .unwrap_or_else(|| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 6669));
+            Some(addr)
+        }
+    };
+
+    if !cli.no_tui {
+        let (log_tx, log_rx) = mpsc::unbounded_channel::<String>();
+        ui_log_receiver = Some(log_rx);
+
+        let ui_layer = fmt::layer()
+            .with_writer(LogChannelMakeWriter { tx: log_tx.clone() })
+            .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
+                "%Y-%m-%dT%H:%M:%S%.6fZ".to_string(),
+            ))
+            .with_filter(make_env_filter());
+
         let file_layer = fmt::layer()
             .with_writer(file_writer)
             .with_timer(tracing_subscriber::fmt::time::ChronoLocal::new(
@@ -119,7 +151,29 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
             ))
             .with_filter(make_env_filter());
 
-        tracing_subscriber::registry().with(file_layer).init();
+        if let Some(addr) = console_bind_addr {
+            info!("tokio-console instrumentation enabled; connect with `tokio-console {addr}`");
+            tracing_subscriber::registry()
+                .with(file_layer)
+                .with(ui_layer)
+                .with(
+                    console_subscriber::ConsoleLayer::builder()
+                        .with_default_env()
+                        .server_addr(addr)
+                        .spawn()
+                        .with_filter(
+                            EnvFilter::from_default_env()
+                                .add_directive("tokio=trace".parse().unwrap())
+                                .add_directive("runtime=trace".parse().unwrap()),
+                        ),
+                )
+                .init();
+        } else {
+            tracing_subscriber::registry()
+                .with(file_layer)
+                .with(ui_layer)
+                .init();
+        }
     } else {
         let stdout_layer = fmt::layer()
             .with_writer(std::io::stdout)
@@ -135,30 +189,32 @@ fn setup_logging(local_data_dir: &PathBuf, cli: &Cli) -> anyhow::Result<WorkerGu
             ))
             .with_filter(make_env_filter());
 
-        let subscriber = tracing_subscriber::registry()
-            .with(stdout_layer)
-            .with(file_layer);
-
-        #[cfg(feature = "debug-console")]
-        {
-            subscriber
+        if let Some(addr) = console_bind_addr {
+            info!("tokio-console instrumentation enabled; connect with `tokio-console {addr}`");
+            tracing_subscriber::registry()
+                .with(stdout_layer)
+                .with(file_layer)
                 .with(
-                    console_subscriber::spawn().with_filter(
-                        EnvFilter::from_default_env()
-                            .add_directive("tokio=trace".parse().unwrap())
-                            .add_directive("runtime=trace".parse().unwrap()),
-                    ),
+                    console_subscriber::ConsoleLayer::builder()
+                        .with_default_env()
+                        .server_addr(addr)
+                        .spawn()
+                        .with_filter(
+                            EnvFilter::from_default_env()
+                                .add_directive("tokio=trace".parse().unwrap())
+                                .add_directive("runtime=trace".parse().unwrap()),
+                        ),
                 )
                 .init();
-        }
-
-        #[cfg(not(feature = "debug-console"))]
-        {
-            subscriber.init();
+        } else {
+            tracing_subscriber::registry()
+                .with(stdout_layer)
+                .with(file_layer)
+                .init();
         }
     }
 
-    Ok(guard)
+    Ok((guard, ui_log_receiver))
 }
 
 #[tokio::main]
@@ -175,18 +231,21 @@ async fn main() -> anyhow::Result<()> {
         CliCommand::Service(cli) => {
             let mut setup_state = SetupState::load().unwrap_or_default();
             ensure_permissions_in_service(&cli, &mut setup_state).await?;
-            run_service(&cli).await
+            let use_console = std::env::var_os("TOKIO_CONSOLE").is_some();
+            run_service(&cli, use_console).await
         }
         CliCommand::Uninstall => handle_uninstall().await,
     }
 }
 
-async fn run_service(cli: &Cli) -> anyhow::Result<()> {
+async fn run_service(cli: &Cli, enable_console_layer: bool) -> anyhow::Result<()> {
     let local_data_dir = get_base_dir(&cli.data_dir)?;
     let local_data_dir_clone = local_data_dir.clone();
 
     // Store the guard in a variable that lives for the entire main function
-    let _log_guard = setup_logging(&local_data_dir, &cli)?;
+    let (log_guard, mut ui_log_receiver) =
+        setup_logging(&local_data_dir, &cli, enable_console_layer)?;
+    let _log_guard = log_guard;
 
     // Replace the current conditional check with:
     let ffmpeg_path = find_ffmpeg_path();
@@ -417,10 +476,11 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     #[cfg(not(target_os = "macos"))]
     let live_summary_handle: Option<tokio::task::JoinHandle<()>> = None;
 
-    let fusion_handles: Option<FusionModeHandles> = if cli.show_fusion_mode {
+    let fusion_handles: Option<FusionModeHandles> = if !cli.no_tui {
         let mut cfg = FusionModeConfig::default();
         cfg.history = ChronoDuration::hours(2);
-        start_fusion_mode(db.clone(), cfg, shutdown_tx.subscribe()).await?
+        let log_rx = ui_log_receiver.take();
+        start_fusion_mode(db.clone(), cfg, shutdown_tx.clone(), log_rx).await?
     } else {
         None
     };
@@ -497,7 +557,7 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
         audio_manager.clone(),
     );
 
-    if !cli.show_fusion_mode {
+    if cli.no_tui {
         println!(
             "{}\n\n",
             "open source | runs locally | developer friendly".bright_green()
@@ -630,7 +690,7 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     }
 
     // Add languages section
-    if !cli.show_fusion_mode {
+    if cli.no_tui {
         println!("├────────────────────────┼────────────────────────────────────┤");
         println!("│ languages              │                                    │");
         const MAX_ITEMS_TO_DISPLAY: usize = 5;
@@ -736,7 +796,7 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     }
 
     // Add warning for cloud arguments and telemetry
-    if !cli.show_fusion_mode {
+    if cli.no_tui {
         if warning_audio_transcription_engine_clone == Some(&CliAudioTranscriptionEngine::Deepgram)
             || warning_ocr_engine_clone == CliOcrEngine::Unstructured
         {
@@ -769,15 +829,26 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     }
 
     // start recording after all this text
-    if !cli.disable_audio {
+    let audio_start_handle = if !cli.disable_audio {
         let audio_manager_clone = audio_manager.clone();
-        tokio::spawn(async move {
+        Some(tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(10)).await;
-            audio_manager_clone.start().await.unwrap();
-        });
-    }
+            if let Err(err) = audio_manager_clone.start().await {
+                error!("failed to start audio manager: {:?}", err);
+            }
+        }))
+    } else {
+        None
+    };
 
-    let server_future = server.start(cli.enable_frame_cache);
+    let mut shutdown_rx_main = shutdown_tx.subscribe();
+
+    let server_future = {
+        let mut shutdown_rx = shutdown_tx.subscribe();
+        server.start_with_shutdown(cli.enable_frame_cache, async move {
+            let _ = shutdown_rx.recv().await;
+        })
+    };
     pin_mut!(server_future);
 
     let ctrl_c_future = signal::ctrl_c();
@@ -811,22 +882,38 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
         });
     }
 
-    tokio::select! {
-        _ = handle => info!("recording completed"),
+    let shutdown_triggered = tokio::select! {
+        res = handle => {
+            info!("recording task completed");
+            res.ok();
+            true
+        }
         result = &mut server_future => {
             match result {
                 Ok(_) => info!("server stopped normally"),
                 Err(e) => error!("server stopped with error: {:?}", e),
             }
+            true
         }
         _ = ctrl_c_future => {
             info!("received ctrl+c, initiating shutdown");
-            audio_manager.shutdown().await?;
-            let _ = shutdown_tx.send(());
+            true
         }
-    }
+        _ = shutdown_rx_main.recv() => {
+            info!("received shutdown broadcast");
+            true
+        }
+    };
 
-    let _ = shutdown_tx.send(());
+    if shutdown_triggered {
+        if let Some(handle) = audio_start_handle {
+            handle.abort();
+        }
+        if let Err(err) = audio_manager.shutdown().await {
+            warn!(error = ?err, "audio manager shutdown encountered error");
+        }
+        let _ = shutdown_tx.send(());
+    }
 
     if let Some(handle) = live_summary_handle {
         if let Err(err) = handle.await {
@@ -837,6 +924,11 @@ async fn run_service(cli: &Cli) -> anyhow::Result<()> {
     if let Some(handles) = fusion_handles {
         if let Err(err) = handles.forwarder.await {
             warn!(error = ?err, "fusion mode forwarder task ended with error");
+        }
+        if let Some(log_handle) = handles.log_forwarder {
+            if let Err(err) = log_handle.await {
+                warn!(error = ?err, "fusion mode log forwarder ended with error");
+            }
         }
         match handles.ui.await {
             Ok(Ok(())) => {}
@@ -1598,4 +1690,65 @@ fn build_service_args(cli: &Cli, state: &SetupState) -> Vec<String> {
     }
 
     args
+}
+#[derive(Clone)]
+struct LogChannelMakeWriter {
+    tx: mpsc::UnboundedSender<String>,
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogChannelMakeWriter {
+    type Writer = LogChannelWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        LogChannelWriter {
+            tx: self.tx.clone(),
+            buffer: Vec::with_capacity(512),
+        }
+    }
+}
+
+struct LogChannelWriter {
+    tx: mpsc::UnboundedSender<String>,
+    buffer: Vec<u8>,
+}
+
+impl LogChannelWriter {
+    fn flush_buffer(&mut self, force: bool) {
+        while let Some(pos) = self.buffer.iter().position(|&b| b == b'\n') {
+            let bytes: Vec<u8> = self.buffer.drain(..=pos).collect();
+            if let Ok(mut line) = String::from_utf8(bytes) {
+                if line.ends_with('\n') {
+                    line.pop();
+                    if line.ends_with('\r') {
+                        line.pop();
+                    }
+                }
+                let _ = self.tx.send(line);
+            }
+        }
+        if force && !self.buffer.is_empty() {
+            if let Ok(line) = String::from_utf8(self.buffer.drain(..).collect()) {
+                let _ = self.tx.send(line);
+            }
+        }
+    }
+}
+
+impl Write for LogChannelWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buffer.extend_from_slice(buf);
+        self.flush_buffer(false);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.flush_buffer(true);
+        Ok(())
+    }
+}
+
+impl Drop for LogChannelWriter {
+    fn drop(&mut self) {
+        self.flush_buffer(true);
+    }
 }

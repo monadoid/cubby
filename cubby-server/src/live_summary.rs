@@ -216,13 +216,65 @@ async fn summarize_window(
 fn build_prompt(context: &PromptContext<'_>, text: &str) -> String {
     let app = context.app_name.unwrap_or("Unknown App");
     let window = context.window_name.unwrap_or("Unknown Window");
-    format!(
-        "System:\nYou are an online activity summarizer. Work ONLY from OCR text plus metadata. Produce a single actionable event describing what the user is doing.\n\nContext:\n- Timestamp: {}\n- Application: {}\n- Window: {}\n- OCR Text:\n{}\n\nRespond with JSON matching exactly:\n{{\n  \"label\": \"<verb_noun>\",\n  \"detail\": \"<specific detail>\",\n  \"app\": \"<app or omit>\",\n  \"window\": \"<window or omit>\",\n  \"confidence\": <0.0-1.0 or omit>,\n  \"time\": \"<ISO-8601 timestamp>\"\n}}\n- Keep \"detail\" detailed and precise.\n- Prefer the provided app/window when they fit; otherwise omit the field.\n- Use the supplied timestamp when unsure.",
+    let prompt = format!(
+        r#"
+You are an on-device activity summarizer. Produce ONE event describing the most specific user activity visible now.
+
+1) Pick the highest-signal activity (e.g., "Watching", "Committing", "Reading docs/Wikipedia", "Running terminal command", "Browsing social feed", "Editing code/doc", etc.).
+
+2) Extract concrete facts that would still be useful hours later:
+   - Titles or proper nouns (page, repo, doc, video, product).
+   - IDs/codes (SxEy, version, PR/issue numbers, error codes).
+   - File paths, commands, or filenames.
+   - URL domains.
+   - Timecodes/positions (e.g., 00:13/33:59).
+   - Short quotes of on-screen text when they convey substance.
+
+Detail style (very important):
+- One concise paragraph (target 220–320 characters; hard cap 500).
+- Present tense, no filler ("user is", "it seems").
+- Prefer exact on-screen text for titles and include at most ONE short quote (≤30 words).
+- Include 2–4 high-signal atoms separated by " — " or "; ".
+
+Examples:
+
+Example 1 — Wikipedia Page:
+
+{{
+  "label": "reading wiki",
+  "detail": "Reading Wikipedia: "Elephant" — taxonomy and anatomy sections visible; noting tusks as elongated, continuously growing front incisors and their role in foraging/defense — page compares African vs Asian elephants by ear shape and back curvature.",
+  "app": "Firefox",
+  "window": "Elephant - Wikipedia",
+  "confidence": 0.9,
+  "time": "2025-10-26T00:00:00Z"
+}}
+
+Example 2 — IDE Commit:
+
+{{
+  "label": "commit",
+  "detail": "Committed refactor: consolidated FoundationModels bridge; added fm_generate_structured + generateStructuredAsync; Rust helpers generate_structured/_blocking; removed duplicate generate_* and obsolete live summary wrapper.",
+  "app": "RustRover",
+  "window": "cubby",
+  "confidence": 1.0,
+  "time": "2025-10-26T00:00:00Z"
+}}
+
+Context:
+- Timestamp: {}
+- Application: {}
+- Window: {}
+- OCR Text:
+{}
+
+Be as specific as possible, creating a precise and detailed summary for a personal knowledge graph / history.
+"#,
         context.timestamp.to_rfc3339(),
         app,
         window,
         text,
-    )
+    );
+    prompt
 }
 
 struct ParsedEvent {

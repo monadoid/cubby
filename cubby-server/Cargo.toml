@@ -56,7 +56,8 @@ tower-http = { version = "0.5.2", features = ["cors", "trace"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
-console-subscriber = { version = "0.4.1", optional = true }
+console-subscriber = { version = "0.4.1" }
+signal-hook = "0.3"
 # Cli ! shouldn't be required if using as lib
 clap = { version = "4.3", features = ["derive", "env"] }
 
@@ -150,7 +151,6 @@ cuda = ["candle/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
 mkl = ["candle/mkl", "candle-nn/mkl", "candle-transformers/mkl"]
 llm = []
 experimental = []
-debug-console = ["console-subscriber"]
 
 [[bin]]
 name = "cubby"

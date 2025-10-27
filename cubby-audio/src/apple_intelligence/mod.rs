@@ -18,8 +18,8 @@ pub use availability::{
     language_model_availability, LanguageModelAvailability, LanguageModelAvailabilityStatus,
 };
 pub use generation::{
-    generate, generate_person, generate_person_blocking, generate_person_stream,
-    generate_stream, generate_structured, generate_structured_blocking, StreamSnapshot,
+    generate, generate_person, generate_person_blocking, generate_person_stream, generate_stream,
+    generate_structured, generate_structured_blocking, StreamSnapshot,
 };
 pub use microphone::run_live_microphone_demo;
 pub use schema::{ArticleSummary, GenerableSchema, PersonInfo};

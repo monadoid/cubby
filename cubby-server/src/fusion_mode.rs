@@ -13,13 +13,14 @@ use futures::StreamExt;
 use ratatui::{
     backend::CrosstermBackend,
     crossterm::{
-        event::{self, Event as CrosstermEvent, KeyCode},
+        event::{self, Event as CrosstermEvent, KeyCode, KeyModifiers},
         execute,
         terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     },
     Terminal,
 };
 use serde_json::Value;
+use signal_hook::{consts::SIGINT, low_level::raise};
 use tokio::{
     sync::{broadcast, mpsc},
     task::JoinHandle,
@@ -28,6 +29,7 @@ use tokio::{
 pub struct FusionModeHandles {
     pub ui: JoinHandle<Result<()>>,
     pub forwarder: JoinHandle<()>,
+    pub log_forwarder: Option<JoinHandle<()>>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,16 +60,26 @@ struct LiveSummaryEvent {
     timestamp: DateTime<Utc>,
 }
 
+enum FusionUiMessage {
+    Summary(LiveSummaryEvent),
+    Log(String),
+}
+
 pub async fn start_fusion_mode(
     _db: Arc<DatabaseManager>,
     config: FusionModeConfig,
-    shutdown_rx: broadcast::Receiver<()>,
+    shutdown: broadcast::Sender<()>,
+    log_rx: Option<mpsc::UnboundedReceiver<String>>,
 ) -> Result<Option<FusionModeHandles>> {
-    let (tx, rx) = mpsc::unbounded_channel::<LiveSummaryEvent>();
+    use tokio::sync::mpsc::UnboundedSender;
+
+    let (tx, rx) = mpsc::unbounded_channel::<FusionUiMessage>();
+    let forwarder_tx = tx.clone();
 
     let mut event_stream = subscribe_to_event::<Value>("live_summary");
-    let mut forwarder_shutdown = shutdown_rx.resubscribe();
+    let mut forwarder_shutdown = shutdown.subscribe();
     let forwarder = tokio::spawn(async move {
+        let tx = forwarder_tx;
         loop {
             tokio::select! {
                 maybe_event = event_stream.next() => {
@@ -78,7 +90,7 @@ pub async fn start_fusion_mode(
                                 continue;
                             }
                             for item in payload {
-                                if tx.send(item).is_err() {
+                                if tx.send(FusionUiMessage::Summary(item)).is_err() {
                                     return;
                                 }
                             }
@@ -93,16 +105,42 @@ pub async fn start_fusion_mode(
         }
     });
 
-    let ui_handle = tokio::task::spawn_blocking(move || run_ui(rx, shutdown_rx, config.tick_rate));
+    let mut log_forwarder = None;
+
+    if let Some(mut log_receiver) = log_rx {
+        let tx_clone: UnboundedSender<FusionUiMessage> = tx.clone();
+        let mut shutdown_rx = shutdown.subscribe();
+        log_forwarder = Some(tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    line = log_receiver.recv() => {
+                        if let Some(line) = line {
+                            let _ = tx_clone.send(FusionUiMessage::Log(line));
+                        } else {
+                            break;
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        break;
+                    }
+                }
+            }
+        }));
+    }
+
+    let ui_shutdown_rx = shutdown.subscribe();
+    let ui_handle =
+        tokio::task::spawn_blocking(move || run_ui(rx, ui_shutdown_rx, config.tick_rate));
 
     Ok(Some(FusionModeHandles {
         ui: ui_handle,
         forwarder,
+        log_forwarder,
     }))
 }
 
 fn run_ui(
-    mut rx: mpsc::UnboundedReceiver<LiveSummaryEvent>,
+    mut rx: mpsc::UnboundedReceiver<FusionUiMessage>,
     mut shutdown_rx: broadcast::Receiver<()>,
     tick_rate: Duration,
 ) -> Result<()> {
@@ -113,7 +151,7 @@ fn run_ui(
     let mut terminal = Terminal::new(backend).context("creating terminal for fusion mode")?;
     terminal.hide_cursor()?;
 
-    let mut app = App::new("Fusion Mode – live summaries (q to exit)", true);
+    let mut app = App::new("Fusion Mode – live summaries", true);
     let mut last_tick = Instant::now();
 
     loop {
@@ -123,9 +161,6 @@ fn run_ui(
             .draw(|f| ui::draw(f, &mut app))
             .context("drawing fusion mode frame")?;
 
-        if app.should_quit {
-            break;
-        }
         if shutdown_rx.try_recv().is_ok() {
             break;
         }
@@ -134,25 +169,27 @@ fn run_ui(
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
 
-        let mut should_quit = false;
         if event::poll(timeout).context("polling terminal events")? {
             match event::read().context("reading terminal event")? {
-                CrosstermEvent::Key(key) => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => should_quit = true,
-                    KeyCode::Left => app.on_left(),
-                    KeyCode::Right => app.on_right(),
-                    KeyCode::Up => app.on_up(),
-                    KeyCode::Down => app.on_down(),
-                    KeyCode::Char('t') => app.on_key('t'),
-                    _ => {}
-                },
+                CrosstermEvent::Key(key) => {
+                    if key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        let _ = raise(SIGINT);
+                        break;
+                    }
+                    match key.code {
+                        KeyCode::Left => app.on_left(),
+                        KeyCode::Right => app.on_right(),
+                        KeyCode::Up => app.on_up(),
+                        KeyCode::Down => app.on_down(),
+                        KeyCode::Char('t') => app.on_key('t'),
+                        _ => {}
+                    }
+                }
                 CrosstermEvent::Resize(_, _) => {}
                 _ => {}
             }
-        }
-
-        if should_quit {
-            break;
         }
 
         if last_tick.elapsed() >= tick_rate {
@@ -168,17 +205,24 @@ fn run_ui(
     Ok(())
 }
 
-fn drain_events(app: &mut App, rx: &mut mpsc::UnboundedReceiver<LiveSummaryEvent>) {
-    while let Ok(event) = rx.try_recv() {
-        let local_time = event.timestamp.with_timezone(&Local);
-        app.push_summary(
-            local_time.format("%H:%M:%S").to_string(),
-            event.label,
-            event.detail,
-            event.app,
-            event.window,
-            event.confidence,
-        );
+fn drain_events(app: &mut App, rx: &mut mpsc::UnboundedReceiver<FusionUiMessage>) {
+    while let Ok(message) = rx.try_recv() {
+        match message {
+            FusionUiMessage::Summary(event) => {
+                let local_time = event.timestamp.with_timezone(&Local);
+                app.push_summary(
+                    local_time.format("%H:%M:%S").to_string(),
+                    event.label,
+                    event.detail,
+                    event.app,
+                    event.window,
+                    event.confidence,
+                );
+            }
+            FusionUiMessage::Log(line) => {
+                app.push_log_line(line);
+            }
+        }
     }
 }
 

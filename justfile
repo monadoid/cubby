@@ -14,6 +14,15 @@ cubby-start:
 cubby-uninstall:
     cargo run -- uninstall
 
+tokio-console:
+    # Runs the service with tokio-console instrumentation and the Swift runtime rpaths.
+    # After starting this command, run `tokio-console` in another terminal to inspect tasks.
+    RUSTFLAGS="--cfg tokio_unstable" \
+    DYLD_LIBRARY_PATH="/usr/lib/swift:/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx:${DYLD_LIBRARY_PATH}" \
+    TOKIO_CONSOLE=1 \
+    TOKIO_CONSOLE_BIND=127.0.0.1:6669 \
+    cargo run --bin cubby -- service --live-summary-enabled --fps 1.0
+
 profile-flamegraph:
     cargo build --profile profiling
     samply record ./target/profiling/cubby \

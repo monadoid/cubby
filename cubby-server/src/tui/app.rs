@@ -3,6 +3,7 @@ use rand::{
     rngs::ThreadRng,
 };
 use ratatui::widgets::ListState;
+use std::collections::VecDeque;
 
 const TASKS: [&str; 24] = [
     "Item1", "Item2", "Item3", "Item4", "Item5", "Item6", "Item7", "Item8", "Item9", "Item10",
@@ -233,7 +234,6 @@ pub struct LogEntry {
 
 pub struct App {
     pub title: String,
-    pub should_quit: bool,
     pub tabs: TabsState,
     pub show_chart: bool,
     pub progress: f64,
@@ -244,6 +244,7 @@ pub struct App {
     pub barchart: Vec<(String, u64)>,
     pub servers: Vec<Server>,
     pub enhanced_graphics: bool,
+    pub log_lines: VecDeque<String>,
 }
 
 impl App {
@@ -256,8 +257,7 @@ impl App {
         let sin2_points = sin_signal2.by_ref().take(200).collect();
         App {
             title: title.to_string(),
-            should_quit: false,
-            tabs: TabsState::new(vec!["Tab0", "Tab1"]),
+            tabs: TabsState::new(vec!["Live summaries", "Logs"]),
             show_chart: true,
             progress: 0.0,
             sparkline: Signal {
@@ -311,6 +311,7 @@ impl App {
                 },
             ],
             enhanced_graphics,
+            log_lines: VecDeque::with_capacity(512),
         }
     }
 
@@ -332,9 +333,6 @@ impl App {
 
     pub fn on_key(&mut self, c: char) {
         match c {
-            'q' => {
-                self.should_quit = true;
-            }
             't' => {
                 self.show_chart = !self.show_chart;
             }
@@ -361,14 +359,19 @@ impl App {
         window: Option<String>,
         confidence: Option<f32>,
     ) {
+        let event_clean = collapse_whitespace(&event);
+        let detail_clean = collapse_whitespace(&detail);
+        let app_clean = app.map(|value| collapse_whitespace(&value));
+        let window_clean = window.map(|value| collapse_whitespace(&value));
+
         self.logs.items.insert(
             0,
             LogEntry {
                 time,
-                event,
-                detail,
-                app,
-                window,
+                event: event_clean,
+                detail: detail_clean,
+                app: app_clean,
+                window: window_clean,
                 confidence,
             },
         );
@@ -376,4 +379,26 @@ impl App {
             self.logs.items.truncate(100);
         }
     }
+
+    pub fn push_log_line(&mut self, line: String) {
+        if self.log_lines.len() == self.log_lines.capacity() {
+            self.log_lines.pop_front();
+        }
+        self.log_lines.push_back(line);
+    }
+}
+
+fn collapse_whitespace(input: &str) -> String {
+    let mut iter = input.split_whitespace();
+    let mut result = match iter.next() {
+        Some(first) => first.to_string(),
+        None => return String::new(),
+    };
+
+    for part in iter {
+        result.push(' ');
+        result.push_str(part);
+    }
+
+    result
 }

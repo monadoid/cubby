@@ -1,9 +1,8 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    symbols,
+    style::{Color, Style},
     text::{self, Span},
-    widgets::{Block, Gauge, LineGauge, Paragraph, Row, Sparkline, Table, Tabs, Wrap},
+    widgets::{Block, Paragraph, Row, Table, Tabs, Wrap},
     Frame,
 };
 
@@ -27,76 +26,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(tabs, layout[0]);
 
     match app.tabs.index {
-        0 => draw_first_tab(frame, app, layout[1]),
-        1 => draw_second_tab(frame, app, layout[1]),
+        0 => draw_summary_tab(frame, app, layout[1]),
+        1 => draw_log_tab(frame, app, layout[1]),
         _ => {}
     }
 }
 
-fn draw_first_tab(frame: &mut Frame, app: &mut App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(9), Constraint::Min(0)])
-        .split(area);
-
-    draw_gauges(frame, app, chunks[0]);
-    draw_charts(frame, app, chunks[1]);
-}
-
-fn draw_gauges(frame: &mut Frame, app: &mut App, area: Rect) {
-    let layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Length(3),
-            Constraint::Length(2),
-        ])
-        .margin(1)
-        .split(area);
-
-    frame.render_widget(Block::bordered().title("Graphs"), area);
-
-    let gauge = Gauge::default()
-        .block(Block::new().title("Gauge:"))
-        .gauge_style(
-            Style::default()
-                .fg(Color::Magenta)
-                .bg(Color::Black)
-                .add_modifier(Modifier::ITALIC | Modifier::BOLD),
-        )
-        .use_unicode(app.enhanced_graphics)
-        .label(format!("{:.2}%", app.progress * 100.0))
-        .ratio(app.progress);
-    frame.render_widget(gauge, layout[0]);
-
-    let sparkline = Sparkline::default()
-        .block(Block::new().title("Sparkline:"))
-        .style(Style::default().fg(Color::Green))
-        .data(&app.sparkline.points)
-        .bar_set(if app.enhanced_graphics {
-            symbols::bar::NINE_LEVELS
-        } else {
-            symbols::bar::THREE_LEVELS
-        });
-    frame.render_widget(sparkline, layout[1]);
-
-    let line_gauge = LineGauge::default()
-        .block(Block::new().title("LineGauge:"))
-        .filled_style(Style::default().fg(Color::Magenta))
-        .line_set(if app.enhanced_graphics {
-            symbols::line::THICK
-        } else {
-            symbols::line::NORMAL
-        })
-        .ratio(app.progress);
-    frame.render_widget(line_gauge, layout[2]);
-}
-
-fn draw_charts(frame: &mut Frame, app: &mut App, area: Rect) {
-    draw_logs(frame, app, area);
-}
-
-fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_summary_tab(frame: &mut Frame, app: &mut App, area: Rect) {
     let rows: Vec<Row> = app
         .logs
         .items
@@ -138,49 +74,18 @@ fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(table, area);
 }
 
-fn draw_second_tab(frame: &mut Frame, app: &mut App, area: Rect) {
-    let layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-        .split(area);
+fn draw_log_tab(frame: &mut Frame, app: &mut App, area: Rect) {
+    let mut text = String::new();
+    for line in app.log_lines.iter().rev() {
+        text.push_str(line);
+        if !line.ends_with('\n') {
+            text.push('\n');
+        }
+    }
 
-    let up_style = Style::default().fg(Color::Green);
-    let failure_style = Style::default()
-        .fg(Color::Red)
-        .add_modifier(Modifier::RAPID_BLINK | Modifier::CROSSED_OUT);
+    let paragraph = Paragraph::new(text)
+        .block(Block::bordered().title("Recent logs"))
+        .wrap(Wrap { trim: false });
 
-    let rows = app.servers.iter().map(|server| {
-        let style = if server.status == "Up" {
-            up_style
-        } else {
-            failure_style
-        };
-        Row::new(vec![
-            server.name.as_str(),
-            server.location.as_str(),
-            server.status.as_str(),
-        ])
-        .style(style)
-    });
-
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(15),
-            Constraint::Length(15),
-            Constraint::Length(10),
-        ],
-    )
-    .header(
-        Row::new(vec!["Server", "Location", "Status"])
-            .style(Style::default().fg(Color::Yellow))
-            .bottom_margin(1),
-    )
-    .block(Block::bordered().title("Servers"));
-    frame.render_widget(table, layout[0]);
-
-    let info = Paragraph::new("Secondary view placeholder")
-        .block(Block::bordered().title("Overview"))
-        .wrap(Wrap { trim: true });
-    frame.render_widget(info, layout[1]);
+    frame.render_widget(paragraph, area);
 }

@@ -221,9 +221,9 @@ pub struct Cli {
     #[arg(long = "live-summary-max-input-tokens", default_value_t = 1500)]
     pub live_summary_max_input_tokens: usize,
 
-    /// Display fusion mode terminal dashboard with recent live summaries
-    #[arg(long = "show_fusion_mode", default_value_t = false)]
-    pub show_fusion_mode: bool,
+    /// Disable the fusion mode TUI (show logs on stdout instead)
+    #[arg(long = "no-tui", default_value_t = false)]
+    pub no_tui: bool,
 
     /// Enable realtime vision
     #[arg(long, default_value_t = true)]
