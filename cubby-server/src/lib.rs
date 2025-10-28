@@ -15,6 +15,7 @@ pub mod mcp;
 pub mod onboarding;
 pub mod permission_checker;
 pub mod pipe_manager;
+pub mod playground;
 mod resource_monitor;
 mod server;
 pub mod service_manager;

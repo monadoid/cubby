@@ -19,22 +19,22 @@ use cubby_server::{
     fusion_mode::{start_fusion_mode, FusionModeConfig, FusionModeHandles},
     live_summary::{spawn_live_summary_worker, SummarizerConfig},
     permission_checker::{trigger_and_check_microphone, trigger_and_check_screen_recording},
+    playground::resolve_data_dir,
     setup_state::{SetupState, TranscriptionBackendPreference},
     start_continuous_recording, ResourceMonitor, SCServer,
 };
 use cubby_vision::monitor::list_monitors;
 #[cfg(target_os = "macos")]
 use cubby_vision::run_ui;
-use dirs::home_dir;
 use futures::pin_mut;
 use port_check::is_local_ipv4_port_free;
 use std::{
-    env, fs,
+    env,
     io::{self, Write},
     net::SocketAddr,
     net::{IpAddr, Ipv4Addr},
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -49,21 +49,6 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
 use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, Layer};
-
-fn get_base_dir(custom_path: &Option<String>) -> anyhow::Result<PathBuf> {
-    let default_path = home_dir()
-        .ok_or_else(|| anyhow::anyhow!("failed to get home directory"))?
-        .join(".cubby");
-
-    let base_dir = custom_path
-        .as_ref()
-        .map(PathBuf::from)
-        .unwrap_or(default_path);
-    let data_dir = base_dir.join("data");
-
-    fs::create_dir_all(&data_dir)?;
-    Ok(base_dir)
-}
 
 fn setup_logging(
     local_data_dir: &PathBuf,
@@ -239,7 +224,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_service(cli: &Cli, enable_console_layer: bool) -> anyhow::Result<()> {
-    let local_data_dir = get_base_dir(&cli.data_dir)?;
+    let local_data_dir = resolve_data_dir(cli.data_dir.as_deref().map(Path::new))?;
     let local_data_dir_clone = local_data_dir.clone();
 
     // Store the guard in a variable that lives for the entire main function

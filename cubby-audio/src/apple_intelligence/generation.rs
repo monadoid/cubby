@@ -32,40 +32,100 @@ extern "C" {
     );
 }
 
-/// Snapshot from a streaming response.
-#[derive(Debug, Clone)]
-pub struct StreamSnapshot {
-    /// Partial structured content as JSON.
-    pub content: Value,
-    /// Raw text generated so far.
-    pub raw_content: String,
+/// Generate structured output for the provided schema type.
+///
+/// The Foundation Models runtime may serialize concurrent sessions and reorder completions; invoke
+/// this sequentially if your caller expects predictable turnaround time.
+pub async fn generate<T: GenerableSchema>(prompt: &str) -> Result<T> {
+    let json = generate_structured_raw(prompt, T::schema_name()).await?;
+    T::from_json(json)
 }
 
-/// Generate structured JSON output using Apple's FoundationModels SDK (async).
-pub async fn generate_person(prompt: &str) -> Result<Value> {
-    generate_structured(prompt, PersonInfo::schema_name()).await
+/// Blocking variant of [`generate`].
+///
+/// The same serialization caveat applies—avoid overlapping requests if latency predictability
+/// matters.
+pub fn generate_blocking<T: GenerableSchema>(prompt: &str) -> Result<T> {
+    let json = generate_structured_blocking_raw(prompt, T::schema_name())?;
+    T::from_json(json)
 }
 
-/// Generate structured JSON output synchronously (blocking).
-pub fn generate_person_blocking(prompt: &str) -> Result<Value> {
-    generate_structured_blocking(prompt, PersonInfo::schema_name())
-}
-
-/// Generate structured output with streaming updates.
-pub fn generate_person_stream(
+/// Generate structured output with streaming updates for schema types that support it.
+///
+/// Apple’s Foundation Models API may queue sessions and finish them out of order; keep stream
+/// requests serialized if your caller depends on predictable latency.
+pub fn generate_stream<T: GenerableSchema>(
     prompt: &str,
-) -> Pin<Box<dyn Stream<Item = Result<StreamSnapshot>> + Send>> {
-    if let Err(e) = ensure_supported() {
+) -> Pin<Box<dyn Stream<Item = Result<T>> + Send>> {
+    if T::schema_name() != PersonInfo::schema_name() {
         return Box::pin(stream! {
-            yield Err(e);
+            yield Err(anyhow!(
+                "schema {} not yet implemented for streaming",
+                T::schema_name()
+            ));
+        });
+    }
+
+    let raw_stream = person_stream_raw(prompt);
+
+    Box::pin(stream! {
+        for await snapshot_result in raw_stream {
+            match snapshot_result {
+                Ok(json) => match T::from_json(json) {
+                    Ok(typed) => yield Ok(typed),
+                    Err(err) => {
+                        yield Err(err);
+                        break;
+                    }
+                },
+                Err(err) => {
+                    yield Err(err);
+                    break;
+                }
+            }
+        }
+    })
+}
+
+async fn generate_structured_raw(prompt: &str, schema: &str) -> Result<Value> {
+    ensure_supported()?;
+
+    let prompt = prompt.to_string();
+    let schema = schema.to_string();
+
+    let json_str = tokio::task::spawn_blocking(move || {
+        let prompt_sr = SRString::from(prompt.as_str());
+        let schema_sr = SRString::from(schema.as_str());
+        unsafe { ffi::fm_generate_structured(&prompt_sr, &schema_sr) }.to_string()
+    })
+    .await?;
+
+    parse_response(&json_str)
+}
+
+fn generate_structured_blocking_raw(prompt: &str, schema: &str) -> Result<Value> {
+    ensure_supported()?;
+
+    let prompt_sr = SRString::from(prompt);
+    let schema_sr = SRString::from(schema);
+    let json_str = unsafe { ffi::fm_generate_structured(&prompt_sr, &schema_sr) }.to_string();
+    parse_response(&json_str)
+}
+
+fn person_stream_raw(prompt: &str) -> Pin<Box<dyn Stream<Item = Result<Value>> + Send>> {
+    if let Err(err) = ensure_supported() {
+        return Box::pin(stream! {
+            yield Err(err);
         });
     }
 
     let prompt = prompt.to_string();
 
     Box::pin(stream! {
-        let (tx, mut rx): (mpsc::UnboundedSender<Result<(Option<String>, Option<String>)>>, _) =
-            mpsc::unbounded_channel();
+        let (tx, mut rx): (
+            mpsc::UnboundedSender<Result<(Option<String>, Option<String>)>>,
+            _
+        ) = mpsc::unbounded_channel();
 
         extern "C" fn stream_callback(
             ctx: *mut c_void,
@@ -77,7 +137,6 @@ pub fn generate_person_stream(
             };
 
             if content_json.is_null() {
-                // Completion (nil, raw) or error (error JSON, nil). We signal by sending None.
                 let _ = tx.send(Ok((None, None)));
                 return;
             }
@@ -115,11 +174,11 @@ pub fn generate_person_stream(
 
         while let Some(result) = rx.recv().await {
             match result {
-                Ok((Some(content_json), raw_opt)) => {
+                Ok((Some(content_json), _raw_opt)) => {
                     let content_value: Value = match serde_json::from_str(&content_json) {
                         Ok(v) => v,
-                        Err(e) => {
-                            yield Err(anyhow!("failed to parse content json: {}", e));
+                        Err(err) => {
+                            yield Err(anyhow!("failed to parse content json: {}", err));
                             break;
                         }
                     };
@@ -129,71 +188,17 @@ pub fn generate_person_stream(
                         break;
                     }
 
-                    yield Ok(StreamSnapshot {
-                        content: content_value,
-                        raw_content: raw_opt.unwrap_or_default(),
-                    });
+                    yield Ok(content_value);
                 }
-                Ok((None, _)) => {
-                    break;
-                }
-                Err(e) => {
-                    yield Err(e);
+                Ok((None, _)) => break,
+                Err(err) => {
+                    yield Err(err);
                     break;
                 }
             }
         }
 
         let _ = handle.await;
-    })
-}
-
-/// Generate structured output with a generic schema type.
-pub async fn generate<T: GenerableSchema>(prompt: &str) -> Result<T> {
-    let schema_name = T::schema_name();
-
-    if schema_name == "ArticleSummary" {
-        return Err(anyhow!(
-            "ArticleSummary schema not yet implemented in Swift bridge"
-        ));
-    }
-
-    let json_value = generate_structured(prompt, schema_name).await?;
-
-    T::from_json(json_value)
-}
-
-/// Generate structured output with a generic schema type (streaming).
-pub fn generate_stream<T: GenerableSchema>(
-    prompt: &str,
-) -> Pin<Box<dyn Stream<Item = Result<T>> + Send>> {
-    if T::schema_name() != PersonInfo::schema_name() {
-        return Box::pin(stream! {
-            yield Err(anyhow!(
-                "schema {} not yet implemented for streaming",
-                T::schema_name()
-            ));
-        });
-    }
-
-    let raw_stream = generate_person_stream(prompt);
-
-    Box::pin(stream! {
-        for await snapshot_result in raw_stream {
-            match snapshot_result {
-                Ok(snapshot) => match T::from_json(snapshot.content) {
-                    Ok(typed) => yield Ok(typed),
-                    Err(e) => {
-                        yield Err(e);
-                        break;
-                    }
-                },
-                Err(e) => {
-                    yield Err(e);
-                    break;
-                }
-            }
-        }
     })
 }
 
@@ -220,29 +225,4 @@ fn parse_response(json_str: &str) -> Result<Value> {
     }
 
     Ok(value)
-}
-
-pub async fn generate_structured(prompt: &str, schema: &str) -> Result<Value> {
-    ensure_supported()?;
-
-    let prompt = prompt.to_string();
-    let schema = schema.to_string();
-
-    let json_str = tokio::task::spawn_blocking(move || {
-        let prompt_sr = SRString::from(prompt.as_str());
-        let schema_sr = SRString::from(schema.as_str());
-        unsafe { ffi::fm_generate_structured(&prompt_sr, &schema_sr) }.to_string()
-    })
-    .await?;
-
-    parse_response(&json_str)
-}
-
-pub fn generate_structured_blocking(prompt: &str, schema: &str) -> Result<Value> {
-    ensure_supported()?;
-
-    let prompt_sr = SRString::from(prompt);
-    let schema_sr = SRString::from(schema);
-    let json_str = unsafe { ffi::fm_generate_structured(&prompt_sr, &schema_sr) }.to_string();
-    parse_response(&json_str)
 }

@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use tokio::{sync::broadcast, task::JoinHandle};
 use tracing::{debug, info, warn};
 
+use crate::apple_summary::LiveSummaryEvent;
+
 #[derive(Clone, Debug)]
 pub struct SummarizerConfig {
     pub enabled: bool,
@@ -159,8 +161,8 @@ async fn summarize_window(
     let model = "ocr_activity_summary_v1";
 
     match crate::apple_summary::generate_summary(&prompt).await {
-        Ok(value) => {
-            if let Some(event) = parse_primary_event(&value, &context) {
+        Ok(summary) => {
+            if let Some(event) = parse_primary_event(&summary, &context) {
                 debug!(frame_id, "live summary generated event");
                 db.insert_live_summary(
                     frame_id,
@@ -287,54 +289,40 @@ struct ParsedEvent {
 }
 
 fn parse_primary_event(
-    value: &serde_json::Value,
+    summary: &LiveSummaryEvent,
     context: &PromptContext<'_>,
 ) -> Option<ParsedEvent> {
-    let label = value
-        .get("label")
-        .and_then(|v| v.as_str())?
-        .trim()
-        .to_string();
+    let label = summary.label.trim().to_string();
     if label.is_empty() {
         return None;
     }
-    let detail = value
-        .get("detail")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let detail = summary.detail.trim().to_string();
     if detail.is_empty() {
         return None;
     }
-    let time = value
-        .get("time")
-        .and_then(|v| v.as_str())
-        .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+    let time = DateTime::parse_from_rfc3339(summary.time.as_str())
+        .ok()
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or(context.timestamp);
 
     Some(ParsedEvent {
         label,
         detail,
-        app: value
-            .get("app")
-            .and_then(|v| v.as_str())
+        app: summary
+            .app
+            .as_deref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .or_else(|| context.app_name.map(|s| s.to_string())),
-        window: value
-            .get("window")
-            .and_then(|v| v.as_str())
+        window: summary
+            .window
+            .as_deref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .or_else(|| context.window_name.map(|s| s.to_string())),
-        confidence: value
-            .get("confidence")
-            .and_then(|v| v.as_f64())
-            .map(|c| c as f32),
+        confidence: summary.confidence.map(|c| c as f32),
         time,
     })
 }
