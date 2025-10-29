@@ -250,6 +250,17 @@ async fn run_service(cli: &Cli, enable_console_layer: bool) -> anyhow::Result<()
         return Err(anyhow::anyhow!("port already in use"));
     }
 
+    let _pipeline_tracing = if cli.dev_pipeline_dashboard {
+        cubby_events::enable_pipeline_tracing();
+        info!("dev pipeline dashboard instrumentation enabled");
+        Some(cubby_events::PipelineTraceAggregator::start(
+            Duration::from_secs(600),
+        ))
+    } else {
+        cubby_events::disable_pipeline_tracing();
+        None
+    };
+
     // Don't trigger permission prompts from service - only list monitors if we already have permission
     let all_monitors = if cli.disable_vision {
         Vec::new()

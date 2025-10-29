@@ -12,8 +12,11 @@ use crate::utils::OcrEngine;
 use crate::utils::{capture_screenshot, compare_with_previous_image};
 use anyhow::Result;
 use base64::{engine::general_purpose, Engine as _};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use cubby_core::Language;
+use cubby_events::{
+    emit_pipeline_trace, pipeline_tracing_enabled, PipelineStage, PipelineTraceEvent, StageStatus,
+};
 use image::codecs::jpeg::JpegEncoder;
 use image::DynamicImage;
 use serde::Deserialize;
@@ -21,6 +24,7 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use serde_json;
+use serde_json::json;
 use std::sync::Arc;
 use std::{
     collections::HashMap,
@@ -333,12 +337,49 @@ pub async fn process_ocr_task(
         frame_number
     );
 
+    let trace_enabled = pipeline_tracing_enabled();
+    let total_windows = window_images.len();
+    let stage_started_at = if trace_enabled {
+        Some(Utc::now())
+    } else {
+        None
+    };
+
+    if trace_enabled {
+        if let Some(started_at) = stage_started_at {
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: Some(frame_number),
+                frame_id: None,
+                window: None,
+                app: None,
+                stage: PipelineStage::Ocr,
+                status: StageStatus::Started,
+                started_at,
+                finished_at: None,
+                duration_ms: None,
+                extra: json!({
+                    "window_count": total_windows,
+                }),
+            });
+        }
+    }
+
     let mut window_ocr_results = Vec::new();
     let mut total_confidence = 0.0;
     let mut window_count = 0;
 
     for captured_window in window_images {
-        let ocr_result = process_window_ocr(
+        let window_name = captured_window.window_name.clone();
+        let app_name = captured_window.app_name.clone();
+        let focused = captured_window.is_focused;
+        let trace_window_started = if trace_enabled {
+            Some(Utc::now())
+        } else {
+            None
+        };
+        let window_timer = Instant::now();
+
+        let ocr_result = match process_window_ocr(
             captured_window,
             ocr_engine,
             &languages,
@@ -346,7 +387,58 @@ pub async fn process_ocr_task(
             &mut window_count,
         )
         .await
-        .map_err(|e| ContinuousCaptureError::ErrorProcessingOcr(e.to_string()))?;
+        {
+            Ok(result) => result,
+            Err(err) => {
+                if trace_enabled {
+                    let finished_at = Utc::now();
+                    let started_at = match trace_window_started {
+                        Some(dt) => dt,
+                        None => finished_at,
+                    };
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: Some(frame_number),
+                        frame_id: None,
+                        window: Some(window_name.clone()),
+                        app: Some(app_name.clone()),
+                        stage: PipelineStage::Ocr,
+                        status: StageStatus::Errored,
+                        started_at,
+                        finished_at: Some(finished_at),
+                        duration_ms: Some(window_timer.elapsed().as_millis() as u64),
+                        extra: json!({
+                            "focused": focused,
+                            "error": err.to_string(),
+                        }),
+                    });
+                }
+                return Err(err);
+            }
+        };
+
+        if trace_enabled {
+            let finished_at = Utc::now();
+            let started_at = match trace_window_started {
+                Some(dt) => dt,
+                None => finished_at,
+            };
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: Some(frame_number),
+                frame_id: None,
+                window: Some(window_name),
+                app: Some(app_name),
+                stage: PipelineStage::Ocr,
+                status: StageStatus::Progress,
+                started_at,
+                finished_at: Some(finished_at),
+                duration_ms: Some(window_timer.elapsed().as_millis() as u64),
+                extra: json!({
+                    "focused": focused,
+                    "confidence": ocr_result.confidence,
+                    "text_len": ocr_result.text.len(),
+                }),
+            });
+        }
 
         window_ocr_results.push(ocr_result);
     }
@@ -362,6 +454,31 @@ pub async fn process_ocr_task(
     send_ocr_result(&result_tx, capture_result)
         .await
         .map_err(|e| ContinuousCaptureError::ErrorSendingOcrResult(e.to_string()))?;
+
+    if trace_enabled {
+        let finished_at = Utc::now();
+        let started_at = stage_started_at.unwrap_or(finished_at);
+        let avg_confidence = if window_count > 0 {
+            total_confidence / window_count as f64
+        } else {
+            0.0
+        };
+        emit_pipeline_trace(PipelineTraceEvent {
+            frame_number: Some(frame_number),
+            frame_id: None,
+            window: None,
+            app: None,
+            stage: PipelineStage::Ocr,
+            status: StageStatus::Completed,
+            started_at,
+            finished_at: Some(finished_at),
+            duration_ms: Some(start_time.elapsed().as_millis() as u64),
+            extra: json!({
+                "window_count": total_windows,
+                "avg_confidence": avg_confidence,
+            }),
+        });
+    }
 
     // Log performance metrics
     log_ocr_performance(start_time, window_count, total_confidence, frame_number);

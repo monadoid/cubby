@@ -37,9 +37,16 @@ fn bench_insert_ocr_text(c: &mut Criterion) {
                     black_box(format!("{{\"text\": \"{}\"}}", text.replace("\"", "\\\"")));
                 let ocr_engine = black_box(OcrEngine::AppleNative);
 
-                db.insert_ocr_text(frame_id, text, &text_json, std::sync::Arc::new(ocr_engine))
-                    .await
-                    .unwrap();
+                db.insert_ocr_text(
+                    frame_id,
+                    text,
+                    &text_json,
+                    std::sync::Arc::new(ocr_engine),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
             })
         });
     }

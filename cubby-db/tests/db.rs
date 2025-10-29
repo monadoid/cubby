@@ -56,6 +56,8 @@ mod tests {
             "Implementing live summary sampler.",
             "{}",
             Arc::new(OcrEngine::Tesseract),
+            Some("VS Code"),
+            Some("lib.rs"),
         )
         .await
         .unwrap();
@@ -124,6 +126,8 @@ mod tests {
             "Hello, world!",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -328,6 +332,8 @@ mod tests {
             "Hello from OCR",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -435,6 +441,8 @@ mod tests {
             "Hello from OCR 1",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -475,6 +483,8 @@ mod tests {
             "Hello from OCR 2",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -690,6 +700,8 @@ mod tests {
             "Hello from OCR 1",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -728,6 +740,8 @@ mod tests {
             "Hello from OCR 2",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -1161,6 +1175,8 @@ mod tests {
             "Hello from frame 1",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -1175,6 +1191,8 @@ mod tests {
             "Hello from frame 2",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();
@@ -1421,6 +1439,8 @@ mod tests {
             "Hello from OCR",
             "",
             Arc::new(OcrEngine::Tesseract),
+            Some("test"),
+            Some(""),
         )
         .await
         .unwrap();

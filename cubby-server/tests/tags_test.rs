@@ -10,7 +10,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tower::ServiceExt;
 
 use cubby_db::DatabaseManager;
-use cubby_server::{ContentItem, PaginatedResponse, PipeManager, SCServer};
+use cubby_server::{ContentItem, PaginatedResponse, SCServer};
 
 // Add this function to initialize the logger
 fn init() {
@@ -23,6 +23,7 @@ async fn setup_test_app() -> (Router, Arc<DatabaseManager>) {
     let audio_manager = Arc::new(
         AudioManagerBuilder::new()
             .output_path("/tmp/cubby".into())
+            .enabled_devices(vec!["mock-device".to_string()])
             .build(db.clone())
             .await
             .unwrap(),
@@ -32,12 +33,10 @@ async fn setup_test_app() -> (Router, Arc<DatabaseManager>) {
         db.clone(),
         SocketAddr::from(([127, 0, 0, 1], 23948)),
         PathBuf::from(""),
-        Arc::new(PipeManager::new(PathBuf::from(""))),
         false,
         false,
         false,
         audio_manager,
-        true,
     );
 
     let router = app.create_router(true).await;
@@ -382,6 +381,8 @@ async fn insert_test_data(db: &Arc<DatabaseManager>) {
         "Test OCR text",
         "{'text': 'Test OCR text', 'confidence': 0.9}",
         Arc::new(OcrEngine::Tesseract.into()),
+        Some("test_app"),
+        Some("test_window"),
     )
     .await
     .unwrap();

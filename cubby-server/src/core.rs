@@ -4,10 +4,14 @@ use chrono::Utc;
 use cubby_core::pii_removal::remove_pii;
 use cubby_core::Language;
 use cubby_db::{DatabaseManager, Speaker};
-use cubby_events::{poll_meetings_events, send_event};
+use cubby_events::{
+    approx_datetime_from_instant, emit_pipeline_trace, pipeline_tracing_enabled,
+    poll_meetings_events, send_event, PipelineStage, PipelineTraceEvent, StageStatus,
+};
 use cubby_vision::core::WindowOcr;
 use cubby_vision::OcrEngine;
 use futures::future::join_all;
+use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::runtime::Handle;
@@ -270,13 +274,49 @@ async fn record_video(
                 time_since_last_frame.as_millis()
             );
 
+            let trace_enabled = pipeline_tracing_enabled();
+            let frame_number = frame.frame_number;
+            let frame_timestamp = approx_datetime_from_instant(frame.timestamp);
+            let db_stage_timer = std::time::Instant::now();
+            let db_stage_started_at = if trace_enabled {
+                Some(Utc::now())
+            } else {
+                None
+            };
+
+            if trace_enabled {
+                if let Some(started_at) = db_stage_started_at.clone() {
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: Some(frame_number),
+                        frame_id: None,
+                        window: None,
+                        app: None,
+                        stage: PipelineStage::Database,
+                        status: StageStatus::Started,
+                        started_at,
+                        finished_at: None,
+                        duration_ms: None,
+                        extra: json!({
+                            "window_count": frame.window_ocr_results.len(),
+                            "device": device_name.as_ref(),
+                            "frame_timestamp": frame_timestamp,
+                        }),
+                    });
+                }
+            }
+
             for window_result in &frame.window_ocr_results {
                 let insert_frame_start = std::time::Instant::now();
-                let frame_timestamp = Utc::now();
+                let insert_frame_started_at = if trace_enabled {
+                    Some(approx_datetime_from_instant(insert_frame_start))
+                } else {
+                    None
+                };
+                let frame_event_time = Utc::now();
                 let result = db
                     .insert_frame(
                         &device_name,
-                        Some(frame_timestamp),
+                        Some(frame_event_time),
                         window_result.browser_url.as_deref(),
                         Some(window_result.app_name.as_str()),
                         Some(window_result.window_name.as_str()),
@@ -294,6 +334,27 @@ async fn record_video(
 
                 match result {
                     Ok(frame_id) => {
+                        if trace_enabled {
+                            let finished_at = Utc::now();
+                            let started_at = insert_frame_started_at.unwrap_or(finished_at);
+                            emit_pipeline_trace(PipelineTraceEvent {
+                                frame_number: Some(frame_number),
+                                frame_id: Some(frame_id),
+                                window: Some(window_result.window_name.clone()),
+                                app: Some(window_result.app_name.clone()),
+                                stage: PipelineStage::Database,
+                                status: StageStatus::Progress,
+                                started_at,
+                                finished_at: Some(finished_at),
+                                duration_ms: Some(insert_duration.as_millis() as u64),
+                                extra: json!({
+                                    "operation": "insert_frame",
+                                    "device": device_name.as_ref(),
+                                    "focused": window_result.focused,
+                                }),
+                            });
+                        }
+
                         debug!(
                             "Successfully inserted frame {} in {}ms",
                             frame_id,
@@ -309,12 +370,22 @@ async fn record_video(
                         };
 
                         let insert_ocr_start = std::time::Instant::now();
+                        let insert_ocr_started_at = if trace_enabled {
+                            Some(approx_datetime_from_instant(insert_ocr_start))
+                        } else {
+                            None
+                        };
+                        let app_name_for_db = window_result.app_name.clone();
+                        let window_name_for_db = window_result.window_name.clone();
+
                         if let Err(e) = db
                             .insert_ocr_text(
                                 frame_id,
                                 &processed_text,
                                 &text_json,
                                 Arc::new((*ocr_engine).clone().into()),
+                                Some(app_name_for_db.as_str()),
+                                Some(window_name_for_db.as_str()),
                             )
                             .await
                         {
@@ -323,6 +394,28 @@ async fn record_video(
                                 e, window_result.window_name, frame_id
                             );
                             consecutive_db_errors += 1;
+
+                            if trace_enabled {
+                                let finished_at = Utc::now();
+                                let started_at = insert_ocr_started_at.unwrap_or(finished_at);
+                                emit_pipeline_trace(PipelineTraceEvent {
+                                    frame_number: Some(frame_number),
+                                    frame_id: Some(frame_id),
+                                    window: Some(window_result.window_name.clone()),
+                                    app: Some(window_result.app_name.clone()),
+                                    stage: PipelineStage::Database,
+                                    status: StageStatus::Errored,
+                                    started_at,
+                                    finished_at: Some(finished_at),
+                                    duration_ms: Some(insert_ocr_start.elapsed().as_millis() as u64),
+                                    extra: json!({
+                                        "operation": "insert_ocr_text",
+                                        "error": e.to_string(),
+                                        "device": device_name.as_ref(),
+                                    }),
+                                });
+                            }
+
                             continue;
                         } else {
                             let ocr_insert_duration = insert_ocr_start.elapsed();
@@ -338,6 +431,27 @@ async fn record_video(
                                 frame_id,
                                 ocr_insert_duration.as_millis()
                             );
+
+                            if trace_enabled {
+                                let finished_at = Utc::now();
+                                let started_at = insert_ocr_started_at.unwrap_or(finished_at);
+                                emit_pipeline_trace(PipelineTraceEvent {
+                                    frame_number: Some(frame_number),
+                                    frame_id: Some(frame_id),
+                                    window: Some(window_result.window_name.clone()),
+                                    app: Some(window_result.app_name.clone()),
+                                    stage: PipelineStage::Database,
+                                    status: StageStatus::Progress,
+                                    started_at,
+                                    finished_at: Some(finished_at),
+                                    duration_ms: Some(ocr_insert_duration.as_millis() as u64),
+                                    extra: json!({
+                                        "operation": "insert_ocr_text",
+                                        "text_len": processed_text.len(),
+                                        "device": device_name.as_ref(),
+                                    }),
+                                });
+                            }
                         }
 
                         if realtime_vision {
@@ -359,12 +473,57 @@ async fn record_video(
                             };
 
                             let send_event_start = std::time::Instant::now();
+                            let send_event_started_at = if trace_enabled {
+                                Some(approx_datetime_from_instant(send_event_start))
+                            } else {
+                                None
+                            };
                             if let Err(e) = send_event("ocr_result", event_payload) {
                                 error!("Failed to send OCR event: {}", e);
+                                if trace_enabled {
+                                    let finished_at = Utc::now();
+                                    let started_at = send_event_started_at.unwrap_or(finished_at);
+                                    emit_pipeline_trace(PipelineTraceEvent {
+                                        frame_number: Some(frame_number),
+                                        frame_id: Some(frame_id),
+                                        window: Some(window_result.window_name.clone()),
+                                        app: Some(window_result.app_name.clone()),
+                                        stage: PipelineStage::Realtime,
+                                        status: StageStatus::Errored,
+                                        started_at,
+                                        finished_at: Some(finished_at),
+                                        duration_ms: Some(
+                                            send_event_start.elapsed().as_millis() as u64
+                                        ),
+                                        extra: json!({
+                                            "device": device_name.as_ref(),
+                                            "error": e.to_string(),
+                                        }),
+                                    });
+                                }
                             } else {
                                 let event_duration = send_event_start.elapsed();
                                 if event_duration.as_millis() > 100 {
                                     warn!("Slow event sending: {}ms", event_duration.as_millis());
+                                }
+                                if trace_enabled {
+                                    let finished_at = Utc::now();
+                                    let started_at = send_event_started_at.unwrap_or(finished_at);
+                                    emit_pipeline_trace(PipelineTraceEvent {
+                                        frame_number: Some(frame_number),
+                                        frame_id: Some(frame_id),
+                                        window: Some(window_result.window_name.clone()),
+                                        app: Some(window_result.app_name.clone()),
+                                        stage: PipelineStage::Realtime,
+                                        status: StageStatus::Completed,
+                                        started_at,
+                                        finished_at: Some(finished_at),
+                                        duration_ms: Some(event_duration.as_millis() as u64),
+                                        extra: json!({
+                                            "device": device_name.as_ref(),
+                                            "payload_bytes": processed_text.len(),
+                                        }),
+                                    });
                                 }
                             }
                         }
@@ -373,8 +532,51 @@ async fn record_video(
                         warn!("Failed to insert frame: {}", e);
                         consecutive_db_errors += 1;
                         tokio::time::sleep(Duration::from_millis(100)).await;
+
+                        if trace_enabled {
+                            let finished_at = Utc::now();
+                            let started_at = insert_frame_started_at.unwrap_or(finished_at);
+                            emit_pipeline_trace(PipelineTraceEvent {
+                                frame_number: Some(frame_number),
+                                frame_id: None,
+                                window: Some(window_result.window_name.clone()),
+                                app: Some(window_result.app_name.clone()),
+                                stage: PipelineStage::Database,
+                                status: StageStatus::Errored,
+                                started_at,
+                                finished_at: Some(finished_at),
+                                duration_ms: Some(insert_duration.as_millis() as u64),
+                                extra: json!({
+                                    "operation": "insert_frame",
+                                    "error": e.to_string(),
+                                    "device": device_name.as_ref(),
+                                }),
+                            });
+                        }
+
                         continue;
                     }
+                }
+            }
+
+            if trace_enabled {
+                if let Some(started_at) = db_stage_started_at {
+                    let finished_at = Utc::now();
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: Some(frame_number),
+                        frame_id: None,
+                        window: None,
+                        app: None,
+                        stage: PipelineStage::Database,
+                        status: StageStatus::Completed,
+                        started_at,
+                        finished_at: Some(finished_at),
+                        duration_ms: Some(db_stage_timer.elapsed().as_millis() as u64),
+                        extra: json!({
+                            "window_count": frame.window_ocr_results.len(),
+                            "device": device_name.as_ref(),
+                        }),
+                    });
                 }
             }
         } else {

@@ -1,11 +1,15 @@
 use std::{
     collections::{HashSet, VecDeque},
     sync::Arc,
+    time::Instant,
 };
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use cubby_db::DatabaseManager;
+use cubby_events::{
+    emit_pipeline_trace, pipeline_tracing_enabled, PipelineStage, PipelineTraceEvent, StageStatus,
+};
 use futures::StreamExt;
 use serde_json::{json, Value};
 use tokio::{sync::broadcast, task::JoinHandle};
@@ -91,24 +95,99 @@ async fn process_ocr_event(
         return Ok(());
     };
 
+    let trace_enabled = pipeline_tracing_enabled();
+
     if !event.focused {
+        if trace_enabled {
+            let now = Utc::now();
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: None,
+                frame_id: event.frame_id,
+                window: event.window_name.clone(),
+                app: event.app_name.clone(),
+                stage: PipelineStage::Summary,
+                status: StageStatus::Skipped,
+                started_at: now,
+                finished_at: Some(now),
+                duration_ms: None,
+                extra: json!({
+                    "reason": "not_focused",
+                }),
+            });
+        }
         debug!("live summary skip: window not focused");
         return Ok(());
     }
 
     let frame_id = match event.frame_id {
         Some(id) if id > 0 => id,
-        _ => return Ok(()),
+        other => {
+            if trace_enabled {
+                let now = Utc::now();
+                emit_pipeline_trace(PipelineTraceEvent {
+                    frame_number: None,
+                    frame_id: other,
+                    window: event.window_name.clone(),
+                    app: event.app_name.clone(),
+                    stage: PipelineStage::Summary,
+                    status: StageStatus::Skipped,
+                    started_at: now,
+                    finished_at: Some(now),
+                    duration_ms: None,
+                    extra: json!({
+                        "reason": "missing_frame_id",
+                    }),
+                });
+            }
+            return Ok(());
+        }
     };
 
     debug!(frame_id, "live summary received OCR result");
 
     if seen_frames.contains(&frame_id) {
+        if trace_enabled {
+            let now = Utc::now();
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: None,
+                frame_id: Some(frame_id),
+                window: event.window_name.clone(),
+                app: event.app_name.clone(),
+                stage: PipelineStage::Summary,
+                status: StageStatus::Skipped,
+                started_at: now,
+                finished_at: Some(now),
+                duration_ms: None,
+                extra: json!({
+                    "reason": "duplicate",
+                }),
+            });
+        }
         debug!(frame_id, "live summary skip: already processed");
         return Ok(());
     }
 
-    if fastrand::f32() > config.sampling_rate {
+    let sample = fastrand::f32();
+    if sample > config.sampling_rate {
+        if trace_enabled {
+            let now = Utc::now();
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: None,
+                frame_id: Some(frame_id),
+                window: event.window_name.clone(),
+                app: event.app_name.clone(),
+                stage: PipelineStage::Summary,
+                status: StageStatus::Skipped,
+                started_at: now,
+                finished_at: Some(now),
+                duration_ms: None,
+                extra: json!({
+                    "reason": "sampling",
+                    "sample": sample,
+                    "rate": config.sampling_rate,
+                }),
+            });
+        }
         debug!(frame_id, "live summary skip: sampling");
         return Ok(());
     }
@@ -136,15 +215,80 @@ async fn summarize_window(
     ocr: &OcrEvent,
     config: &SummarizerConfig,
 ) -> Result<()> {
+    let trace_enabled = pipeline_tracing_enabled();
+    let wall_timer = Instant::now();
+    let stage_started_at = if trace_enabled {
+        Some(Utc::now())
+    } else {
+        None
+    };
+
     let text = ocr.text.trim();
     let approx_tokens = (text.len() + 3) / 4;
     if approx_tokens == 0 || approx_tokens > config.max_input_tokens {
+        if trace_enabled {
+            let now = Utc::now();
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: None,
+                frame_id: Some(frame_id),
+                window: ocr.window_name.clone(),
+                app: ocr.app_name.clone(),
+                stage: PipelineStage::Summary,
+                status: StageStatus::Skipped,
+                started_at: stage_started_at.unwrap_or(now),
+                finished_at: Some(now),
+                duration_ms: Some(wall_timer.elapsed().as_millis() as u64),
+                extra: json!({
+                    "reason": if approx_tokens == 0 { "no_tokens" } else { "max_tokens_exceeded" },
+                    "approx_tokens": approx_tokens,
+                    "max_tokens": config.max_input_tokens,
+                }),
+            });
+        }
         return Ok(());
     }
 
     if text.is_empty() {
+        if trace_enabled {
+            let now = Utc::now();
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: None,
+                frame_id: Some(frame_id),
+                window: ocr.window_name.clone(),
+                app: ocr.app_name.clone(),
+                stage: PipelineStage::Summary,
+                status: StageStatus::Skipped,
+                started_at: stage_started_at.unwrap_or(now),
+                finished_at: Some(now),
+                duration_ms: Some(wall_timer.elapsed().as_millis() as u64),
+                extra: json!({
+                    "reason": "empty_text",
+                }),
+            });
+        }
         return Ok(());
     }
+
+    if trace_enabled {
+        if let Some(started_at) = stage_started_at.clone() {
+            emit_pipeline_trace(PipelineTraceEvent {
+                frame_number: None,
+                frame_id: Some(frame_id),
+                window: ocr.window_name.clone(),
+                app: ocr.app_name.clone(),
+                stage: PipelineStage::Summary,
+                status: StageStatus::Started,
+                started_at,
+                finished_at: None,
+                duration_ms: None,
+                extra: json!({
+                    "approx_tokens": approx_tokens,
+                }),
+            });
+        }
+    }
+
+    let summary_timer = Instant::now();
 
     let event_time = ocr.timestamp;
     let app_name = ocr.app_name.as_deref();
@@ -190,8 +334,46 @@ async fn summarize_window(
                         "confidence": event.confidence,
                     }),
                 );
+
+                if trace_enabled {
+                    let finished_at = Utc::now();
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: None,
+                        frame_id: Some(frame_id),
+                        window: ocr.window_name.clone(),
+                        app: ocr.app_name.clone(),
+                        stage: PipelineStage::Summary,
+                        status: StageStatus::Completed,
+                        started_at: stage_started_at.unwrap_or(finished_at),
+                        finished_at: Some(finished_at),
+                        duration_ms: Some(summary_timer.elapsed().as_millis() as u64),
+                        extra: json!({
+                            "approx_tokens": approx_tokens,
+                            "label": event.label,
+                            "detail_len": event.detail.len(),
+                        }),
+                    });
+                }
             } else {
                 warn!("live summary response missing primary event");
+                if trace_enabled {
+                    let finished_at = Utc::now();
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: None,
+                        frame_id: Some(frame_id),
+                        window: ocr.window_name.clone(),
+                        app: ocr.app_name.clone(),
+                        stage: PipelineStage::Summary,
+                        status: StageStatus::Completed,
+                        started_at: stage_started_at.unwrap_or(finished_at),
+                        finished_at: Some(finished_at),
+                        duration_ms: Some(summary_timer.elapsed().as_millis() as u64),
+                        extra: json!({
+                            "approx_tokens": approx_tokens,
+                            "missing_primary_event": true,
+                        }),
+                    });
+                }
             }
         }
         Err(err) => {
@@ -209,6 +391,25 @@ async fn summarize_window(
                 Some(&err.to_string()),
             )
             .await?;
+
+            if trace_enabled {
+                let finished_at = Utc::now();
+                emit_pipeline_trace(PipelineTraceEvent {
+                    frame_number: None,
+                    frame_id: Some(frame_id),
+                    window: ocr.window_name.clone(),
+                    app: ocr.app_name.clone(),
+                    stage: PipelineStage::Summary,
+                    status: StageStatus::Errored,
+                    started_at: stage_started_at.unwrap_or(finished_at),
+                    finished_at: Some(finished_at),
+                    duration_ms: Some(summary_timer.elapsed().as_millis() as u64),
+                    extra: json!({
+                        "approx_tokens": approx_tokens,
+                        "error": err.to_string(),
+                    }),
+                });
+            }
         }
     }
 

@@ -225,6 +225,10 @@ pub struct Cli {
     #[arg(long = "no-tui", default_value_t = false)]
     pub no_tui: bool,
 
+    /// Enable dev pipeline dashboard instrumentation
+    #[arg(long = "dev-pipeline-dashboard", default_value_t = false)]
+    pub dev_pipeline_dashboard: bool,
+
     /// Enable realtime vision
     #[arg(long, default_value_t = true)]
     pub enable_realtime_vision: bool,

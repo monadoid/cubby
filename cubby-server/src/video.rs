@@ -1,11 +1,16 @@
 use chrono::Utc;
 use crossbeam::queue::ArrayQueue;
 use cubby_core::{find_ffmpeg_path, Language};
+use cubby_events::{
+    approx_datetime_from_instant, emit_pipeline_trace, pipeline_tracing_enabled, PipelineStage,
+    PipelineTraceEvent, StageStatus,
+};
 use cubby_vision::monitor::get_monitor_by_id;
 use cubby_vision::{
     capture_screenshot_by_window::WindowFilters, continuous_capture, CaptureResult, OcrEngine,
 };
 use image::ImageFormat::{self};
+use serde_json::json;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -213,7 +218,15 @@ impl VideoCapture {
             }
 
             while let Some(result) = result_receiver.recv().await {
+                let trace_enabled = pipeline_tracing_enabled();
                 let frame_number = result.frame_number;
+                let window_count = result.window_ocr_results.len();
+                let capture_started_at = if trace_enabled {
+                    Some(approx_datetime_from_instant(result.timestamp))
+                } else {
+                    None
+                };
+                let capture_latency_ms = result.timestamp.elapsed().as_millis() as u64;
                 processed_count += 1;
 
                 // Periodically log stats
@@ -236,6 +249,29 @@ impl VideoCapture {
 
                 debug!("Received frame {} for queueing", frame_number);
 
+                if trace_enabled {
+                    let finished_at = Utc::now();
+                    let started_at = match capture_started_at {
+                        Some(dt) => dt,
+                        None => finished_at,
+                    };
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: Some(frame_number),
+                        frame_id: None,
+                        window: None,
+                        app: None,
+                        stage: PipelineStage::Capture,
+                        status: StageStatus::Completed,
+                        started_at,
+                        finished_at: Some(finished_at),
+                        duration_ms: Some(capture_latency_ms),
+                        extra: json!({
+                            "monitor_id": monitor_id,
+                            "window_count": window_count,
+                        }),
+                    });
+                }
+
                 let result = Arc::new(result);
 
                 let video_pushed = push_to_queue(&capture_video_frame_queue, &result, "Video");
@@ -246,7 +282,58 @@ impl VideoCapture {
                         "Failed to push frame {} to one or more queues",
                         frame_number
                     );
+                    if trace_enabled {
+                        let finished_at = Utc::now();
+                        emit_pipeline_trace(PipelineTraceEvent {
+                            frame_number: Some(frame_number),
+                            frame_id: None,
+                            window: None,
+                            app: None,
+                            stage: PipelineStage::Queue,
+                            status: StageStatus::Errored,
+                            started_at: finished_at,
+                            finished_at: Some(finished_at),
+                            duration_ms: None,
+                            extra: json!({
+                                "monitor_id": monitor_id,
+                                "video_queue": {
+                                    "len": capture_video_frame_queue.len(),
+                                    "capacity": capture_video_frame_queue.capacity(),
+                                },
+                                "ocr_queue": {
+                                    "len": capture_ocr_frame_queue.len(),
+                                    "capacity": capture_ocr_frame_queue.capacity(),
+                                },
+                            }),
+                        });
+                    }
                     continue; // Skip to next iteration instead of crashing
+                }
+
+                if trace_enabled {
+                    let finished_at = Utc::now();
+                    emit_pipeline_trace(PipelineTraceEvent {
+                        frame_number: Some(frame_number),
+                        frame_id: None,
+                        window: None,
+                        app: None,
+                        stage: PipelineStage::Queue,
+                        status: StageStatus::Completed,
+                        started_at: finished_at,
+                        finished_at: Some(finished_at),
+                        duration_ms: None,
+                        extra: json!({
+                            "monitor_id": monitor_id,
+                            "video_queue": {
+                                "len": capture_video_frame_queue.len(),
+                                "capacity": capture_video_frame_queue.capacity(),
+                            },
+                            "ocr_queue": {
+                                "len": capture_ocr_frame_queue.len(),
+                                "capacity": capture_ocr_frame_queue.capacity(),
+                            },
+                        }),
+                    });
                 }
 
                 debug!(

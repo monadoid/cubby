@@ -1218,11 +1218,15 @@ async fn add_frame_to_db(
 
     if let Some(ocr_results) = &frame.ocr_results {
         for ocr in ocr_results {
+            let app_name_for_db = frame.app_name.clone();
+            let window_name_for_db = frame.window_name.clone();
             db.insert_ocr_text(
                 frame_id,
                 &ocr.text,
                 ocr.text_json.as_deref().unwrap_or(""),
                 Arc::new(OcrEngine::default().into()), // Ideally could pass any str as ocr_engine since can be run outside of cubby
+                app_name_for_db.as_deref(),
+                window_name_for_db.as_deref(),
             )
             .await?;
         }

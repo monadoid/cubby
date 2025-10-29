@@ -8,7 +8,6 @@ mod tests {
     use chrono::{Duration, Utc};
     use cubby_audio::audio_manager::AudioManagerBuilder;
     use cubby_db::{ContentType, DatabaseManager, SearchResult};
-    use cubby_server::PipeManager;
     use cubby_server::SCServer;
     use cubby_server::{ContentItem, PaginatedResponse};
     use cubby_vision::OcrEngine; // Adjust this import based on your actual module structure
@@ -34,6 +33,7 @@ mod tests {
         let audio_manager = Arc::new(
             AudioManagerBuilder::new()
                 .output_path("/tmp/cubby".into())
+                .enabled_devices(vec!["mock-device".to_string()])
                 .build(db.clone())
                 .await
                 .unwrap(),
@@ -43,12 +43,10 @@ mod tests {
             db.clone(),
             SocketAddr::from(([127, 0, 0, 1], 23948)),
             PathBuf::from(""),
-            Arc::new(PipeManager::new(PathBuf::from(""))),
             false,
             false,
             false,
             audio_manager,
-            true,
         );
 
         let router = app.create_router(true).await;
@@ -192,6 +190,8 @@ mod tests {
             "This is a test OCR text", // 21 chars
             "",
             Arc::new(OcrEngine::Tesseract.into()),
+            Some("test-app"),
+            Some("test-window"),
         )
         .await
         .unwrap();
@@ -200,6 +200,8 @@ mod tests {
             "Another OCR text for testing that should be longer than thirty characters", // >30 chars
             "",
             Arc::new(OcrEngine::Tesseract.into()),
+            Some("test-app"),
+            Some("test-window"),
         )
         .await
         .unwrap();
@@ -414,6 +416,8 @@ mod tests {
             "old ocr text",
             "",
             Arc::new(OcrEngine::Tesseract.into()),
+            Some("test-app"),
+            Some("test-window"),
         )
         .await
         .unwrap();
@@ -626,6 +630,8 @@ mod tests {
             "old task: write documentation",
             "",
             Arc::new(OcrEngine::Tesseract.into()),
+            Some("test-app"),
+            Some("test-window"),
         )
         .await
         .unwrap();
@@ -635,6 +641,8 @@ mod tests {
             "current task: fix bug #123",
             "",
             Arc::new(OcrEngine::Tesseract.into()),
+            Some("test-app"),
+            Some("test-window"),
         )
         .await
         .unwrap();

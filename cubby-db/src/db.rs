@@ -369,15 +369,19 @@ impl DatabaseManager {
         text: &str,
         text_json: &str,
         ocr_engine: Arc<OcrEngine>,
+        app_name: Option<&str>,
+        window_name: Option<&str>,
     ) -> Result<(), sqlx::Error> {
         let text_length = text.len() as i64;
         let mut tx = self.pool.begin().await?;
-        sqlx::query("INSERT INTO ocr_text (frame_id, text, text_json, ocr_engine, text_length) VALUES (?1, ?2, ?3, ?4, ?5)")
+        sqlx::query("INSERT INTO ocr_text (frame_id, text, text_json, ocr_engine, text_length, app_name, window_name) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
             .bind(frame_id)
             .bind(text)
             .bind(text_json)
             .bind(format!("{:?}", *ocr_engine))
             .bind(text_length)
+            .bind(app_name.unwrap_or_default())
+            .bind(window_name)
             .execute(&mut *tx)
             .await?;
 

@@ -227,6 +227,8 @@ pub async fn handle_index_command(
                     &text,
                     "{}", // empty json
                     ocr_engine.clone().unwrap().into(),
+                    None,
+                    None,
                 )
                 .await
             {

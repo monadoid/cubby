@@ -1963,6 +1963,7 @@ dependencies = [
  "chrono",
  "cubby-audio",
  "cubby-server",
+ "dirs 5.0.1",
  "futures",
  "reqwest 0.12.12",
  "schemars 0.8.22",

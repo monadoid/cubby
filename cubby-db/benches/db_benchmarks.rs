@@ -26,6 +26,8 @@ async fn setup_large_db(size: usize) -> DatabaseManager {
             &ocr_text,
             &text_json,
             Arc::new(OcrEngine::default()), // Assuming a default implementation
+            None,
+            None,
         )
         .await
         .unwrap();
