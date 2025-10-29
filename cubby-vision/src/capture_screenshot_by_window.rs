@@ -7,7 +7,7 @@ use tracing::{debug, error};
 
 use xcap::{Window, XCapError};
 
-use crate::monitor::SafeMonitor;
+use crate::{monitor::SafeMonitor, privacy_filters::is_private_window};
 
 #[derive(Debug)]
 enum CaptureError {
@@ -162,31 +162,21 @@ impl WindowFilters {
         let app_name_lower = app_name.to_lowercase();
         let title_lower = title.to_lowercase();
 
-        // If include list is empty, we're done
-        if self.include_set.is_empty() {
-            return true;
-        }
-
-        // Check include list
         if self
-            .include_set
+            .ignore_set
             .iter()
-            .any(|include| app_name_lower.contains(include) || title_lower.contains(include))
-        {
-            return true;
-        }
-
-        // Check ignore list first (usually smaller)
-        if !self.ignore_set.is_empty()
-            && self
-                .ignore_set
-                .iter()
-                .any(|ignore| app_name_lower.contains(ignore) || title_lower.contains(ignore))
+            .any(|ignore| app_name_lower.contains(ignore) || title_lower.contains(ignore))
         {
             return false;
         }
 
-        false
+        if self.include_set.is_empty() {
+            return true;
+        }
+
+        self.include_set
+            .iter()
+            .any(|include| app_name_lower.contains(include) || title_lower.contains(include))
     }
 }
 
@@ -227,6 +217,14 @@ pub async fn capture_all_visible_windows(
                 continue;
             }
         };
+
+        if is_private_window(&app_name, &title) {
+            debug!(
+                "Skipping private window capture for app '{}' with title '{}'",
+                app_name, title
+            );
+            continue;
+        }
 
         match window.is_minimized() {
             Ok(is_minimized) => {

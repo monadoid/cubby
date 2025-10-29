@@ -9,6 +9,7 @@ use cubby_events::{
     poll_meetings_events, send_event, PipelineStage, PipelineTraceEvent, StageStatus,
 };
 use cubby_vision::core::WindowOcr;
+use cubby_vision::privacy_filters::is_private_window;
 use cubby_vision::OcrEngine;
 use futures::future::join_all;
 use serde_json::json;
@@ -306,6 +307,14 @@ async fn record_video(
             }
 
             for window_result in &frame.window_ocr_results {
+                if is_private_window(&window_result.app_name, &window_result.window_name) {
+                    debug!(
+                        "Skipping database write for private window '{}' ({})",
+                        window_result.window_name, window_result.app_name
+                    );
+                    continue;
+                }
+
                 let insert_frame_start = std::time::Instant::now();
                 let insert_frame_started_at = if trace_enabled {
                     Some(approx_datetime_from_instant(insert_frame_start))
