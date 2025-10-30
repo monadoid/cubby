@@ -2073,7 +2073,7 @@ fn parse_ax_attribute_value(
         }
 
         // Boolean values
-        "AXEnabled" | "AXFocused" => {
+        "AXEnabled" | "AXFocused" | "AXMain" | "AXMinimized" | "AXFrontmost" => {
             if let Some(cf_bool) = value.downcast_into::<CFBoolean>() {
                 return Some(Value::Bool(cf_bool == CFBoolean::true_value()));
             }

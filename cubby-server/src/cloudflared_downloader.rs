@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use directories::BaseDirs;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;

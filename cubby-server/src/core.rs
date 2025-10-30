@@ -8,9 +8,7 @@ use cubby_events::{
     approx_datetime_from_instant, emit_pipeline_trace, pipeline_tracing_enabled,
     poll_meetings_events, send_event, PipelineStage, PipelineTraceEvent, StageStatus,
 };
-use cubby_vision::core::WindowOcr;
-use cubby_vision::privacy_filters::is_private_window;
-use cubby_vision::OcrEngine;
+use cubby_vision::{core::WindowOcr, is_private_window, OcrEngine};
 use futures::future::join_all;
 use serde_json::json;
 use std::sync::Arc;

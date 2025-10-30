@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>OCR JSON Viewer</title>
+    <style>
+        :root {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color-scheme: dark;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #0f0f0f;
+            color: #f0f0f0;
+            overflow: hidden;
+        }
+
+        #viewport {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: repeating-linear-gradient(
+                45deg,
+                rgba(255, 255, 255, 0.04),
+                rgba(255, 255, 255, 0.04) 20px,
+                rgba(255, 255, 255, 0.02) 20px,
+                rgba(255, 255, 255, 0.02) 40px
+            );
+        }
+
+        #canvas {
+            position: relative;
+            transform-origin: top left;
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .word {
+            position: absolute;
+            border: 1px solid rgba(0, 173, 239, 0.7);
+            background: rgba(0, 173, 239, 0.1);
+            color: #fff;
+            font-size: 14px;
+            line-height: 1.2;
+            padding: 2px;
+            box-sizing: border-box;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .word:hover::after {
+            content: attr(data-info);
+            position: absolute;
+            left: 0;
+            top: 100%;
+            margin-top: 4px;
+            background: rgba(15, 15, 15, 0.95);
+            border: 1px solid rgba(0, 173, 239, 0.5);
+            padding: 4px 6px;
+            font-size: 12px;
+            white-space: pre;
+            z-index: 10;
+        }
+
+        #overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        #overlay.hidden {
+            display: none;
+        }
+
+        #overlay .panel {
+            width: min(90vw, 680px);
+            max-height: 90vh;
+            background: rgba(20, 20, 20, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        #overlay textarea {
+            width: 100%;
+            min-height: 260px;
+            resize: vertical;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(10, 10, 10, 0.9);
+            color: #f0f0f0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        #overlay label {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 13px;
+            color: #d0d0d0;
+        }
+
+        #overlay input[type="number"] {
+            width: 120px;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(10, 10, 10, 0.9);
+            color: #f0f0f0;
+            font-size: 13px;
+        }
+
+        #overlay button {
+            align-self: flex-end;
+            padding: 10px 18px;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(135deg, #00adef, #0071c7);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        #overlay button:hover {
+            filter: brightness(1.05);
+        }
+
+        #hint {
+            position: fixed;
+            bottom: 18px;
+            right: 24px;
+            background: rgba(10, 10, 10, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 12px;
+            color: #bbbbbb;
+            z-index: 20;
+        }
+    </style>
+</head>
+<body>
+    <div id="viewport">
+        <div id="canvas"></div>
+    </div>
+
+    <div id="hint">
+        <strong>Shortcuts</strong><br />
+        ⌘/Ctrl + I &ndash; open input<br />
+        ⌘/Ctrl + B &ndash; toggle boxes<br />
+        Double-click background &ndash; reset scale
+    </div>
+
+    <div id="overlay">
+        <div class="panel">
+            <h2 style="margin: 0; font-size: 18px;">Paste OCR text_json</h2>
+            <p style="margin: 0; font-size: 13px; color: #b0b0b0;">
+                Paste a JSON array copied from the <code>text_json</code> column, optionally adjust canvas dimensions, then click Render.
+            </p>
+            <textarea id="jsonInput" placeholder='[{"text":"example","left":"0.1","top":"0.2","width":"0.3","height":"0.05","conf":"0.9"}]'></textarea>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                <label>
+                    Canvas Width (px)
+                    <input type="number" id="canvasWidth" value="1920" min="100" step="10" />
+                </label>
+                <label>
+                    Canvas Height (px)
+                    <input type="number" id="canvasHeight" value="1080" min="100" step="10" />
+                </label>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12px; color: #999;">Boxes and text are scaled to fit the viewport.</span>
+                <button id="renderButton">Render</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const overlay = document.getElementById("overlay");
+        const jsonInput = document.getElementById("jsonInput");
+        const renderButton = document.getElementById("renderButton");
+        const canvas = document.getElementById("canvas");
+        const viewport = document.getElementById("viewport");
+        const widthInput = document.getElementById("canvasWidth");
+        const heightInput = document.getElementById("canvasHeight");
+
+        let boxesVisible = true;
+
+        function parseNumber(value, fallback = 0) {
+            const n = parseFloat(value);
+            return Number.isFinite(n) ? n : fallback;
+        }
+
+        function renderJson() {
+            const width = parseInt(widthInput.value, 10) || 1920;
+            const height = parseInt(heightInput.value, 10) || 1080;
+
+            let data;
+            try {
+                data = JSON.parse(jsonInput.value);
+                if (!Array.isArray(data)) {
+                    throw new Error("Root must be an array");
+                }
+            } catch (error) {
+                alert("Failed to parse JSON: " + error.message);
+                return;
+            }
+
+            // Prepare canvas dimensions
+            canvas.innerHTML = "";
+            canvas.dataset.width = width;
+            canvas.dataset.height = height;
+            canvas.style.width = width + "px";
+            canvas.style.height = height + "px";
+
+            const scale = Math.min(
+                viewport.clientWidth / width,
+                viewport.clientHeight / height
+            );
+            canvas.style.transform = `scale(${scale})`;
+
+            // Render entries
+            for (const item of data) {
+                const leftNorm = parseNumber(item.left);
+                const topNorm = parseNumber(item.top);
+                const widthNorm = parseNumber(item.width);
+                const heightNorm = parseNumber(item.height);
+                const confidence = parseNumber(item.conf, NaN);
+                const text = typeof item.text === "string" ? item.text : "";
+
+                const wordLeft = leftNorm * width;
+                const wordWidth = widthNorm * width;
+                const wordHeight = heightNorm * height;
+                const wordTop = (1 - topNorm - heightNorm) * height;
+
+                const word = document.createElement("div");
+                word.className = "word";
+                word.style.left = `${wordLeft}px`;
+                word.style.top = `${wordTop}px`;
+                word.style.width = `${wordWidth}px`;
+                word.style.height = `${wordHeight}px`;
+                word.dataset.info =
+                    `text: ${text || "(empty)"}\n` +
+                    `conf: ${Number.isFinite(confidence) ? confidence.toFixed(2) : "?"}\n` +
+                    `bbox (px): [${wordLeft.toFixed(1)}, ${wordTop.toFixed(1)}, ${wordWidth.toFixed(1)}, ${wordHeight.toFixed(1)}]`;
+                word.textContent = text;
+                if (!boxesVisible) {
+                    word.style.border = "none";
+                    word.style.background = "transparent";
+                }
+
+                canvas.appendChild(word);
+            }
+
+            overlay.classList.add("hidden");
+        }
+
+        renderButton.addEventListener("click", renderJson);
+
+        document.addEventListener("keydown", (event) => {
+            const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+            const cmdKey = isMac ? event.metaKey : event.ctrlKey;
+
+            if (cmdKey && event.key.toLowerCase() === "i") {
+                event.preventDefault();
+                overlay.classList.toggle("hidden");
+                if (!overlay.classList.contains("hidden")) {
+                    setTimeout(() => jsonInput.focus(), 0);
+                }
+            }
+
+            if (cmdKey && event.key.toLowerCase() === "b") {
+                event.preventDefault();
+                boxesVisible = !boxesVisible;
+                for (const el of canvas.querySelectorAll(".word")) {
+                    el.style.border = boxesVisible ? "1px solid rgba(0, 173, 239, 0.7)" : "none";
+                    el.style.background = boxesVisible ? "rgba(0, 173, 239, 0.1)" : "transparent";
+                }
+            }
+        });
+
+        viewport.addEventListener("dblclick", () => {
+            const width = parseInt(canvas.dataset.width || "1920", 10);
+            const height = parseInt(canvas.dataset.height || "1080", 10);
+            const scale = Math.min(
+                viewport.clientWidth / width,
+                viewport.clientHeight / height
+            );
+            canvas.style.transform = `scale(${scale})`;
+        });
+
+        window.addEventListener("resize", () => {
+            if (!canvas.dataset.width) {
+                return;
+            }
+            const width = parseInt(canvas.dataset.width, 10);
+            const height = parseInt(canvas.dataset.height, 10);
+            const scale = Math.min(
+                viewport.clientWidth / width,
+                viewport.clientHeight / height
+            );
+            canvas.style.transform = `scale(${scale})`;
+        });
+    </script>
+</body>
+</html>

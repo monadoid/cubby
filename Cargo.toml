@@ -20,6 +20,9 @@ license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [workspace.dependencies]
+# Align all crates on a single cidre implementation to avoid duplicate Objective-C symbols
+cidre = { git = "https://github.com/mediar-ai/cidre.git", rev = "5ec1e32f72bee75bfb33d1e73610c3c22d97733b" }
+cidre-macros = { git = "https://github.com/mediar-ai/cidre.git", rev = "5ec1e32f72bee75bfb33d1e73610c3c22d97733b", package = "cidre-macros" }
 # AI
 # candle = { version = "0.8.3", package = "candle-core" }
 # candle-nn = { version = "0.8.3", package = "candle-nn" }
@@ -65,3 +68,7 @@ dynamic = true
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch."https://github.com/yury/cidre.git"]
+cidre = { git = "https://github.com/mediar-ai/cidre.git", rev = "5ec1e32f72bee75bfb33d1e73610c3c22d97733b" }
+cidre-macros = { git = "https://github.com/mediar-ai/cidre.git", rev = "5ec1e32f72bee75bfb33d1e73610c3c22d97733b", package = "cidre-macros" }
