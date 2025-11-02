@@ -25,3 +25,14 @@ uuid = { version = "1", features = ["serde", "v4"] }
 futures = "0.3"
 dirs = "5"
 cubby-core = { path = "../cubby-core" }
+clap = { version = "4.5", features = ["derive"] }
+cubby-db = { path = "../cubby-db" }
+objc2-application-services = { version = "0.3.2", features = ["AXUIElement", "AXError", "libc"] }
+objc2-foundation = "0.3.2"
+objc2-core-foundation = "0.3.2"
+libc = "0.2"
+objc2-app-kit = { version = "0.3.2", features = ["NSWorkspace", "NSRunningApplication", "libc"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+accessibility = { git = "https://github.com/eiz/accessibility.git", branch = "master" }
+accessibility-sys = { git = "https://github.com/eiz/accessibility.git", branch = "master" }

@@ -1,48 +1,30 @@
 use cubby_playground::{bootstrap, PlaygroundOptions};
 
-#[cfg(target_os = "macos")]
-use accessibility_sys::{
-    kAXApplicationActivatedNotification, kAXErrorSuccess, kAXFocusedWindowChangedNotification,
-    pid_t, AXObserverAddNotification, AXObserverCreate, AXObserverGetRunLoopSource, AXObserverRef,
-    AXUIElementCreateApplication, AXUIElementRef,
+use objc2_application_services::{
+    AXIsProcessTrustedWithOptions, AXObserver, AXUIElement, AXError,
 };
-#[cfg(target_os = "macos")]
-use cidre::ns::{self, RunningApp};
-#[cfg(target_os = "macos")]
-use cidre::sys;
-#[cfg(target_os = "macos")]
+use objc2_core_foundation::{
+    CFString as Objc2CFString, CFRunLoop, CFRunLoopSource, CFRetained, kCFRunLoopDefaultMode,
+};
+use objc2_app_kit::{NSWorkspace, NSRunningApplication};
+use objc2_foundation::NSString;
 use cubby_core::operator::platforms::{create_engine, AccessibilityEngine};
-#[cfg(target_os = "macos")]
 use cubby_core::operator::{AutomationError, UIElement};
-#[cfg(target_os = "macos")]
 use serde_json::Value;
-#[cfg(target_os = "macos")]
 use std::collections::HashMap;
-#[cfg(target_os = "macos")]
-use std::ffi::CStr;
-#[cfg(target_os = "macos")]
 use std::os::raw::c_void;
-#[cfg(target_os = "macos")]
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(target_os = "macos")]
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
-#[cfg(target_os = "macos")]
 use std::thread;
-#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 
-#[cfg(target_os = "macos")]
-use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
-#[cfg(target_os = "macos")]
-use core_foundation::runloop::{
-    CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopRef, CFRunLoopRemoveSource,
-    CFRunLoopRunInMode, CFRunLoopSourceRef, kCFRunLoopDefaultMode,
-};
-#[cfg(target_os = "macos")]
-use core_foundation::string::CFString;
 
-#[cfg(target_os = "macos")]
 use tokio::signal;
+
+// Notification constants - these are the string values used by the AX API
+const K_AX_APPLICATION_ACTIVATED_NOTIFICATION: &str = "AXApplicationActivated";
+const K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION: &str = "AXFocusedWindowChanged";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
@@ -52,13 +34,11 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    #[cfg(target_os = "macos")]
     run_macos_snapshot().await?;
 
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 async fn run_macos_snapshot() -> anyhow::Result<()> {
     use anyhow::Context;
 
@@ -94,13 +74,28 @@ async fn run_macos_snapshot() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 fn run_accessibility_loop(
     stop_flag: Arc<AtomicBool>,
     ready_tx: mpsc::Sender<()>,
 ) -> anyhow::Result<()> {
     println!("Initializing accessibility engine (2 second delay to switch apps if needed)...");
     thread::sleep(Duration::from_secs(2));
+
+    // Check if process is trusted using objc2-application-services
+    let is_trusted = unsafe { AXIsProcessTrustedWithOptions(None) };
+    if !is_trusted {
+        println!("Accessibility access is required but not yet granted.");
+        if let Ok(exe) = std::env::current_exe() {
+            println!(
+                "Open System Settings → Privacy & Security → Accessibility and enable access for:\n  {}",
+                exe.display()
+            );
+            println!("Run `cargo run --example ax_snapshot_objc2` again after granting access.");
+        } else {
+            println!("Open System Settings → Privacy & Security → Accessibility and enable access for this binary, then rerun the example.");
+        }
+        return Ok(());
+    }
 
     let engine = match create_engine(false, true) {
         Ok(engine) => engine,
@@ -111,7 +106,7 @@ fn run_accessibility_loop(
                     "Open System Settings → Privacy & Security → Accessibility and enable access for:\n  {}",
                     exe.display()
                 );
-                println!("Run `cargo run --example ax_snapshot` again after granting access.");
+                println!("Run `cargo run --example ax_snapshot_objc2` again after granting access.");
             } else {
                 println!("Open System Settings → Privacy & Security → Accessibility and enable access for this binary, then rerun the example.");
             }
@@ -125,26 +120,28 @@ fn run_accessibility_loop(
         .set(ObserverShared::new(engine.clone()))
         .map_err(|_| anyhow::anyhow!("observer shared state already initialized"))?;
 
-    let run_loop = unsafe { CFRunLoopGetCurrent() };
+    let run_loop = CFRunLoop::current()
+        .ok_or_else(|| anyhow::anyhow!("failed to get current run loop"))?;
     ready_tx
         .send(())
         .map_err(|_| anyhow::anyhow!("failed to notify main task that observers are ready"))?;
 
-    let workspace = ns::Workspace::shared();
-    let running_apps = workspace.running_apps();
+    let workspace = NSWorkspace::sharedWorkspace();
+    let running_apps = workspace.runningApplications();
 
     let mut handles = Vec::new();
     let mut skipped = HashMap::new();
 
     for app in running_apps.iter() {
-        let pid = app.pid();
+        let pid = app.processIdentifier();
         let label = app
-            .localized_name()
-            .map(|n| ns_string_to_string(&n))
-            .or_else(|| app.bundle_id().map(|id| ns_string_to_string(&id)))
+            .localizedName()
+            .as_ref()
+            .map(|n| ns_string_to_string(n))
+            .or_else(|| app.bundleIdentifier().as_ref().map(|id| ns_string_to_string(id)))
             .unwrap_or_else(|| format!("pid {pid}"));
 
-        if !should_observe_app(app) {
+        if !should_observe_app(&app) {
             skipped.insert(
                 pid,
                 format!("Skipping observer for '{label}' (pid {pid}) — filtered out"),
@@ -154,8 +151,8 @@ fn run_accessibility_loop(
 
         unsafe {
             match register_accessibility_observer(
-                pid,
-                run_loop,
+                pid as i32,
+                run_loop.clone(),
                 &mut handles,
                 &label,
                 &mut skipped,
@@ -181,9 +178,7 @@ fn run_accessibility_loop(
     );
 
     while !stop_flag.load(Ordering::SeqCst) {
-        unsafe {
-            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, 0);
-        }
+        CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, 0.25, false);
     }
 
     println!("Stopping accessibility observers...");
@@ -192,51 +187,60 @@ fn run_accessibility_loop(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
 unsafe fn register_accessibility_observer(
     pid: i32,
-    run_loop: CFRunLoopRef,
+    run_loop: CFRetained<CFRunLoop>,
     handles: &mut Vec<ObserverHandle>,
     label: &str,
     skipped: &mut HashMap<i32, String>,
 ) -> anyhow::Result<()> {
-    let mut observer: AXObserverRef = std::ptr::null_mut();
-    let status = AXObserverCreate(pid as pid_t, ax_observer_callback, &mut observer);
-    if status != kAXErrorSuccess {
+    // Create observer using objc2-application-services
+    let mut observer_ptr: *mut AXObserver = std::ptr::null_mut();
+    let observer_out = NonNull::new(&mut observer_ptr)
+        .ok_or_else(|| anyhow::anyhow!("failed to create non-null pointer"))?;
+
+    let status = AXObserver::create(
+        pid as libc::pid_t,
+        Some(ax_observer_callback as unsafe extern "C-unwind" fn(_, _, _, _)),
+        observer_out,
+    );
+    
+    if status != AXError::Success {
         anyhow::bail!(
-            "AXObserverCreate failed for '{}' (pid {}): {}",
+            "AXObserverCreate failed for '{}' (pid {}): {:?}",
             label,
             pid,
-            accessibility_sys::error_string(status)
+            status
         );
     }
 
-    let ax_app = AXUIElementCreateApplication(pid as pid_t);
-    if ax_app.is_null() {
-        CFRelease(observer as CFTypeRef);
-        anyhow::bail!(
-            "AXUIElementCreateApplication returned null for '{}' (pid {})",
-            label,
-            pid
-        );
-    }
+    let observer_ptr = NonNull::new(observer_ptr)
+        .ok_or_else(|| anyhow::anyhow!("observer creation returned success but observer is null"))?;
+    let observer = unsafe { observer_ptr.as_ref() };
 
-    let activation_cf = CFString::new(kAXApplicationActivatedNotification);
-    let focus_cf = CFString::new(kAXFocusedWindowChangedNotification);
+    // Create AXUIElement for application using objc2-application-services
+    let ax_app = AXUIElement::new_application(pid as libc::pid_t);
+
+    // Create CFString instances for notifications - need to use objc2_core_foundation types
+    let activation_cf = Objc2CFString::from_str(K_AX_APPLICATION_ACTIVATED_NOTIFICATION);
+    let focus_cf = Objc2CFString::from_str(K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION);
+    
     let refcon = Box::into_raw(Box::new(CallbackRefcon { pid })) as *mut c_void;
 
     let mut activation_registered = false;
     let mut focus_registered = false;
 
-    let add_activation = AXObserverAddNotification(
-        observer,
-        ax_app,
-        activation_cf.as_concrete_TypeRef(),
-        refcon,
-    );
+    // Add activation notification
+    let add_activation = unsafe {
+        observer.add_notification(
+            &ax_app,
+            &activation_cf,
+            refcon,
+        )
+    };
     match add_activation {
-        status if status == kAXErrorSuccess => activation_registered = true,
-        status if status == accessibility_sys::kAXErrorNotificationUnsupported => {
+        AXError::Success => activation_registered = true,
+        AXError::NotificationUnsupported => {
             skipped.insert(
                 pid,
                 format!(
@@ -246,23 +250,28 @@ unsafe fn register_accessibility_observer(
             );
         }
         status => {
-            CFRelease(ax_app as CFTypeRef);
-            CFRelease(observer as CFTypeRef);
+            drop(ax_app);
             drop(Box::from_raw(refcon as *mut CallbackRefcon));
             anyhow::bail!(
-                "AXObserverAddNotification (activation) failed for '{}' (pid {}): {}",
+                "AXObserverAddNotification (activation) failed for '{}' (pid {}): {:?}",
                 label,
                 pid,
-                accessibility_sys::error_string(status)
+                status
             );
         }
     }
 
-    let add_focus =
-        AXObserverAddNotification(observer, ax_app, focus_cf.as_concrete_TypeRef(), refcon);
+    // Add focus notification
+    let add_focus = unsafe {
+        observer.add_notification(
+            &ax_app,
+            &focus_cf,
+            refcon,
+        )
+    };
     match add_focus {
-        status if status == kAXErrorSuccess => focus_registered = true,
-        status if status == accessibility_sys::kAXErrorNotificationUnsupported => {
+        AXError::Success => focus_registered = true,
+        AXError::NotificationUnsupported => {
             skipped.insert(
                 pid,
                 format!(
@@ -273,23 +282,22 @@ unsafe fn register_accessibility_observer(
         }
         status => {
             if !activation_registered {
-                CFRelease(ax_app as CFTypeRef);
-                CFRelease(observer as CFTypeRef);
+                drop(ax_app);
                 drop(Box::from_raw(refcon as *mut CallbackRefcon));
                 anyhow::bail!(
-                    "AXObserverAddNotification (focus) failed for '{}' (pid {}): {}",
+                    "AXObserverAddNotification (focus) failed for '{}' (pid {}): {:?}",
                     label,
                     pid,
-                    accessibility_sys::error_string(status)
+                    status
                 );
             } else {
                 skipped.insert(
                     pid,
                     format!(
-                        "Focused window notification failed for '{}' (pid {}): {}",
+                        "Focused window notification failed for '{}' (pid {}): {:?}",
                         label,
                         pid,
-                        accessibility_sys::error_string(status)
+                        status
                     ),
                 );
             }
@@ -297,19 +305,19 @@ unsafe fn register_accessibility_observer(
     }
 
     if !activation_registered && !focus_registered {
-        CFRelease(ax_app as CFTypeRef);
-        CFRelease(observer as CFTypeRef);
+        drop(ax_app);
         drop(Box::from_raw(refcon as *mut CallbackRefcon));
         return Ok(());
     }
 
-    let source = AXObserverGetRunLoopSource(observer);
-    CFRunLoopAddSource(run_loop, source, kCFRunLoopDefaultMode);
+    // Get run loop source using the observer method
+    let source = observer.run_loop_source();
+    run_loop.add_source(Some(&source), unsafe { kCFRunLoopDefaultMode });
 
-    CFRelease(ax_app as CFTypeRef);
+    drop(ax_app);
 
     handles.push(ObserverHandle {
-        observer,
+        observer: observer_ptr,
         source,
         refcon: refcon as *mut CallbackRefcon,
         run_loop,
@@ -318,11 +326,10 @@ unsafe fn register_accessibility_observer(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-unsafe extern "C" fn ax_observer_callback(
-    _observer: AXObserverRef,
-    _element: AXUIElementRef,
-    notification: core_foundation::string::CFStringRef,
+unsafe extern "C-unwind" fn ax_observer_callback(
+    _observer: NonNull<AXObserver>,
+    _element: NonNull<AXUIElement>,
+    notification: NonNull<Objc2CFString>,
     refcon: *mut c_void,
 ) {
     if refcon.is_null() {
@@ -334,11 +341,14 @@ unsafe extern "C" fn ax_observer_callback(
     };
 
     let pid = (*refcon.cast::<CallbackRefcon>()).pid;
-    let notification = CFString::wrap_under_get_rule(notification).to_string();
-    shared.handle_notification(pid, &notification);
+    
+    // Convert CFString to Rust String using objc2_core_foundation
+    let cf_string = notification.as_ref();
+    let notification_str = cf_string.to_string();
+    
+    shared.handle_notification(pid, &notification_str);
 }
 
-#[cfg(target_os = "macos")]
 fn snapshot_by_pid(
     engine: &dyn AccessibilityEngine,
     pid: i32,
@@ -347,23 +357,23 @@ fn snapshot_by_pid(
     use anyhow::Context;
     use chrono::Local;
 
-    let running_app = RunningApp::with_pid(pid as sys::Pid);
+    let running_app = NSRunningApplication::runningApplicationWithProcessIdentifier(pid);
 
     let app_label = running_app
         .as_ref()
-        .and_then(|app| app.localized_name().map(|name| ns_string_to_string(&name)))
+        .and_then(|app| app.localizedName().as_ref().map(|name| ns_string_to_string(name)))
         .or_else(|| {
             running_app
                 .as_ref()
-                .and_then(|app| app.bundle_id().map(|id| ns_string_to_string(&id)))
+                .and_then(|app| app.bundleIdentifier().as_ref().map(|id| ns_string_to_string(id)))
         })
         .unwrap_or_else(|| format!("pid {}", pid));
 
     println!(
         "[AX debug] {} for '{app_label}' (pid {pid})",
         match notification {
-            n if n == kAXFocusedWindowChangedNotification => "Focused window changed",
-            n if n == kAXApplicationActivatedNotification => "Application activated",
+            n if n == K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION => "Focused window changed",
+            n if n == K_AX_APPLICATION_ACTIVATED_NOTIFICATION => "Application activated",
             other => other,
         }
     );
@@ -419,8 +429,8 @@ fn snapshot_by_pid(
     println!(
         "--- AX Snapshot ({}) @ {timestamp} ---",
         match notification {
-            n if n == kAXFocusedWindowChangedNotification => "focus change",
-            n if n == kAXApplicationActivatedNotification => "activation",
+            n if n == K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION => "focus change",
+            n if n == K_AX_APPLICATION_ACTIVATED_NOTIFICATION => "activation",
             other => other,
         }
     );
@@ -437,19 +447,10 @@ fn snapshot_by_pid(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn ns_string_to_string(ns_string: &ns::String) -> String {
-    unsafe {
-        let ptr = ns_string.utf8_chars_ar();
-        if ptr.is_null() {
-            String::new()
-        } else {
-            CStr::from_ptr(ptr).to_string_lossy().into_owned()
-        }
-    }
+fn ns_string_to_string(ns_string: &NSString) -> String {
+    ns_string.to_string()
 }
 
-#[cfg(target_os = "macos")]
 fn find_focused_window(
     applications: Vec<UIElement>,
 ) -> Result<(UIElement, String), AutomationError> {
@@ -510,7 +511,6 @@ fn find_focused_window(
     ))
 }
 
-#[cfg(target_os = "macos")]
 fn property_truthy(attrs: &cubby_core::operator::UIElementAttributes, key: &str) -> bool {
     let Some(value) = attrs
         .properties
@@ -535,40 +535,34 @@ fn property_truthy(attrs: &cubby_core::operator::UIElementAttributes, key: &str)
     }
 }
 
-#[cfg(target_os = "macos")]
 struct ObserverHandle {
-    observer: AXObserverRef,
-    source: CFRunLoopSourceRef,
+    observer: NonNull<AXObserver>,
+    source: CFRetained<CFRunLoopSource>,
     refcon: *mut CallbackRefcon,
-    run_loop: CFRunLoopRef,
+    run_loop: CFRetained<CFRunLoop>,
 }
 
-#[cfg(target_os = "macos")]
 impl Drop for ObserverHandle {
     fn drop(&mut self) {
+        self.run_loop.remove_source(Some(&self.source), unsafe { kCFRunLoopDefaultMode });
+        // observer and source are automatically dropped via CFRetained
         unsafe {
-            CFRunLoopRemoveSource(self.run_loop, self.source, kCFRunLoopDefaultMode);
-            CFRelease(self.source as CFTypeRef);
-            CFRelease(self.observer as CFTypeRef);
             drop(Box::from_raw(self.refcon));
         }
     }
 }
 
-#[cfg(target_os = "macos")]
 #[derive(Debug)]
 struct CallbackRefcon {
     pid: i32,
 }
 
-#[cfg(target_os = "macos")]
 struct ObserverShared {
     engine: Arc<dyn AccessibilityEngine>,
     debounce: Mutex<HashMap<i32, Instant>>,
     ignored: Mutex<HashMap<i32, Instant>>,
 }
 
-#[cfg(target_os = "macos")]
 impl ObserverShared {
     fn new(engine: Arc<dyn AccessibilityEngine>) -> Self {
         Self {
@@ -618,10 +612,8 @@ impl ObserverShared {
     }
 }
 
-#[cfg(target_os = "macos")]
 static OBSERVER_SHARED: OnceLock<ObserverShared> = OnceLock::new();
 
-#[cfg(target_os = "macos")]
 const EXCLUDE_PREFIXES: &[&str] = &[
     "com.apple.dock",
     "com.apple.windowmanager",
@@ -635,24 +627,24 @@ const EXCLUDE_PREFIXES: &[&str] = &[
     "viewbridgeauxiliary",
 ];
 
-#[cfg(target_os = "macos")]
-fn should_observe_app(app: &RunningApp) -> bool {
-    if app.is_terminated() {
+fn should_observe_app(app: &NSRunningApplication) -> bool {
+    if app.isTerminated() {
         return false;
     }
 
-    if !app.is_finished_launching() {
+    if !app.isFinishedLaunching() {
         return false;
     }
 
-    if app.owns_menu_bar() {
+    if app.ownsMenuBar() {
         return false;
     }
 
     let name = app
-        .localized_name()
-        .map(|n| ns_string_to_string(&n))
-        .or_else(|| app.bundle_id().map(|id| ns_string_to_string(&id)));
+        .localizedName()
+        .as_ref()
+        .map(|n| ns_string_to_string(n))
+        .or_else(|| app.bundleIdentifier().as_ref().map(|id| ns_string_to_string(id)));
 
     if let Some(name) = name {
         let lower = name.to_ascii_lowercase();
