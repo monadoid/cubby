@@ -3,3 +3,5 @@ pub use cubby_server::playground::{
     bootstrap, resolve_data_dir, PlaygroundAudioOptions, PlaygroundContext, PlaygroundOptions,
 };
 pub use cubby_server::Language;
+
+pub mod ax_tree;

@@ -1,0 +1,52 @@
+[package]
+name = "ax_tree"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+egui = "0.29"
+eframe = { version = "0.29", default-features = false, features = [
+    # "accesskit",     # Disabled: adds extra dependencies, not needed for basic GUI
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+    "wayland",       # To support Linux (and CI)
+    "x11",           # To support older Linux distributions (restores one of the default features)
+] }
+log = "0.4.27"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-log = "0.2"
+serde = { version = "1.0.219", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1"
+thiserror = "1.0"
+egui_graphs = { version = "0.22.0", features = ["egui_persistence"] }
+petgraph = "0.6"
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+
+# macOS-only dependencies for accessibility tree capture
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-application-services = { version = "0.3.2", features = ["AXUIElement", "AXError", "HIServices", "libc"] }
+objc2-core-foundation = "0.3.2"
+objc2-app-kit = "0.3.2"
+objc2-foundation = "0.3.2"
+anyhow = "1.0"
+libc = "0.2"
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4.50"
+web-sys = "0.3.70"              # to access the DOM (to hide the loading text)
+
+[profile.release]
+opt-level = 2 # fast and small wasm
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2

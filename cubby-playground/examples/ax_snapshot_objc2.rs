@@ -10,6 +10,7 @@ use objc2_app_kit::{NSWorkspace, NSRunningApplication};
 use objc2_foundation::NSString;
 use cubby_core::operator::platforms::{create_engine, AccessibilityEngine};
 use cubby_core::operator::{AutomationError, UIElement};
+use cubby_playground::ax_tree::{recorder::AxTreeRecorder, build_tree_snapshot};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::os::raw::c_void;
@@ -353,6 +354,7 @@ fn snapshot_by_pid(
     engine: &dyn AccessibilityEngine,
     pid: i32,
     notification: &str,
+    recorder: &mut AxTreeRecorder,
 ) -> anyhow::Result<()> {
     use anyhow::Context;
     use chrono::Local;
@@ -378,56 +380,19 @@ fn snapshot_by_pid(
         }
     );
 
-    let applications = engine
-        .get_applications()
-        .context("failed to enumerate running applications")?;
+    // Get root element instead of just focused window
+    let root_element = engine.get_root_element();
 
-    let mut target_app = None;
-    for app in applications {
-        let attrs = app.attributes();
-        let label = attrs
-            .label
-            .clone()
-            .unwrap_or_else(|| attrs.role.clone());
+    // Build tree snapshot from root
+    let snapshot = build_tree_snapshot(&root_element, pid, notification)
+        .context("failed to build tree snapshot")?;
 
-        let pid_match = attrs
-            .properties
-            .get("AXProcessIdentifier")
-            .and_then(|opt| opt.as_ref())
-            .and_then(|value| value.as_i64())
-            .map(|value| value as i32 == pid)
-            .unwrap_or(false);
-
-        if pid_match || label == app_label {
-            target_app = Some(app);
-            break;
-        }
-    }
-
-    let Some(app_element) = target_app else {
-        println!(
-            "[AX debug] No accessibility element matched '{app_label}' (pid {pid})"
-        );
-        return Ok(());
-    };
-
-    let (focused_window, _) =
-        find_focused_window(vec![app_element]).context("failed to find active window")?;
-
-    let window_attrs = focused_window.attributes();
-    let window_label = window_attrs
-        .label
-        .clone()
-        .unwrap_or_else(|| window_attrs.role.clone());
-
-    let bounds = focused_window.bounds().ok();
-    let snapshot_text = focused_window
-        .text(8)
-        .unwrap_or_else(|_| String::from("<failed to collect text>"));
+    // Capture snapshot and get diff
+    let diff = recorder.capture(snapshot);
 
     let timestamp = Local::now();
     println!(
-        "--- AX Snapshot ({}) @ {timestamp} ---",
+        "--- AX Tree Snapshot ({}) @ {timestamp} ---",
         match notification {
             n if n == K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION => "focus change",
             n if n == K_AX_APPLICATION_ACTIVATED_NOTIFICATION => "activation",
@@ -435,14 +400,27 @@ fn snapshot_by_pid(
         }
     );
     println!("Application : {app_label}");
-    println!("Window      : {window_label}");
-    if let Some((x, y, w, h)) = bounds {
-        println!("Bounds      : x={x:.1}, y={y:.1}, width={w:.1}, height={h:.1}");
-    } else {
-        println!("Bounds      : <unavailable>");
+    println!("Root nodes  : {}", recorder.current().map(|s| s.nodes.len()).unwrap_or(0));
+    
+    if let Some(ref current) = recorder.current() {
+        if let Some(focused) = current.focused_node() {
+            println!("Focused node: {} ({})", 
+                focused.label.as_ref().unwrap_or(&focused.role),
+                focused.role
+            );
+        }
     }
-    println!("Content:");
-    println!("{}", snapshot_text.trim());
+
+    // Display diff if available
+    if let Some(diff) = diff {
+        if diff.has_changes() {
+            println!("Changes     : {}", diff.summary());
+        } else {
+            println!("Changes     : none");
+        }
+    } else {
+        println!("Changes     : initial snapshot");
+    }
 
     Ok(())
 }
@@ -561,6 +539,7 @@ struct ObserverShared {
     engine: Arc<dyn AccessibilityEngine>,
     debounce: Mutex<HashMap<i32, Instant>>,
     ignored: Mutex<HashMap<i32, Instant>>,
+    recorder: Mutex<AxTreeRecorder>,
 }
 
 impl ObserverShared {
@@ -569,6 +548,7 @@ impl ObserverShared {
             engine,
             debounce: Mutex::new(HashMap::new()),
             ignored: Mutex::new(HashMap::new()),
+            recorder: Mutex::new(AxTreeRecorder::new(100)),
         }
     }
 
@@ -601,7 +581,12 @@ impl ObserverShared {
             last.insert(pid, now);
         }
 
-        if let Err(err) = snapshot_by_pid(self.engine.as_ref(), pid, notification) {
+        let mut recorder = match self.recorder.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        
+        if let Err(err) = snapshot_by_pid(self.engine.as_ref(), pid, notification, &mut *recorder) {
             println!("Snapshot error for pid {pid}: {err:#}");
             let mut ignored = match self.ignored.lock() {
                 Ok(guard) => guard,
