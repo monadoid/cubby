@@ -32,15 +32,45 @@ fn main() -> eframe::Result<()> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn init_tracing() {
+    use once_cell::sync::OnceCell;
+    use std::path::PathBuf;
+    use tracing_appender::{non_blocking, rolling};
     use tracing_log::LogTracer;
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+    static FILE_GUARD: OnceCell<tracing_appender::non_blocking::WorkerGuard> = OnceCell::new();
 
     let _ = LogTracer::init();
+
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
-    let _ = fmt()
-        .with_env_filter(env_filter)
-        .with_target(false)
-        .try_init();
+
+    let log_dir = PathBuf::from("logs");
+    let log_dir = if log_dir.exists() {
+        log_dir
+    } else {
+        PathBuf::from("ax_tree/logs")
+    };
+
+    if let Err(e) = std::fs::create_dir_all(&log_dir) {
+        eprintln!("failed to create log directory {:?}: {e}", log_dir);
+    }
+
+    let file_appender = rolling::never(&log_dir, "ax_observer.log");
+    let (file_writer, guard) = non_blocking(file_appender);
+    let _ = FILE_GUARD.set(guard);
+
+    let stdout_layer = fmt::layer().with_target(false).with_ansi(true);
+    let file_layer = fmt::layer()
+        .with_writer(file_writer)
+        .with_ansi(false)
+        .with_target(true);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(stdout_layer)
+        .with(file_layer);
+
+    let _ = subscriber.try_init();
 }
 
 // When compiling to web using trunk:

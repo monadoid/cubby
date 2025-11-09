@@ -1,4 +1,4 @@
-use eframe::egui::{self, Vec2};
+use eframe::egui::{self, RichText, Vec2};
 use egui_graphs::{
     Graph as GraphWidget, GraphView, Metadata, SettingsInteraction, SettingsNavigation,
     SettingsStyle,
@@ -15,7 +15,8 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use crate::tree::{
-    recorder::AxTreeRecorder, AxNodeData as TreeAxNodeData, AxNodeId, AxTreeDiff, AxTreeSnapshot,
+    recorder::{AxTreeRecorder, EventSummary},
+    AxNodeData as TreeAxNodeData, AxNodeId, AxTreeDiff, AxTreeSnapshot,
 };
 
 #[cfg(target_os = "macos")]
@@ -27,6 +28,8 @@ use chrono::{DateTime, Utc};
 
 const SIDE_PANEL_WIDTH: f32 = 300.0;
 const LIST_MODE_CHAR_LIMIT: usize = 3_000;
+#[cfg(target_os = "macos")]
+const EVENT_FEED_LIMIT: usize = 200;
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -120,6 +123,10 @@ pub struct AxTreeApp {
     dump_tree: bool,
     #[serde(skip)]
     tree_dumped: bool,
+    #[serde(skip)]
+    event_feed: Vec<EventSummary>,
+    #[serde(skip)]
+    last_event_id: Option<u64>,
 }
 
 impl Default for AxTreeApp {
@@ -157,6 +164,8 @@ impl Default for AxTreeApp {
             current_window_id: None,
             dump_tree: false,
             tree_dumped: false,
+            event_feed: Vec::new(),
+            last_event_id: None,
         }
     }
 }
@@ -236,11 +245,13 @@ impl eframe::App for AxTreeApp {
                 .default_width(SIDE_PANEL_WIDTH)
                 .min_width(250.0)
                 .show(ctx, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        self.ui_viewport_settings(ui);
-                        self.ui_graph_appearance(ui);
-                        self.ui_layout_settings(ui);
-                    });
+                    egui::ScrollArea::vertical()
+                        .id_salt("display_settings")
+                        .show(ui, |ui| {
+                            self.ui_viewport_settings(ui);
+                            self.ui_graph_appearance(ui);
+                            self.ui_layout_settings(ui);
+                        });
                 });
         }
 
@@ -271,6 +282,8 @@ impl AxTreeApp {
                 Err(poisoned) => poisoned.into_inner().current().cloned(),
             });
 
+        self.refresh_recorder_state(current_snapshot.as_ref());
+
         if let Some(current) = current_snapshot.as_ref() {
             let displayed_count = {
                 let (order, _) = collect_nodes_to_depth(current, self.display_settings.max_depth);
@@ -287,14 +300,6 @@ impl AxTreeApp {
                     ui.label(format!("Focused: {}", focused.role));
                 }
             });
-
-            if let Some(recorder_arc) = self.recorder() {
-                if let Ok(recorder) = recorder_arc.lock() {
-                    if let Some(diff) = recorder.last_diff() {
-                        self.last_diff = Some(diff.clone());
-                    }
-                }
-            }
 
             if let Some(ref diff) = self.last_diff {
                 if diff.has_changes() {
@@ -320,17 +325,6 @@ impl AxTreeApp {
             );
             if was_empty {
                 self.graph_needs_reset = true;
-            }
-
-            if let Some(recorder_arc) = self.recorder() {
-                if let Ok(recorder) = recorder_arc.lock() {
-                    if let Some(new_snapshot) = recorder.current() {
-                        if self.snapshot_counter == 0 || new_snapshot.timestamp != current.timestamp
-                        {
-                            self.snapshot_counter += 1;
-                        }
-                    }
-                }
             }
 
             // Apply zoom/pan settings from display_settings to metadata when explicitly requested
@@ -390,11 +384,84 @@ impl AxTreeApp {
                     }
                 }
             }
+
+            self.render_event_feed(ui);
         } else {
             ui.label("No snapshot available. Waiting for accessibility events...");
             ui.separator();
+            self.render_event_feed(ui);
         }
     }
+
+    #[cfg(target_os = "macos")]
+    fn refresh_recorder_state(&mut self, current_snapshot: Option<&AxTreeSnapshot>) {
+        if let Some(recorder_arc) = self.recorder() {
+            if let Ok(recorder) = recorder_arc.lock() {
+                if let Some(diff) = recorder.last_diff() {
+                    self.last_diff = Some(diff.clone());
+                }
+
+                let new_events = recorder.events_since(self.last_event_id);
+                if let Some(last) = new_events.last() {
+                    self.last_event_id = Some(last.id);
+                }
+                if !new_events.is_empty() {
+                    self.event_feed.extend(new_events);
+                    if self.event_feed.len() > EVENT_FEED_LIMIT {
+                        let overflow = self.event_feed.len() - EVENT_FEED_LIMIT;
+                        self.event_feed.drain(0..overflow);
+                    }
+                }
+
+                if let Some(current) = current_snapshot {
+                    if let Some(active) = recorder.current() {
+                        if self.snapshot_counter == 0 || active.timestamp != current.timestamp {
+                            self.snapshot_counter += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn refresh_recorder_state(&mut self, _current_snapshot: Option<&AxTreeSnapshot>) {}
+
+    #[cfg(target_os = "macos")]
+    fn render_event_feed(&self, ui: &mut egui::Ui) {
+        if self.event_feed.is_empty() {
+            return;
+        }
+
+        ui.separator();
+        ui.heading("Recent events");
+
+        egui::ScrollArea::vertical()
+            .id_salt("event_feed")
+            .max_height(200.0)
+            .auto_shrink([false; 2])
+            .show(ui, |ui| {
+                for event in self.event_feed.iter().rev().take(25) {
+                    let timestamp = event.timestamp.format("%H:%M:%S");
+                    ui.label(format!(
+                        "{} • {} • {} ({})",
+                        timestamp, event.app_name, event.headline, event.trigger
+                    ));
+
+                    if let Some(detail) = &event.detail {
+                        ui.label(RichText::new(detail.as_str()).weak());
+                    }
+                    if let Some(text) = &event.focused_text {
+                        ui.label(RichText::new(format!("“{}”", text)).italics());
+                    }
+
+                    ui.add_space(6.0);
+                }
+            });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn render_event_feed(&self, _ui: &mut egui::Ui) {}
 
     #[cfg(not(target_os = "macos"))]
     fn render_graph_mode(&mut self, ui: &mut egui::Ui) {
@@ -412,6 +479,8 @@ impl AxTreeApp {
                 Ok(recorder) => recorder.current().cloned(),
                 Err(poisoned) => poisoned.into_inner().current().cloned(),
             });
+
+        self.refresh_recorder_state(current_snapshot.as_ref());
 
         if let Some(current) = current_snapshot.as_ref() {
             // Extract window identifier
@@ -476,6 +545,7 @@ impl AxTreeApp {
             ui.separator();
 
             egui::ScrollArea::vertical()
+                .id_salt("list_entries")
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     // Display entries in reverse order (newest first)
@@ -497,9 +567,12 @@ impl AxTreeApp {
                         ui.add_space(8.0);
                     }
                 });
+
+            self.render_event_feed(ui);
         } else {
             ui.label("No snapshot available. Waiting for accessibility events...");
             ui.separator();
+            self.render_event_feed(ui);
         }
     }
 

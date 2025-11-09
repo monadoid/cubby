@@ -3,7 +3,11 @@
 //! This module watches for accessibility notifications and triggers tree snapshots
 
 #[cfg(target_os = "macos")]
-use crate::tree::{build_tree_snapshot, recorder::AxTreeRecorder, AxElement};
+use crate::tree::{
+    build_tree_snapshot,
+    recorder::{AxTreeRecorder, TriggerKind},
+    AxElement,
+};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSRunningApplication, NSWorkspace};
 #[cfg(target_os = "macos")]
@@ -30,6 +34,20 @@ use std::time::{Duration, Instant};
 const K_AX_APPLICATION_ACTIVATED_NOTIFICATION: &str = "AXApplicationActivated";
 #[cfg(target_os = "macos")]
 const K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION: &str = "AXFocusedWindowChanged";
+#[cfg(target_os = "macos")]
+const K_AX_FOCUSED_UI_ELEMENT_CHANGED_NOTIFICATION: &str = "AXFocusedUIElementChanged";
+#[cfg(target_os = "macos")]
+const K_AX_TITLE_CHANGED_NOTIFICATION: &str = "AXTitleChanged";
+#[cfg(target_os = "macos")]
+const K_AX_VALUE_CHANGED_NOTIFICATION: &str = "AXValueChanged";
+#[cfg(target_os = "macos")]
+const K_AX_WINDOW_CREATED_NOTIFICATION: &str = "AXWindowCreated";
+#[cfg(target_os = "macos")]
+const K_AX_VISIBLE_CHILDREN_CHANGED_NOTIFICATION: &str = "AXVisibleChildrenChanged";
+#[cfg(target_os = "macos")]
+const _K_AX_SELECTED_CHILDREN_CHANGED_NOTIFICATION: &str = "AXSelectedChildrenChanged";
+#[cfg(target_os = "macos")]
+const _K_AX_UI_ELEMENT_BUSY_CHANGED_NOTIFICATION: &str = "AXUIElementBusyChanged";
 
 #[cfg(target_os = "macos")]
 #[derive(Debug)]
@@ -54,6 +72,7 @@ impl ObserverShared {
     }
 
     pub fn handle_notification(&self, pid: i32, notification: &str) {
+        let trigger = TriggerKind::from_notification(notification);
         {
             let ignored = match self.ignored.lock() {
                 Ok(guard) => guard,
@@ -64,7 +83,7 @@ impl ObserverShared {
             }
         }
 
-        const DEBOUNCE: Duration = Duration::from_millis(350);
+        const DEBOUNCE: Duration = Duration::from_millis(600);
         let now = Instant::now();
 
         {
@@ -87,7 +106,9 @@ impl ObserverShared {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        if let Err(err) = snapshot_by_pid(pid, notification, &mut *recorder) {
+        tracing::info!(pid, notification, trigger = %trigger, "AX notification received");
+
+        if let Err(err) = snapshot_by_pid(pid, notification, trigger, &mut *recorder) {
             tracing::warn!(error = ?err, pid, "snapshot error");
             let mut ignored = match self.ignored.lock() {
                 Ok(guard) => guard,
@@ -102,6 +123,7 @@ impl ObserverShared {
 fn snapshot_by_pid(
     pid: i32,
     notification: &str,
+    trigger: TriggerKind,
     recorder: &mut AxTreeRecorder,
 ) -> anyhow::Result<()> {
     use anyhow::Context;
@@ -129,6 +151,11 @@ fn snapshot_by_pid(
         match notification {
             n if n == K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION => "Focused window changed",
             n if n == K_AX_APPLICATION_ACTIVATED_NOTIFICATION => "Application activated",
+            n if n == K_AX_TITLE_CHANGED_NOTIFICATION => "Title changed",
+            n if n == K_AX_VALUE_CHANGED_NOTIFICATION => "Value changed",
+            n if n == K_AX_FOCUSED_UI_ELEMENT_CHANGED_NOTIFICATION => "Focused UI element changed",
+            n if n == K_AX_WINDOW_CREATED_NOTIFICATION => "Window created",
+            n if n == K_AX_VISIBLE_CHILDREN_CHANGED_NOTIFICATION => "Visible children changed",
             other => other,
         }
     );
@@ -149,10 +176,7 @@ fn snapshot_by_pid(
         .as_ref()
         .map(|app| app.isActive())
         .unwrap_or(false);
-    let notification_indicates_focus = matches!(
-        notification,
-        K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION | K_AX_APPLICATION_ACTIVATED_NOTIFICATION
-    );
+    let notification_indicates_focus = trigger.promotes_focus();
 
     // Get the actual frontmost application PID to determine which snapshot should be promoted
     let frontmost_pid = {
@@ -163,9 +187,13 @@ fn snapshot_by_pid(
             .map(|app| app.processIdentifier())
     };
 
+    let previous_event_id = recorder.last_event_id();
+
     // Capture snapshot and get diff
     let diff = recorder.capture(
         snapshot.clone(),
+        trigger,
+        &app_label,
         is_active || notification_indicates_focus,
         frontmost_pid,
     );
@@ -179,10 +207,21 @@ fn snapshot_by_pid(
         frontmost_pid
     );
 
+    let new_event_id = recorder.last_event_id();
+
     if let Some(ref diff) = diff {
         if diff.has_changes() {
-            tracing::info!("[AX] Changes for '{app_label}': {}", diff.summary());
+            tracing::info!(
+                "[AX] {} – '{}' changes: {}",
+                trigger,
+                app_label,
+                diff.summary()
+            );
         }
+    }
+
+    if new_event_id != previous_event_id {
+        tracing::info!("[AX] {} – '{}' recorded event", trigger, app_label);
     }
 
     Ok(())
@@ -302,7 +341,7 @@ unsafe fn register_accessibility_observer(
     run_loop: CFRetained<CFRunLoop>,
     handles: &mut Vec<ObserverHandle>,
     label: &str,
-    skipped: &mut HashMap<i32, String>,
+    _skipped: &mut HashMap<i32, String>,
     shared: Arc<ObserverShared>,
 ) -> anyhow::Result<()> {
     // Create observer using objc2-application-services
@@ -333,76 +372,46 @@ unsafe fn register_accessibility_observer(
     // Create AXUIElement for application using objc2-application-services
     let ax_app = AXUIElement::new_application(pid as libc::pid_t);
 
-    // Create CFString instances for notifications
-    let activation_cf = Objc2CFString::from_str(K_AX_APPLICATION_ACTIVATED_NOTIFICATION);
-    let focus_cf = Objc2CFString::from_str(K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION);
-
     let refcon = Box::into_raw(Box::new(CallbackRefcon { pid, shared })) as *mut c_void;
 
-    let mut activation_registered = false;
-    let mut focus_registered = false;
+    const ACTIVE_NOTIFICATIONS: &[&str] = &[
+        K_AX_APPLICATION_ACTIVATED_NOTIFICATION,
+        K_AX_FOCUSED_WINDOW_CHANGED_NOTIFICATION,
+        K_AX_TITLE_CHANGED_NOTIFICATION,
+        K_AX_VALUE_CHANGED_NOTIFICATION,
+        K_AX_FOCUSED_UI_ELEMENT_CHANGED_NOTIFICATION,
+        K_AX_VISIBLE_CHILDREN_CHANGED_NOTIFICATION,
+        // K_AX_WINDOW_CREATED_NOTIFICATION,
+        // _K_AX_SELECTED_CHILDREN_CHANGED_NOTIFICATION,
+        // _K_AX_UI_ELEMENT_BUSY_CHANGED_NOTIFICATION,
+    ];
 
-    // Add activation notification
-    let add_activation = unsafe { observer.add_notification(&ax_app, &activation_cf, refcon) };
-    match add_activation {
-        AXError::Success => activation_registered = true,
-        AXError::NotificationUnsupported => {
-            skipped.insert(
-                pid,
-                format!(
-                    "Activation notification unsupported for '{}' (pid {})",
-                    label, pid
-                ),
-            );
-        }
-        status => {
-            drop(ax_app);
-            drop(Box::from_raw(refcon as *mut CallbackRefcon));
-            anyhow::bail!(
-                "AXObserverAddNotification (activation) failed for '{}' (pid {}): {:?}",
-                label,
-                pid,
-                status
-            );
-        }
-    }
-
-    // Add focus notification
-    let add_focus = unsafe { observer.add_notification(&ax_app, &focus_cf, refcon) };
-    match add_focus {
-        AXError::Success => focus_registered = true,
-        AXError::NotificationUnsupported => {
-            skipped.insert(
-                pid,
-                format!(
-                    "Focused window notification unsupported for '{}' (pid {})",
-                    label, pid
-                ),
-            );
-        }
-        status => {
-            if !activation_registered {
-                drop(ax_app);
-                drop(Box::from_raw(refcon as *mut CallbackRefcon));
-                anyhow::bail!(
-                    "AXObserverAddNotification (focus) failed for '{}' (pid {}): {:?}",
-                    label,
+    let mut registered_any = false;
+    for name in ACTIVE_NOTIFICATIONS {
+        let cf = Objc2CFString::from_str(name);
+        match observer.add_notification(&ax_app, &cf, refcon) {
+            AXError::Success => {
+                registered_any = true;
+            }
+            AXError::NotificationUnsupported => {
+                tracing::debug!(
                     pid,
-                    status
+                    notification = %name,
+                    "notification unsupported for '{label}'"
                 );
-            } else {
-                skipped.insert(
+            }
+            status => {
+                tracing::warn!(
                     pid,
-                    format!(
-                        "Focused window notification failed for '{}' (pid {}): {:?}",
-                        label, pid, status
-                    ),
+                    notification = %name,
+                    ?status,
+                    "failed to register notification for '{label}'"
                 );
             }
         }
     }
 
-    if !activation_registered && !focus_registered {
+    if !registered_any {
         drop(ax_app);
         drop(Box::from_raw(refcon as *mut CallbackRefcon));
         return Ok(());
